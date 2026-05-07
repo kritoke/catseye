@@ -1,0 +1,79 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1777954456,
+        "narHash": "sha256-hGdgeU2Nk87RAuZyYjyDjFL6LK7dAZN5RE9+hrDTkDU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "549bd84d6279f9852cae6225e372cc67fb91a4c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1767640445,
+        "narHash": "sha256-UWYqmD7JFBEDBHWYcqE6s6c77pWdcU/i+bwD6XxMb8A=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "9f0c42f8bc7151b8e7e5840fb3bd454ad850d8c5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "openspec": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1778042000,
+        "narHash": "sha256-CgZzUoHvcdc50QxxkQ8tisMHbF4LnehECY6DqpBLF3w=",
+        "owner": "Fission-AI",
+        "repo": "OpenSpec",
+        "rev": "b642398bf3cb32c2d3fa4225ef2bd6c410afe226",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Fission-AI",
+        "repo": "OpenSpec",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "openspec": "openspec",
+        "ticket-src": "ticket-src"
+      }
+    },
+    "ticket-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773590846,
+        "narHash": "sha256-S7nA8IiOCYqA6ic1b5MkE7fUCtViUiEUVeJ4HV1re2o=",
+        "owner": "wedow",
+        "repo": "ticket",
+        "rev": "194b71a8bbc3771da1ce9f579395937c976bbddc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "wedow",
+        "repo": "ticket",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

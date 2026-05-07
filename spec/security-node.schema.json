@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catseye://security-node.schema.json",
+  "title": "Catseye Security Node",
+  "description": "A simplified AST node representation used as the bridge format between the Crystal Extractor and the Gleam Logic Engine.",
+
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/securityNode"
+  },
+
+  "$defs": {
+    "securityNode": {
+      "type": "object",
+      "required": ["type", "name", "args", "line", "taint", "file"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["call", "assign", "def", "var", "literal"],
+          "description": "The AST node type. 'call' = method call, 'assign' = variable assignment, 'def' = method definition."
+        },
+        "name": {
+          "type": "string",
+          "description": "Identifier for the node. For calls this is the fully-qualified method name (e.g. 'HTTP::Client.get'). For assigns this is the variable name."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argNode"
+          },
+          "description": "Arguments for the node. For calls, these are the method arguments. For assigns, the single-element array contains the RHS value."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Source line number where this node appears (0 if unknown)."
+        },
+        "taint": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this node is marked as tainted (user-controlled). Set by the extractor for sources like 'params', 'gets', 'request'."
+        },
+        "file": {
+          "type": "string",
+          "description": "Absolute or relative path to the source file."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "argNode": {
+      "type": "object",
+      "required": ["arg_type", "value"],
+      "properties": {
+        "arg_type": {
+          "type": "string",
+          "enum": ["var", "literal", "call", "unknown"],
+          "description": "Classification of the argument. 'var' = variable reference (potentially tainted), 'literal' = hardcoded string/number, 'call' = nested method call."
+        },
+        "value": {
+          "type": "string",
+          "description": "String representation of the argument value."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

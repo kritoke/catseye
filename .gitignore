@@ -1,0 +1,56 @@
+# Nix
+.direnv/
+.flake/
+result
+result-*
+
+# Dependencies
+node_modules/
+.shards/
+lib/
+elm-stuff/
+
+# Build artifacts
+bin/
+*.beam
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.dwarf
+.crystal/
+build/
+_build/
+
+# Erlang crash dumps
+erl_crash.dump
+*.dump
+
+# Gleam build output
+src/engine/build/
+
+# Crystal cache
+crystal/
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local developer overrides
+flake.private.nix
+.devshell-private.sh
+
+# Todo infrastructure
+.tickets/
+planning/
