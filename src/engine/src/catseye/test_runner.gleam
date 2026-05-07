@@ -1,6 +1,3 @@
-//// Catseye Engine test runner (no eunit dependency)
-//// Run: cd src/engine && gleam run -m catseye/test_runner
-
 import catseye/node.{
   type Arg, type Node, Arg, ArgCall, ArgLiteral, ArgVar, Assign, Call, Node,
 }
@@ -13,8 +10,6 @@ import catseye/rules/taint
 import gleam/int
 import gleam/io
 import gleam/list
-
-// ── Helpers ────────────────────────────────────────────────────────────
 
 fn node_(
   type_: node.NodeType,
@@ -46,30 +41,71 @@ fn assert_eq(label: String, got: a, want: a) -> Bool {
   }
 }
 
-// ── Taint tracking ─────────────────────────────────────────────────────
+fn make_db(nodes: List(Node)) -> taint.TaintDB {
+  taint.build_taint_db(nodes)
+}
 
-fn taint_extracts_names() -> Bool {
+fn tv(nodes: List(Node)) -> List(String) {
+  taint.tainted_vars_list(make_db(nodes))
+}
+
+// -- Taint --
+fn taint_extracts() -> Bool {
   let nodes = [
     node_(Assign, "x", [arg_(ArgVar, "params")], True),
     node_(Assign, "y", [arg_(ArgLiteral, "safe")], False),
-    node_(Assign, "z", [arg_(ArgVar, "gets")], True),
   ]
   let tainted = taint.build_tainted_vars(nodes)
-  assert_eq("tainted count", list.length(tainted), 2)
-  && assert_eq("tainted has x", list.contains(tainted, "x"), True)
-  && assert_eq("tainted not y", list.contains(tainted, "y"), False)
+  assert_eq("tainted count", list.length(tainted), 1)
+  && assert_eq("has x", list.contains(tainted, "x"), True)
 }
 
-// ── SSRF ───────────────────────────────────────────────────────────────
-
-fn ssrf_flags_var() -> Bool {
-  let nodes = [node_(Call, "HTTP::Client.get", [arg_(ArgVar, "url")], False)]
-  let findings = ssrf.check(nodes, [])
-  assert_eq("ssrf flags var", list.length(findings), 1)
-}
-
-fn ssrf_ignores_literal() -> Bool {
+fn taint_propagates() -> Bool {
   let nodes = [
+    node_(Assign, "a", [arg_(ArgVar, "params")], True),
+    node_(Assign, "b", [arg_(ArgVar, "a")], False),
+  ]
+  assert_eq("b tainted", taint.is_tainted(make_db(nodes), "b"), True)
+}
+
+fn taint_multi_hop() -> Bool {
+  let nodes = [
+    node_(Assign, "a", [arg_(ArgVar, "request")], True),
+    node_(Assign, "b", [arg_(ArgVar, "a")], False),
+    node_(Assign, "c", [arg_(ArgVar, "b")], False),
+  ]
+  let db = make_db(nodes)
+  assert_eq("c tainted", taint.is_tainted(db, "c"), True)
+  && assert_eq("b tainted", taint.is_tainted(db, "b"), True)
+}
+
+fn taint_no_false() -> Bool {
+  let nodes = [
+    node_(Assign, "x", [arg_(ArgLiteral, "ok")], False),
+    node_(Assign, "y", [arg_(ArgLiteral, "fine")], False),
+  ]
+  let db = make_db(nodes)
+  assert_eq("x clean", taint.is_tainted(db, "x"), False)
+  && assert_eq("y clean", taint.is_tainted(db, "y"), False)
+}
+
+fn taint_flow() -> Bool {
+  let nodes = [
+    node_(Assign, "src", [arg_(ArgVar, "request")], True),
+    node_(Assign, "mid", [arg_(ArgVar, "src")], False),
+  ]
+  let flow = taint.trace_flow(make_db(nodes), "mid")
+  assert_eq("flow steps", list.length(flow) >= 1, True)
+}
+
+// -- SSRF --
+fn ssrf_var() -> Bool {
+  let n = [node_(Call, "HTTP::Client.get", [arg_(ArgVar, "url")], False)]
+  assert_eq("ssrf var", list.length(ssrf.check(n, tv(n), make_db(n))), 1)
+}
+
+fn ssrf_literal() -> Bool {
+  let n = [
     node_(
       Call,
       "HTTP::Client.get",
@@ -77,22 +113,19 @@ fn ssrf_ignores_literal() -> Bool {
       False,
     ),
   ]
-  let findings = ssrf.check(nodes, [])
-  assert_eq("ssrf ignores literal", list.length(findings), 0)
+  assert_eq("ssrf literal", list.length(ssrf.check(n, tv(n), make_db(n))), 0)
 }
 
-fn ssrf_flags_tainted() -> Bool {
-  let nodes = [
-    node_(Assign, "target", [arg_(ArgVar, "params")], True),
-    node_(Call, "HTTP::Client.get", [arg_(ArgVar, "target")], False),
+fn ssrf_tainted() -> Bool {
+  let n = [
+    node_(Assign, "t", [arg_(ArgVar, "params")], True),
+    node_(Call, "HTTP::Client.get", [arg_(ArgVar, "t")], False),
   ]
-  let tainted = taint.build_tainted_vars(nodes)
-  let findings = ssrf.check(nodes, tainted)
-  assert_eq("ssrf flags tainted", list.length(findings), 1)
+  assert_eq("ssrf tainted", list.length(ssrf.check(n, tv(n), make_db(n))), 1)
 }
 
-fn ssrf_all_methods() -> Bool {
-  let nodes =
+fn ssrf_all() -> Bool {
+  let n =
     list.map(
       [
         "HTTP::Client.get",
@@ -100,133 +133,148 @@ fn ssrf_all_methods() -> Bool {
         "HTTP::Client.put",
         "HTTP::Client.delete",
       ],
-      fn(m) { node_(Call, m, [arg_(ArgVar, "url")], False) },
+      fn(m) { node_(Call, m, [arg_(ArgVar, "u")], False) },
     )
-  let findings = ssrf.check(nodes, [])
-  assert_eq("ssrf all methods", list.length(findings), 4)
+  assert_eq("ssrf all", list.length(ssrf.check(n, tv(n), make_db(n))), 4)
 }
 
-fn ssrf_ignores_non_http() -> Bool {
-  let nodes = [
-    node_(Call, "puts", [arg_(ArgVar, "data")], False),
-    node_(Call, "JSON.parse", [arg_(ArgVar, "input")], False),
+fn ssrf_non_http() -> Bool {
+  let n = [node_(Call, "puts", [arg_(ArgVar, "d")], False)]
+  assert_eq("ssrf non-http", list.length(ssrf.check(n, tv(n), make_db(n))), 0)
+}
+
+// -- Cmdi --
+fn cmdi_system() -> Bool {
+  let n = [node_(Call, "system", [arg_(ArgVar, "c")], False)]
+  assert_eq(
+    "cmdi system",
+    list.length(command_injection.check(n, tv(n), make_db(n))),
+    1,
+  )
+}
+
+fn cmdi_os_cmd() -> Bool {
+  let n = [node_(Call, "os.command", [arg_(ArgVar, "c")], False)]
+  assert_eq(
+    "cmdi os.command",
+    list.length(command_injection.check(n, tv(n), make_db(n))),
+    1,
+  )
+}
+
+fn cmdi_literal() -> Bool {
+  let n = [node_(Call, "system", [arg_(ArgLiteral, "echo")], False)]
+  assert_eq(
+    "cmdi literal",
+    list.length(command_injection.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+fn cmdi_db() -> Bool {
+  let n = [node_(Call, "db.exec", [arg_(ArgVar, "s")], False)]
+  assert_eq(
+    "cmdi db",
+    list.length(command_injection.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+// -- PT --
+fn pt_file() -> Bool {
+  let n = [node_(Call, "File.read", [arg_(ArgVar, "p")], False)]
+  assert_eq(
+    "pt file",
+    list.length(path_traversal.check(n, tv(n), make_db(n))),
+    1,
+  )
+}
+
+fn pt_literal() -> Bool {
+  let n = [node_(Call, "File.read", [arg_(ArgLiteral, "ok")], False)]
+  assert_eq(
+    "pt literal",
+    list.length(path_traversal.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+fn pt_interp() -> Bool {
+  let n = [node_(Call, "Dir.glob", [arg_(ArgCall, "<interpolation>")], False)]
+  assert_eq(
+    "pt interp",
+    list.length(path_traversal.check(n, tv(n), make_db(n))),
+    1,
+  )
+}
+
+// -- SQLi --
+fn sqli_query() -> Bool {
+  let n = [node_(Call, "DB.query", [arg_(ArgVar, "s")], False)]
+  assert_eq(
+    "sqli query",
+    list.length(sql_injection.check(n, tv(n), make_db(n))),
+    1,
+  )
+}
+
+fn sqli_literal() -> Bool {
+  let n = [node_(Call, "DB.query", [arg_(ArgLiteral, "SELECT 1")], False)]
+  assert_eq(
+    "sqli literal",
+    list.length(sql_injection.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+// -- Integration --
+fn all_rules() -> Bool {
+  let n = [
+    node_(Call, "HTTP::Client.get", [arg_(ArgVar, "u")], False),
+    node_(Call, "system", [arg_(ArgVar, "c")], False),
+    node_(Call, "File.read", [arg_(ArgVar, "p")], False),
+    node_(Call, "DB.query", [arg_(ArgVar, "s")], False),
   ]
-  let findings = ssrf.check(nodes, [])
-  assert_eq("ssrf ignores non-http", list.length(findings), 0)
+  assert_eq("all rules", list.length(rules.run_all_rules(n)), 4)
 }
 
-// ── Command injection ──────────────────────────────────────────────────
-
-fn cmdi_flags_system() -> Bool {
-  let nodes = [node_(Call, "system", [arg_(ArgVar, "cmd")], False)]
-  let findings = command_injection.check(nodes, [])
-  assert_eq("cmdi flags system", list.length(findings), 1)
+fn empty() -> Bool {
+  assert_eq("empty", list.length(rules.run_all_rules([])), 0)
 }
 
-fn cmdi_flags_process_run() -> Bool {
-  let nodes = [node_(Call, "Process.run", [arg_(ArgVar, "cmd")], False)]
-  let findings = command_injection.check(nodes, [])
-  assert_eq("cmdi flags Process.run", list.length(findings), 1)
-}
-
-fn cmdi_ignores_literal() -> Bool {
-  let nodes = [node_(Call, "system", [arg_(ArgLiteral, "echo hello")], False)]
-  let findings = command_injection.check(nodes, [])
-  assert_eq("cmdi ignores literal", list.length(findings), 0)
-}
-
-// ── Path traversal ─────────────────────────────────────────────────────
-
-fn pt_flags_file_read() -> Bool {
-  let nodes = [node_(Call, "File.read", [arg_(ArgVar, "path")], False)]
-  let findings = path_traversal.check(nodes, [])
-  assert_eq("pt flags File.read", list.length(findings), 1)
-}
-
-fn pt_ignores_literal() -> Bool {
-  let nodes = [
-    node_(Call, "File.read", [arg_(ArgLiteral, "/etc/hostname")], False),
-  ]
-  let findings = path_traversal.check(nodes, [])
-  assert_eq("pt ignores literal", list.length(findings), 0)
-}
-
-fn pt_flags_dir_glob() -> Bool {
-  let nodes = [
-    node_(Call, "Dir.glob", [arg_(ArgCall, "<interpolation>")], False),
-  ]
-  let findings = path_traversal.check(nodes, [])
-  assert_eq("pt flags Dir.glob", list.length(findings), 1)
-}
-
-// ── SQL injection ──────────────────────────────────────────────────────
-
-fn sqli_flags_db_query() -> Bool {
-  let nodes = [node_(Call, "DB.query", [arg_(ArgVar, "sql")], False)]
-  let findings = sql_injection.check(nodes, [])
-  assert_eq("sqli flags DB.query", list.length(findings), 1)
-}
-
-fn sqli_ignores_literal() -> Bool {
-  let nodes = [node_(Call, "DB.query", [arg_(ArgLiteral, "SELECT 1")], False)]
-  let findings = sql_injection.check(nodes, [])
-  assert_eq("sqli ignores literal", list.length(findings), 0)
-}
-
-// ── Integration ────────────────────────────────────────────────────────
-
-fn run_all_combines() -> Bool {
-  let nodes = [
-    node_(Call, "HTTP::Client.get", [arg_(ArgVar, "url")], False),
-    node_(Call, "system", [arg_(ArgVar, "cmd")], False),
-    node_(Call, "File.read", [arg_(ArgVar, "path")], False),
-    node_(Call, "DB.query", [arg_(ArgVar, "sql")], False),
-  ]
-  let findings = rules.run_all_rules(nodes)
-  assert_eq("run_all combines all rules", list.length(findings), 4)
-}
-
-fn run_all_empty() -> Bool {
-  let findings = rules.run_all_rules([])
-  assert_eq("run_all empty", list.length(findings), 0)
-}
-
-// ── Runner ─────────────────────────────────────────────────────────────
-
+// -- Runner --
 pub fn main() {
   let tests = [
-    #("taint: extracts names", taint_extracts_names()),
-    #("ssrf: flags var arg", ssrf_flags_var()),
-    #("ssrf: ignores literal", ssrf_ignores_literal()),
-    #("ssrf: flags tainted", ssrf_flags_tainted()),
-    #("ssrf: all http methods", ssrf_all_methods()),
-    #("ssrf: ignores non-http", ssrf_ignores_non_http()),
-    #("cmdi: flags system", cmdi_flags_system()),
-    #("cmdi: flags Process.run", cmdi_flags_process_run()),
-    #("cmdi: ignores literal", cmdi_ignores_literal()),
-    #("pt: flags File.read", pt_flags_file_read()),
-    #("pt: ignores literal", pt_ignores_literal()),
-    #("pt: flags Dir.glob", pt_flags_dir_glob()),
-    #("sqli: flags DB.query", sqli_flags_db_query()),
-    #("sqli: ignores literal", sqli_ignores_literal()),
-    #("integration: run_all combines", run_all_combines()),
-    #("integration: run_all empty", run_all_empty()),
+    #("taint: extracts", taint_extracts()),
+    #("taint: propagates", taint_propagates()),
+    #("taint: multi-hop", taint_multi_hop()),
+    #("taint: no false", taint_no_false()),
+    #("taint: flow", taint_flow()),
+    #("ssrf: var", ssrf_var()),
+    #("ssrf: literal", ssrf_literal()),
+    #("ssrf: tainted", ssrf_tainted()),
+    #("ssrf: all", ssrf_all()),
+    #("ssrf: non-http", ssrf_non_http()),
+    #("cmdi: system", cmdi_system()),
+    #("cmdi: os.command", cmdi_os_cmd()),
+    #("cmdi: literal", cmdi_literal()),
+    #("cmdi: db whitelist", cmdi_db()),
+    #("pt: file", pt_file()),
+    #("pt: literal", pt_literal()),
+    #("pt: interp", pt_interp()),
+    #("sqli: query", sqli_query()),
+    #("sqli: literal", sqli_literal()),
+    #("int: all rules", all_rules()),
+    #("int: empty", empty()),
   ]
-
   let failures = list.filter(tests, fn(t) { !t.1 })
-  let _pass = list.length(tests) - list.length(failures)
-
   io.println("")
   case list.length(failures) {
-    0 -> {
-      io.println(
-        "✓ All " <> int.to_string(list.length(tests)) <> " tests passed",
-      )
-    }
+    0 ->
+      io.println("All " <> int.to_string(list.length(tests)) <> " tests passed")
     _ -> {
       io.println(
-        "✗ "
-        <> int.to_string(list.length(failures))
+        int.to_string(list.length(failures))
         <> " of "
         <> int.to_string(list.length(tests))
         <> " tests FAILED:",

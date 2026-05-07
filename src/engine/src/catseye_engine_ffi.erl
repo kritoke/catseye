@@ -150,9 +150,15 @@ encode_findings(Findings) ->
     Parts = [finding_to_json(F) || F <- Findings],
     iolist_to_binary([$[, string:join(Parts, ","), $]]).
 
+finding_to_json({finding, Rule, Severity, File, Line, Message, Flow}) ->
+    FJ = flow_to_json(Flow),
+    lists:flatten(io_lib:format(
+        "{\"rule\":\"~s\",\"severity\":\"~s\",\"file\":\"~s\",\"line\":~p,\"message\":\"~s\",\"flow\":~s}",
+        [esc(Rule), esc(Severity), esc(File), Line, esc(Message), FJ]
+    ));
 finding_to_json({finding, Rule, Severity, File, Line, Message}) ->
     lists:flatten(io_lib:format(
-        "{\"rule\":\"~s\",\"severity\":\"~s\",\"file\":\"~s\",\"line\":~p,\"message\":\"~s\"}",
+        "{\"rule\":\"~s\",\"severity\":\"~s\",\"file\":\"~s\",\"line\":~p,\"message\":\"~s\",\"flow\":[]}",
         [esc(Rule), esc(Severity), esc(File), Line, esc(Message)]
     ));
 finding_to_json(_) -> "{}".
@@ -167,3 +173,15 @@ escape_char($")  -> "\\\"";
 escape_char($\n) -> "\\n";
 escape_char($\t) -> "\\t";
 escape_char(C)   -> C.
+
+flow_to_json(Steps) when is_list(Steps) ->
+    Parts = [flow_step_to_json(S) || S <- Steps],
+    iolist_to_binary([$[, string:join(Parts,","), $]]);
+flow_to_json(_) -> "[]".
+
+flow_step_to_json({flow_step, File, Line, Msg}) ->
+    lists:flatten(io_lib:format(
+        "{\"file\":\"~s\",\"line\":~p,\"message\":\"~s\"}",
+        [esc(File), Line, esc(Msg)]
+    ));
+flow_step_to_json(_) -> "{}".

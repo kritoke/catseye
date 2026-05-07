@@ -1,10 +1,4 @@
-//// Catseye Node Type and JSON Decoding
-//// Defines the Security Node type that matches the bridge JSON schema.
-//// Uses Erlang FFI for JSON parsing (no external Gleam deps needed).
-
 import gleam/list
-
-// ── Types ──────────────────────────────────────────────────────────────
 
 pub type NodeType {
   Call
@@ -36,6 +30,10 @@ pub type Node {
   )
 }
 
+pub type FlowStep {
+  FlowStep(file: String, line: Int, message: String)
+}
+
 pub type Finding {
   Finding(
     rule: String,
@@ -43,27 +41,20 @@ pub type Finding {
     file: String,
     line: Int,
     message: String,
+    flow: List(FlowStep),
   )
 }
 
-// ── Erlang FFI for JSON ────────────────────────────────────────────────
-
-/// Decode a JSON string into a raw Erlang term, then parse in Gleam.
 @external(erlang, "catseye_engine_ffi", "decode_json")
 pub fn decode_json(json_string: String) -> Result(List(Node), Nil)
 
-/// Encode a list of findings to JSON string.
 @external(erlang, "catseye_engine_ffi", "encode_findings")
 pub fn encode_findings(findings: List(Finding)) -> String
 
-// ── Node helpers ───────────────────────────────────────────────────────
-
-/// Check if any argument is a variable (not a literal)
 pub fn has_var_args(node: Node) -> Bool {
   list.any(node.args, fn(a) { a.arg_type == ArgVar })
 }
 
-/// Check if all arguments are literals
 pub fn all_args_literal(node: Node) -> Bool {
   list.all(node.args, fn(a) { a.arg_type == ArgLiteral })
 }
