@@ -77,6 +77,11 @@ private def tainted?(node : Crystal::ASTNode) : Bool
       (node.obj.try { |obj| tainted?(obj) } || false)
   when Crystal::InstanceVar
     TAINT_SOURCES.includes?(node.name)
+  when Crystal::StringInterpolation
+    # Only tainted if any interpolated *expression* is tainted
+    # "hello #{name}" with safe name → not tainted
+    # "git clone #{repo}" with tainted repo → tainted
+    node.expressions.any? { |expr| tainted?(expr) }
   else
     false
   end

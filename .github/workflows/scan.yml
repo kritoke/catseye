@@ -1,0 +1,42 @@
+name: Catseye Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build Catseye
+        run: |
+          nix develop --command bash -c '
+            cd /workspace
+            nim c --out:bin/catseye src/cli/catseye.nim
+            nim c --out:bin/gleam_extractor src/extractor/gleam_extractor.nim
+            cd src/engine && gleam build
+          '
+
+      - name: Run Security Scan
+        run: |
+          nix develop --command bash -c '
+            bin/catseye --format=sarif . > catseye-results.sarif
+          '
+
+      - name: Upload SARIF Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: catseye-results.sarif
+          category: catseye

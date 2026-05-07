@@ -1,0 +1,14 @@
+# Catseye Configuration
+#
+# Place in project root as .catseye.toml
+# Auto-discovered by walking up from the target directory
+
+[taint]
+# Additional taint source names (comma-separated)
+extra_sources = "user_id,session_id,cookie_value"
+
+# Additional dangerous sink patterns
+extra_sinks = "custom_http.fetch,my_engine.execute"
+
+# Additional sanitizer patterns (args passed through these are cleared)
+extra_sanitizers = "my_lib.sanitize,clean_input"
