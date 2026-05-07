@@ -4,26 +4,25 @@
 # Build everything
 default: build
 
-# Build the Gleam engine
+# ── Build ──────────────────────────────────────────────────────────────
+
 build-engine:
     cd src/engine && gleam build
 
-# Build the Nim CLI
 build-cli:
     nim c --out:bin/catseye src/cli/catseye.nim
 
-# Build all components
 build: build-engine build-cli
     @echo "✓ All components built"
 
-# Run Gleam unit tests (10 tests, no eunit required)
+# ── Test ───────────────────────────────────────────────────────────────
+
 unit-test: build-engine
     @erl -noshell \
         -pa src/engine/build/dev/erlang/catseye_engine/ebin \
         -pa src/engine/build/dev/erlang/gleam_stdlib/ebin \
         -eval 'catseye@test_runner:main(), erlang:halt()'
 
-# Run end-to-end test on sample files
 test: build unit-test
     @echo ""
     @echo "=== Vulnerable sample ==="
@@ -32,22 +31,41 @@ test: build unit-test
     @echo "=== Safe sample (expect 0 findings) ==="
     @mkdir -p /tmp/catseye-safe-test && cp test/samples/safe.cr /tmp/catseye-safe-test/ && ./bin/catseye /tmp/catseye-safe-test
 
-# Run just the Crystal extractor on a file
+# ── Lint (all languages) ──────────────────────────────────────────────
+
+lint: lint-gleam lint-crystal lint-nim
+    @echo "✓ All lints passed"
+
+# Check Gleam formatting
+lint-gleam:
+    cd src/engine && gleam format --check src
+
+# Check Crystal with ameba
+lint-crystal:
+    CRYSTAL_HAS_WRAPPER=1 ameba src/extractor/ test/samples/
+
+# Check Nim with compiler checks
+lint-nim:
+    nim check src/cli/catseye.nim
+
+# Auto-fix Gleam formatting
+fmt-gleam:
+    cd src/engine && gleam format src
+
+# ── Utilities ──────────────────────────────────────────────────────────
+
 extract file:
     CRYSTAL_HAS_WRAPPER=1 crystal run src/extractor/extractor.cr -- {{file}}
 
-# Run the Gleam engine on JSON from stdin or a file
 analyze file:
     @cat {{file}} | erl -noshell \
         -pa src/engine/build/dev/erlang/catseye_engine/ebin \
         -pa src/engine/build/dev/erlang/gleam_stdlib/ebin \
         -eval 'catseye:main(), erlang:halt()'
 
-# Scan a directory with the full CLI
 scan dir: build
     ./bin/catseye {{dir}}
 
-# Clean all build artifacts
 clean:
     rm -rf src/engine/build bin/
     @echo "✓ Cleaned"

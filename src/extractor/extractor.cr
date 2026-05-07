@@ -43,11 +43,11 @@ end
 private def format_call_name(call : Crystal::Call) : String
   if obj = call.obj
     obj_name = case obj
-               when Crystal::Var       then obj.name
-               when Crystal::Path      then obj.names.join("::")
+               when Crystal::Var         then obj.name
+               when Crystal::Path        then obj.names.join("::")
                when Crystal::InstanceVar then obj.name
-               when Crystal::Call      then format_call_name(obj)
-               else                         obj.to_s[0..40]
+               when Crystal::Call        then format_call_name(obj)
+               else                           obj.to_s[0..40]
                end
     "#{obj_name}.#{call.name}"
   else
@@ -66,7 +66,7 @@ TAINT_SOURCES = Set{
   "STDIN",
 }
 
-private def is_tainted?(node : Crystal::ASTNode) : Bool
+private def tainted?(node : Crystal::ASTNode) : Bool
   case node
   when Crystal::Var
     TAINT_SOURCES.includes?(node.name)
@@ -74,7 +74,7 @@ private def is_tainted?(node : Crystal::ASTNode) : Bool
     # If the call name itself is a taint source
     TAINT_SOURCES.includes?(node.name) ||
       # Or if the receiver is tainted (e.g., params["url"])
-      (node.obj.try { |obj| is_tainted?(obj) } || false)
+      (node.obj.try { |obj| tainted?(obj) } || false)
   when Crystal::InstanceVar
     TAINT_SOURCES.includes?(node.name)
   else
@@ -90,8 +90,7 @@ alias SecNode = NamedTuple(
   args: Array(ArgNode),
   line: Int32,
   taint: Bool,
-  file: String
-)
+  file: String)
 
 class SecurityVisitor < Crystal::Visitor
   getter nodes : Array(SecNode)
@@ -126,12 +125,12 @@ class SecurityVisitor < Crystal::Visitor
 
   def visit(node : Crystal::Assign) : Bool
     target_name = case target = node.target
-                  when Crystal::Var        then target.name
+                  when Crystal::Var         then target.name
                   when Crystal::InstanceVar then target.name
-                  else                          target.to_s[0..60]
+                  else                           target.to_s[0..60]
                   end
 
-    tainted = is_tainted?(node.value)
+    tainted = tainted?(node.value)
 
     # Propagate taint: if RHS references a tainted variable
     if !tainted && (var_node = node.value.as?(Crystal::Var))
@@ -161,7 +160,7 @@ class SecurityVisitor < Crystal::Visitor
 
     # Check if any argument is tainted
     node.args.each do |arg|
-      if is_tainted?(arg)
+      if tainted?(arg)
         tainted = true
         break
       end
