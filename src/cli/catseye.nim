@@ -2,14 +2,14 @@
 ##
 ## Recursively discovers .cr and .gleam files, runs the appropriate
 ## extractor, sends aggregated JSON to the Gleam/Erlang logic engine,
-## and formats findings with colored terminal output or JSON.
+## and formats findings with colored terminal output, JSON, or SARIF.
 ##
 ## Usage: catseye [options] <directory>
-##   --format json    Machine-readable JSON output (for CI)
+##   --format json    Machine-readable JSON
+##   --format sarif   SARIF v2.1.0 (GitHub Code Scanning compatible)
 ##   --no-color       Disable colored output
-##   --format-only    Only run extractor, skip engine (debug)
 
-import std/[os, osproc, strutils, json, parseopt, strformat, algorithm]
+import std/[os, osproc, strutils, json, parseopt, strformat, algorithm, sets]
 
 const
   Bold   = "\e[1m"
@@ -21,7 +21,7 @@ const
   Reset  = "\e[0m"
 
 type
-  OutputFormat = enum fmtTerminal, fmtJson
+  OutputFormat = enum fmtTerminal, fmtJson, fmtSarif
   Config = object
     targetDir: string
     crystalExtractor: string
@@ -50,7 +50,7 @@ proc echoBold(config: Config, codes: string, text: string) =
 
 type SourceFile = object
   path: string
-  lang: string  # "crystal" or "gleam"
+  lang: string
 
 proc discoverSources(dir: string): seq[SourceFile] =
   for path in walkDirRec(dir):
@@ -88,7 +88,7 @@ proc runEngine(engineDir: string, jsonData: string): (string, int) =
   removeFile(tmpFile)
   return (output.strip(), exitCode)
 
-# ── Formatting ─────────────────────────────────────────────────────────
+# ── Terminal formatting ────────────────────────────────────────────────
 
 proc severityColor(sev: string): string =
   case sev.toLowerAscii()
@@ -116,6 +116,91 @@ proc printBanner(config: Config, crCount, gleamCount: int) =
   config.echoPlain(&"  Files:    {crCount} Crystal, {gleamCount} Gleam")
   config.echoPlain(&"  Engine:   Gleam/BEAM")
   echo ""
+
+# ── SARIF v2.1.0 output ───────────────────────────────────────────────
+
+proc severityToSarifLevel(sev: string): string =
+  case sev.toLowerAscii()
+  of "critical": "error"
+  of "high":     "error"
+  of "medium":   "warning"
+  of "low":      "note"
+  of "info":     "note"
+  else:          "warning"
+
+proc buildSarifRules(findings: JsonNode): seq[JsonNode] =
+  var seen = initHashSet[string]()
+  for f in findings:
+    let rule = f["rule"].getStr()
+    if not seen.contains(rule):
+      seen.incl(rule)
+      let sev = f["severity"].getStr()
+      result.add(%*{
+        "id": rule,
+        "shortDescription": {"text": fmt"Potential {rule} vulnerability detected"},
+        "fullDescription": {"text": fmt"Catseye detected a potential {rule} vulnerability. Review the flagged code for security implications."},
+        "defaultConfiguration": {"level": severityToSarifLevel(sev)},
+        "properties": {
+          "tags": ["security", fmt"vulnerability/{rule.toLowerAscii()}"],
+          "precision": "medium",
+        },
+      })
+
+proc toRelativeUri(file, targetDir: string): string =
+  result = file
+  if result.startsWith(targetDir):
+    result = result[targetDir.len .. ^1]
+    if result.startsWith("/"): result = result[1 .. ^1]
+
+proc buildSarifResults(findings: JsonNode, rules: seq[JsonNode], targetDir: string): seq[JsonNode] =
+  for f in findings:
+    let rule     = f["rule"].getStr()
+    let severity = f["severity"].getStr()
+    let file     = f["file"].getStr()
+    let line     = f["line"].getInt()
+    let message  = f["message"].getStr()
+    let uri = toRelativeUri(file, targetDir)
+    var ruleIdx = 0
+    for j, r in rules:
+      if r["id"].getStr() == rule:
+        ruleIdx = j
+        break
+    result.add(%*{
+      "ruleId": rule,
+      "ruleIndex": ruleIdx,
+      "level": severityToSarifLevel(severity),
+      "message": {"text": message},
+      "locations": [{
+        "physicalLocation": {
+          "artifactLocation": {"uri": uri},
+          "region": {"startLine": line},
+        },
+      }],
+    })
+
+proc toSarif(findings: JsonNode, targetDir: string): JsonNode =
+  let rules = buildSarifRules(findings)
+  let results = buildSarifResults(findings, rules, targetDir)
+  return %*{
+    "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+    "version": "2.1.0",
+    "runs": [{
+      "tool": {
+        "driver": {
+          "name": "Catseye",
+          "version": "0.1.0",
+          "semanticVersion": "0.1.0",
+          "informationUri": "https://github.com/kritoke/catseye",
+          "rules": rules,
+        },
+      },
+      "results": results,
+      "invocations": [{
+        "executionSuccessful": true,
+        "toolExecutionNotifications": [],
+      }],
+    }],
+  }
 
 # ── Arg parsing ────────────────────────────────────────────────────────
 
@@ -146,16 +231,17 @@ proc parseArgs(): Config =
           p.next()
           fmtVal = p.key
         case fmtVal.toLowerAscii()
-        of "json": config.format = fmtJson
+        of "json":            config.format = fmtJson
+        of "sarif":           config.format = fmtSarif
         of "terminal", "text": config.format = fmtTerminal
         else:
-          echo &"Unknown format: {p.val} (use: json, terminal)"
+          echo &"Unknown format: {fmtVal} (use: json, sarif, terminal)"
           quit(1)
       of "help", "h":
         echo "Usage: catseye [options] <directory>"
         echo ""
         echo "Options:"
-        echo "  --format <fmt>       Output format: terminal (default), json"
+        echo "  --format <fmt>       Output format: terminal (default), json, sarif"
         echo "  --crystal-extractor  Crystal extractor path"
         echo "  --gleam-extractor    Gleam extractor binary path"
         echo "  --engine <path>      Gleam engine directory"
@@ -258,8 +344,9 @@ proc main() =
       if config.format == fmtTerminal:
         config.echoWarn("⚠ Invalid JSON from engine")
 
-  # JSON output mode
-  if config.format == fmtJson:
+  # Output based on format
+  case config.format
+  of fmtJson:
     var output = %*{
       "version": "0.1.0",
       "target": config.targetDir,
@@ -269,7 +356,9 @@ proc main() =
       "findings": findings,
     }
     echo output.pretty()
-  else:
+  of fmtSarif:
+    echo toSarif(findings, config.targetDir).pretty()
+  of fmtTerminal:
     for f in findings:
       printFinding(config, f)
     echo "─────────────────────────────────────────"
