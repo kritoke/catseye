@@ -35,19 +35,19 @@ nimble = pkgs.nimble;
 # Gleam module definition - use official pre-built binary to avoid compiling from source
 gleamBin = pkgs.stdenv.mkDerivation {
   pname = "gleam";
-  version = "1.15.4";
+  version = "1.16.0";
   src = pkgs.fetchurl {
-    url = "https://github.com/gleam-lang/gleam/releases/download/v1.15.4/gleam-v1.15.4-aarch64-unknown-linux-musl.tar.gz";
-    sha256 = "f145cc26ae0906d287f0c8dacede6a405a2dd888877d901dff64c288a2f1ec1f";
+    url = "https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-aarch64-unknown-linux-musl.tar.gz";
+    sha256 = "e7af3677a04a1b88f19896b7b351f407784c62e97078fe680f90a91a5da162d8";
   };
-  unpackPhase = "tar xzf $src";
+  dontConfigure = true;
+  dontBuild = true;
   installPhase = ''
     mkdir -p $out/bin
     cp gleam $out/bin/gleam
     chmod +x $out/bin/gleam
   '';
-  dontConfigure = true;
-  dontBuild = true;
+  unpackPhase = "tar xzf $src";
   stripAllFrom = [ "bin/gleam" ];
 };
 # Note: erlang is not needed for the gleam compiler, only for running compiled gleam code
