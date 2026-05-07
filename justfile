@@ -16,12 +16,18 @@ build-cli:
 build: build-engine build-cli
     @echo "✓ All components built"
 
+# Run Gleam unit tests (10 tests, no eunit required)
+unit-test: build-engine
+    @erl -noshell \
+        -pa src/engine/build/dev/erlang/catseye_engine/ebin \
+        -pa src/engine/build/dev/erlang/gleam_stdlib/ebin \
+        -eval 'catseye@test_runner:main(), erlang:halt()'
+
 # Run end-to-end test on sample files
-test: build
+test: build unit-test
+    @echo ""
     @echo "=== Vulnerable sample ==="
     @./bin/catseye test/samples/ 2>&1 || true
-    @echo ""
-    @echo "=== Safe sample (expect 0 findings) ==="
     @echo ""
     @echo "=== Safe sample (expect 0 findings) ==="
     @mkdir -p /tmp/catseye-safe-test && cp test/samples/safe.cr /tmp/catseye-safe-test/ && ./bin/catseye /tmp/catseye-safe-test
