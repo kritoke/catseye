@@ -7,9 +7,15 @@ import gleam/list
 import gleam/string
 
 fn is_shell_call(name: String) -> Bool {
-  list.any(["system", "exec", "Process.run", "``"], fn(p) {
-    string.contains(name, p)
-  })
+  list.any(
+    [
+      // Crystal
+      "system", "exec", "Process.run", "``",
+      // Gleam/Erlang
+      "os.command", "os.cmd", "shell.cmd", "cmd.run",
+    ],
+    fn(p) { string.contains(name, p) },
+  )
 }
 
 pub fn check(nodes: List(Node), tainted: List(String)) -> List(Finding) {

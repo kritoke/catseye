@@ -38,19 +38,19 @@ lint: lint-gleam lint-crystal lint-nim
 
 # Check Gleam formatting
 lint-gleam:
-    cd src/engine && gleam format --check src
+    cd src/engine && nix develop --command bash -c 'gleam format --check src'
 
 # Check Crystal with ameba
 lint-crystal:
-    CRYSTAL_HAS_WRAPPER=1 ameba src/extractor/ test/samples/
+    nix develop --command bash -c 'CRYSTAL_HAS_WRAPPER=1 ameba src/extractor/ test/samples/'
 
 # Check Nim with compiler checks
 lint-nim:
-    nim check src/cli/catseye.nim
+    nix develop --command bash -c 'nim check src/cli/catseye.nim && nim check src/extractor/gleam_extractor.nim'
 
 # Auto-fix Gleam formatting
 fmt-gleam:
-    cd src/engine && gleam format src
+    cd src/engine && nix develop --command bash -c 'gleam format src'
 
 # ── Utilities ──────────────────────────────────────────────────────────
 

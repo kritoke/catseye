@@ -9,9 +9,14 @@ import gleam/string
 fn is_http_call(name: String) -> Bool {
   list.any(
     [
+      // Crystal
       "HTTP::Client.get", "HTTP::Client.post", "HTTP::Client.put",
       "HTTP::Client.patch", "HTTP::Client.delete", "HTTP::Client.head",
       "HTTP::Client.options", "HTTP::Client.exec",
+      // Gleam/Erlang (hackney, req, httpc)
+      "hackney.get", "hackney.post", "hackney.put", "hackney.delete",
+      "hackney.request", "httpc.request", "req.get", "req.post", "req.put",
+      "req.delete", "req.request",
     ],
     fn(p) { string.starts_with(name, p) },
   )
