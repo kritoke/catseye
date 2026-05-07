@@ -79,7 +79,10 @@ crystal_1_18 = if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 el
       # Get shellHook from privateConfig if provided
       privateShellHook = if privateConfig ? shellHook then privateConfig.shellHook else "";
 
-pwLibs = [];
+pwLibs = [
+        pkgs.tree-sitter
+        pkgs.tree-sitter-grammars.tree-sitter-gleam
+      ];
 
     in {
       devShells.${system}.default = pkgs.mkShell {
@@ -87,13 +90,14 @@ pwLibs = [];
 
         shellHook = ''
           echo "catseye DevShell Active"
-           export PATH="$PATH:${ticket}/bin"
-           export TICKET_DIR="$PWD/.tickets"
-           if [ ! -d "$TICKET_DIR" ]; then
-             echo "Initializing local Ticket storage in $TICKET_DIR"
-             mkdir -p "$TICKET_DIR"
-           fi
-           '' + privateShellHook;
+          export PATH="$PATH:${ticket}/bin"
+          export TICKET_DIR="$PWD/.tickets"
+          export TREE_SITTER_GLEAM_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-gleam}/parser"
+          if [ ! -d "$TICKET_DIR" ]; then
+            echo "Initializing local Ticket storage in $TICKET_DIR"
+            mkdir -p "$TICKET_DIR"
+          fi
+          '' + privateShellHook;
       };
     };
 }
