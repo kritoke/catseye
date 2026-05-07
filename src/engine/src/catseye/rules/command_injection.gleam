@@ -7,15 +7,30 @@ import gleam/list
 import gleam/string
 
 fn is_shell_call(name: String) -> Bool {
-  list.any(
-    [
-      // Crystal
-      "system", "exec", "Process.run", "``",
-      // Gleam/Erlang
-      "os.command", "os.cmd", "shell.cmd", "cmd.run",
-    ],
-    fn(p) { string.contains(name, p) },
-  )
+  // Database calls are NOT shell commands — whitelist them
+  let db_patterns = [
+    "db.exec", "db.query", "db.scalar", "db.query_one", "db.query_all",
+    "db.execute",
+    // Crystal DB driver patterns
+    ".exec(", ".query(",
+  ]
+  let is_db =
+    list.any(db_patterns, fn(p) { string.contains(name, p) })
+    || string.contains(name, "database.exec")
+    || string.contains(name, "database.query")
+  case is_db {
+    True -> False
+    False ->
+      list.any(
+        [
+          // Crystal
+          "system", "Process.run", "``",
+          // Gleam/Erlang
+          "os.command", "os.cmd", "shell.cmd", "cmd.run",
+        ],
+        fn(p) { string.contains(name, p) },
+      )
+  }
 }
 
 pub fn check(nodes: List(Node), tainted: List(String)) -> List(Finding) {
