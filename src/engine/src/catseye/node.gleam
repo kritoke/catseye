@@ -58,3 +58,35 @@ pub fn has_var_args(node: Node) -> Bool {
 pub fn all_args_literal(node: Node) -> Bool {
   list.all(node.args, fn(a) { a.arg_type == ArgLiteral })
 }
+
+/// Check if all args are either literal OR sanitized calls
+pub fn all_args_safe(node: Node, sanitizers: List(String)) -> Bool {
+  list.all(node.args, fn(a) {
+    case a.arg_type {
+      ArgLiteral -> True
+      ArgCall -> list.any(sanitizers, fn(s) { string_starts_with(a.value, s) })
+      _ -> False
+    }
+  })
+}
+
+fn string_starts_with(haystack: String, needle: String) -> Bool {
+  case needle {
+    "" -> True
+    _ ->
+      case haystack {
+        "" -> needle == ""
+        _ ->
+          case string_slice(haystack, 0, string_length(needle)) == needle {
+            True -> True
+            False -> False
+          }
+      }
+  }
+}
+
+@external(erlang, "string", "slice")
+fn string_slice(s: String, start: Int, len: Int) -> String
+
+@external(erlang, "string", "length")
+fn string_length(s: String) -> Int

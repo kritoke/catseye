@@ -1,5 +1,5 @@
 import catseye/node.{
-  type Arg, type Node, Arg, ArgCall, ArgLiteral, ArgVar, Assign, Call, Node,
+  type Arg, type Node, Arg, ArgCall, ArgLiteral, ArgVar, Assign, Call, Def, Node,
 }
 import catseye/rules
 import catseye/rules/command_injection
@@ -242,6 +242,92 @@ fn empty() -> Bool {
   assert_eq("empty", list.length(rules.run_all_rules([])), 0)
 }
 
+// -- Sanitizer --
+fn sanitizer_uri() -> Bool {
+  // URI.parse(x) should NOT be flagged as SSRF
+  let n = [
+    node_(Assign, "url", [arg_(ArgVar, "params")], True),
+    node_(Call, "HTTP::Client.get", [arg_(ArgCall, "URI.parse")], False),
+  ]
+  assert_eq("sanitizer uri", list.length(ssrf.check(n, tv(n), make_db(n))), 0)
+}
+
+fn sanitizer_string() -> Bool {
+  // String.strip(x) should NOT be flagged
+  let n = [
+    node_(Assign, "x", [arg_(ArgVar, "input")], True),
+    node_(Call, "system", [arg_(ArgCall, "String.strip")], False),
+  ]
+  assert_eq(
+    "sanitizer string",
+    list.length(command_injection.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+fn sanitizer_path() -> Bool {
+  // Path.basename(x) should NOT be flagged as path traversal
+  let n = [
+    node_(Assign, "p", [arg_(ArgVar, "input")], True),
+    node_(Call, "File.read", [arg_(ArgCall, "Path.posix")], False),
+  ]
+  assert_eq(
+    "sanitizer path",
+    list.length(path_traversal.check(n, tv(n), make_db(n))),
+    0,
+  )
+}
+
+// -- Inter-procedural --
+fn interproc_def_taint() -> Bool {
+  // Function def with tainted param should seed the param
+  // Then assign inside the function propagates taint
+  // Then the function name itself is marked as tainted
+  // Then result = get_url() gets tainted via interprocedural
+  let n = [
+    Node(
+      node_type: Def,
+      name: "get_url",
+      args: [arg_(ArgVar, "request")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+    Node(
+      node_type: Assign,
+      name: "url",
+      args: [arg_(ArgVar, "request")],
+      line: 2,
+      taint: False,
+      file: "test.cr",
+    ),
+    Node(
+      node_type: Assign,
+      name: "result",
+      args: [arg_(ArgCall, "get_url")],
+      line: 10,
+      taint: False,
+      file: "other.cr",
+    ),
+    Node(
+      node_type: Call,
+      name: "HTTP::Client.get",
+      args: [arg_(ArgVar, "result")],
+      line: 11,
+      taint: False,
+      file: "other.cr",
+    ),
+  ]
+  let db = make_db(n)
+  let tainted = taint.tainted_vars_list(db)
+  assert_eq("interproc: result tainted", taint.is_tainted(db, "result"), True)
+  && assert_eq(
+    "interproc: ssrf found",
+    list.length(ssrf.check(n, tainted, db)),
+    1,
+  )
+}
+
 // -- Runner --
 pub fn main() {
   let tests = [
@@ -266,6 +352,10 @@ pub fn main() {
     #("sqli: literal", sqli_literal()),
     #("int: all rules", all_rules()),
     #("int: empty", empty()),
+    #("sanitizer: uri", sanitizer_uri()),
+    #("sanitizer: string", sanitizer_string()),
+    #("sanitizer: path", sanitizer_path()),
+    #("interproc: def taint", interproc_def_taint()),
   ]
   let failures = list.filter(tests, fn(t) { !t.1 })
   io.println("")
