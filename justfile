@@ -19,10 +19,12 @@ build: build-engine build-cli
 # Run end-to-end test on sample files
 test: build
     @echo "=== Vulnerable sample ==="
-    @./bin/catseye test/samples/ --no-color || true
+    @./bin/catseye test/samples/ 2>&1 || true
     @echo ""
     @echo "=== Safe sample (expect 0 findings) ==="
-    @./bin/catseye test/samples/safe.cr --no-color
+    @echo ""
+    @echo "=== Safe sample (expect 0 findings) ==="
+    @mkdir -p /tmp/catseye-safe-test && cp test/samples/safe.cr /tmp/catseye-safe-test/ && ./bin/catseye /tmp/catseye-safe-test
 
 # Run just the Crystal extractor on a file
 extract file:
