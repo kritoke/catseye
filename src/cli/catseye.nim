@@ -6,7 +6,7 @@
 ##
 ## Usage: catseye <directory>
 
-import std/[os, osproc, strutils, json, parseopt, strformat]
+import std/[os, osproc, strutils, json, parseopt, strformat, algorithm]
 
 const
   Bold   = "\e[1m"
