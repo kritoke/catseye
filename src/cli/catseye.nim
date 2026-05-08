@@ -11,7 +11,7 @@
 ##   --no-color       Disable colored output
 
 import std/[os, osproc, strutils, json, parseopt, strformat, algorithm, sets,
-            parsecfg, streams]
+            parsecfg]
 
 const
   Bold   = "\e[1m"
@@ -121,7 +121,6 @@ proc runCrystalExtractor(extractor: string, filePath: string): (string, int) =
   execCmdEx(cmd)
 
 proc runGleamExtractor(extractor: string, filePath: string): (string, int) =
-  let grammar = getGleamGrammar()
   let cmd = fmt"{extractor} {filePath} 2>/dev/null"
   execCmdEx(cmd)
 
@@ -173,7 +172,7 @@ proc printFinding(config: Config, finding: JsonNode) =
 
 proc printBanner(config: Config, crCount, gleamCount: int) =
   config.echoBold(Cyan, "╔══════════════════════════════════════╗")
-  config.echoBold(Cyan, fmt"║          🔮 Catseye v{Version}        ║")
+  config.echoBold(Cyan, fmt"║            Catseye v{Version}           ║")
   config.echoBold(Cyan, "╚══════════════════════════════════════╝")
   config.echoStyled(Green, &"  Target:   {config.targetDir}")
   config.echoPlain(&"  Files:    {crCount} Crystal, {gleamCount} Gleam")

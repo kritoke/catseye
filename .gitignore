@@ -51,6 +51,9 @@ crystal/
 flake.private.nix
 .devshell-private.sh
 
+# Pi agent artifacts
+.pi/
+
 # Todo infrastructure
 .tickets/
 # planning/ is tracked — only archive old completed plans

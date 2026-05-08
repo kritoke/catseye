@@ -1,4 +1,4 @@
-# 🔮 Catseye
+# <img src="assets/logo.svg" alt="Catseye logo" width="200"> Catseye
 
 **Static security analysis for Crystal web applications.**
 
@@ -48,7 +48,7 @@ Options:
 
 ```
 ╔══════════════════════════════════════╗
-║          🔮 Catseye v0.1.0           ║
+║            Catseye v0.1.0            ║
 ╚══════════════════════════════════════╝
   Target:   src/app/
   Files:    12 Crystal source(s)
