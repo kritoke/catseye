@@ -2,9 +2,7 @@
 
 ## In Progress
 
-### Task: `justfile` hardening
-**Goal:** Make `just test` run the full E2E pipeline
-**Approach:** Build + extract + engine + assert expected finding counts
+(None — ready for next task)
 
 ## Up Next
 
