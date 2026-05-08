@@ -56,4 +56,5 @@ flake.private.nix
 
 # Todo infrastructure
 .tickets/
-# planning/ is tracked — only archive old completed plans
+# Planning docs (local only, not tracked)
+planning/
