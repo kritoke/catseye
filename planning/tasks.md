@@ -2,16 +2,7 @@
 
 ## In Progress
 
-### Task: Config bridge wiring
-**Files:** `src/engine/src/catseye.gleam`, `src/engine/src/catseye_engine_ffi.erl`, `src/cli/catseye.nim`
-**Status:** Engine side done (Input type, run_all_rules_with_config). Missing:
-- [ ] Erlang FFI: `decode_input/1` function to parse `{"nodes": [...], "config": {...}}`
-- [ ] Nim CLI: wrap nodes + config overrides into new JSON format before engine call
-
-### Task: File-level scope isolation
-**Status:** Not started
-**Goal:** Variables in different files should have separate taint namespaces
-**Approach:** Prefix var names with file path in TaintDB, or add `file` field to TaintRecord lookups
+(None — ready for next task)
 
 ## Up Next
 

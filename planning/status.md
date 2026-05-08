@@ -61,6 +61,7 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 - [x] `.catseye.toml` config file — auto-discovered by walking up from target
 - [x] `[taint]` section: `extra_sources`, `extra_sinks`, `extra_sanitizers`
 - [x] `--config` flag for explicit config path
+- [x] **Full config bridge** — Nim CLI → JSON → Erlang FFI → Gleam engine
 
 ### Testing & CI
 - [x] 33 engine unit tests (custom runner, no eunit)
@@ -95,8 +96,7 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 ## Next Steps
 
 ### Short-term
-- [ ] Wire config file extra_sources/sanitizers into Nim CLI → engine bridge
-- [ ] Field-level taint in extractors (Crystal: `params["url"]` → field="url")
+- [ ] Extractor field-level taint (Crystal: `params["url"]` → field="url")
 - [ ] File-level scope isolation (namespace vars by file)
 - [ ] Conditional taint: `if validator.is_valid(x)` → clear taint on true branch
 
