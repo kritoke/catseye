@@ -435,7 +435,14 @@ proc main() =
     config.echoInfo(&"→ Running analysis engine ({allNodes.len} nodes)...")
     echo ""
 
-  let (engineOutput, engineExit) = runEngine(config.engineDir, $allNodes)
+  # Wrap nodes + config into engine input format
+  var engineInput: JsonNode
+  if cfgOverrides.len > 0:
+    engineInput = %*{"nodes": allNodes, "config": cfgOverrides}
+  else:
+    engineInput = allNodes
+
+  let (engineOutput, engineExit) = runEngine(config.engineDir, $engineInput)
   if engineExit != 0:
     if config.format == fmtTerminal:
       config.echoError(&"✗ Engine failed (exit {engineExit})")

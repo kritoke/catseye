@@ -1,6 +1,6 @@
 -module(catseye_engine_ffi).
 
--export([read_stdin/0, decode_json/1, encode_findings/1]).
+-export([read_stdin/0, decode_json/1, decode_input/1, encode_findings/1]).
 
 %% ═══ Stdin ═════════════════════════════════════════════════════════════
 
@@ -33,6 +33,44 @@ decode_json(Str) when is_list(Str) ->
     catch
         _:_ -> {error, nil}
     end.
+
+%% ═══ Input Decoding (config-aware format) ═══════════════════════════════
+%%
+%% Parses: {"nodes": [...], "config": {"extra_taint_sources": [...], "extra_sanitizers": [...]}}
+%%
+%% Gleam types:
+%%   Input(nodes: List(Node), config: EngineConfig)
+%%   EngineConfig(extra_sources: List(String), extra_sanitizers: List(String))
+%%
+%% Erlang tuples:
+%%   {input, List(Node), {engine_config, List(Binary), List(Binary)}}
+
+decode_input(Bin) when is_binary(Bin) ->
+    decode_input(binary_to_list(Bin));
+decode_input(Str) when is_list(Str) ->
+    try
+        {Value, _} = parse(skip_ws(Str)),
+        case Value of
+            Map when is_map(Map) ->
+                NodesRaw = maps:get(<<"nodes">>, Map, []),
+                Nodes = [parse_node(N) || N <- NodesRaw],
+                CfgRaw = maps:get(<<"config">>, Map, #{}),
+                ExtraSources = bin_list(maps:get(<<"extra_taint_sources">>, CfgRaw, [])),
+                ExtraSanitizers = bin_list(maps:get(<<"extra_sanitizers">>, CfgRaw, [])),
+                {ok, {input, Nodes, {engine_config, ExtraSources, ExtraSanitizers}}};
+            _ ->
+                {error, nil}
+        end
+    catch
+        _:_ -> {error, nil}
+    end.
+
+%% Convert a list of values to binary strings
+bin_list(List) when is_list(List) ->
+    [to_bin(L) || L <- List];
+bin_list(_) -> [].
+
+%% ═══ Parser core ═══════════════════════════════════════════════════════
 
 %% ── Whitespace ─────────────────────────────────────────────────────────
 
