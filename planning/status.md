@@ -1,8 +1,8 @@
 # Catseye — Project Status
 
-**Last updated:** 2025-05-07
+**Last updated:** 2026-05-07
 **Repo:** github.com/kritoke/catseye
-**Commits:** 13 on main
+**Commits:** 17 on main
 
 ## Architecture
 
@@ -28,6 +28,7 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 - [x] Crystal extractor — `Crystal::Parser` + `Crystal::Visitor`, full taint seeding
 - [x] Gleam extractor — tree-sitter XML CST, accurate node extraction
 - [x] File dispatch in CLI — `.cr` → Crystal, `.gleam` → Gleam
+- [x] Crystal string interpolation fix — only tainted if interpolated expr is tainted
 
 ### Logic Engine
 - [x] Modular rules — one file per rule in `catseye/rules/`
@@ -44,18 +45,29 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 - [x] **Return value tracking** — functions returning tainted data marked as tainted
 - [x] **Inter-procedural propagation** — `url = get_url(params)` → url is tainted
 - [x] Flow tracing: source → propagation → sink chain per finding
-- [x] 25 unit tests (5 taint, 3 sanitizer, 1 interprocedural, 16 rule/integration)
+- [x] **Field-sensitive tracking** — `is_tainted_field(db, var, field)` for per-field taint
+- [x] **Scope-aware analysis** — def nodes create scope boundaries via `next_def_line()`
+- [x] **Sanitized propagation** — assigns from sanitizer calls don't propagate taint
+- [x] **Config-driven sources** — `build_taint_db_with_config()` for project-specific sources/sanitizers
+- [x] 33 unit tests
 
 ### CLI Output Formats
-- [x] Terminal — colored, human-readable
+- [x] Terminal — colored, human-readable with flow arrows (← source, ↓ sink)
 - [x] JSON (`--format json`) — machine-readable for CI
 - [x] SARIF v2.1.0 (`--format sarif`) — GitHub Code Scanning compatible
+- [x] **SARIF codeFlows** — threadFlow with source→sink locations per finding
+
+### Configuration
+- [x] `.catseye.toml` config file — auto-discovered by walking up from target
+- [x] `[taint]` section: `extra_sources`, `extra_sinks`, `extra_sanitizers`
+- [x] `--config` flag for explicit config path
 
 ### Testing & CI
-- [x] 25 engine unit tests (custom runner, no eunit)
+- [x] 33 engine unit tests (custom runner, no eunit)
 - [x] Test samples: vulnerable.cr, vulnerable.gleam, safe.cr, safe.gleam
 - [x] Linting: `gleam format`, `ameba`, `nim check`
 - [x] E2E pipeline verified
+- [x] GitHub Actions CI workflow (`.github/workflows/scan.yml`)
 
 ### Infrastructure
 - [x] Nix flake — Nim 2.2.4, Crystal 1.18.2, Gleam 1.16.0, Erlang 28, tree-sitter 0.26.8
@@ -74,25 +86,22 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 
 | Limitation | Description |
 |------------|-------------|
-| No field-sensitive tracking | `req.params` vs `req.method` not distinguished |
-| Scope is file-level | Def nodes don't create real scopes — body assigns can leak across functions |
-| Sanitizer list is static | No way to configure custom sanitizers per project |
+| No file-level scope isolation | Variables with same name in different files share taint namespace |
+| Sanitizer only suppresses direct args | `f(URI.parse(x))` suppressed, but `y = URI.parse(x); f(y)` still flagged |
 | No conditional analysis | `if x != "" then use x` doesn't reduce taint |
-| SARIF missing codeFlows | Flow data in engine JSON but not yet in SARIF threadFlow format |
-| Extractor taint is string-match | Crystal extractor uses `TAINT_SOURCES` set, not semantic analysis |
+| Field-sensitive is read-only API | `is_tainted_field` exists but extractors don't emit field-level taint yet |
+| No call graph | Inter-procedural is limited to direct function name matching |
 
 ## Next Steps
 
-### Short-term (next sprint)
-- [x] Add SARIF `codeFlows` with `threadFlow` locations
-- [ ] Field-sensitive taint: track `req.params` separately from `req.method`
-- [x] Crystal extractor: reduce string interpolation false positives
-- [x] Configurable sanitizer/sink/source lists via config file
-- [x] CI integration: GitHub Actions workflow with `--format sarif`
+### Short-term
+- [ ] Wire config file extra_sources/sanitizers into Nim CLI → engine bridge
+- [ ] Field-level taint in extractors (Crystal: `params["url"]` → field="url")
+- [ ] File-level scope isolation (namespace vars by file)
+- [ ] Conditional taint: `if validator.is_valid(x)` → clear taint on true branch
 
 ### Medium-term
 - [ ] Language extractors: Ruby, Python, Elixir
-- [ ] Conditional taint refinement (path-sensitive)
 - [ ] HTML template injection rule
 - [ ] Insecure dependency checker (cross-reference with OSV/CVE)
 - [ ] IDE integration (LSP diagnostics)

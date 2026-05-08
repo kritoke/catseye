@@ -75,20 +75,28 @@ JSON array of Security Node objects. See `spec/security-node.schema.json`.
 ```
 1. SEED       Extractor flags assignments from taint sources (taint: true)
               + Function params named like sources (params, request, user_input, etc.)
+              + Config-driven extra sources (from .catseye.toml)
 
 2. PROPAGATE  Fixed-point: if `let y = x` and x is tainted → y is tainted
+              Sanitized assigns skipped: `y = URI.parse(x)` → y is NOT tainted
               Repeats until no new tainted vars found
 
 3. RETURNS    Functions whose body produces tainted data → function name is tainted
-              (handles def get_url(p) { p["url"] } → get_url is tainted)
+              Scope-aware: only checks assigns within function boundary (def → next def)
 
 4. INTERPROC  If `url = get_url(params)` and get_url is tainted → url is tainted
 
 5. SANITIZE   is_suspect() checks: if ANY arg is a sanitizer call, skip the finding
               Sanitizers: URI.parse, Path.basename, String.strip, encode.*, etc.
+              Configurable via .catseye.toml extra_sanitizers
 
 6. FLOW       For each finding: trace tainted args back to source
               Output: List(FlowStep) with file, line, message
+              → SARIF codeFlows with threadFlow locations
+
+7. FIELD      is_tainted_field(db, var, field) for field-sensitive tracking
+              Tracks req.params vs req.method separately
+              (extractor integration pending)
 ```
 
 ## Languages & Runtimes

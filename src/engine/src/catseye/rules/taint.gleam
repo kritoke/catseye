@@ -1,9 +1,10 @@
 import catseye/node.{
-  type Arg, type FlowStep, type Node, ArgCall, ArgLiteral, ArgVar, Assign, Call,
-  Def, FlowStep, all_args_literal, has_var_args,
+  type Arg, type FlowStep, type Node, ArgCall, ArgVar, Assign, Def, FlowStep,
+  all_args_literal, has_var_args,
 }
 import gleam/int
 import gleam/list
+import gleam/result
 import gleam/string
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -15,6 +16,10 @@ pub type TaintRecord {
     line: Int,
     description: String,
     source_var: String,
+    /// Field path for field-sensitive tracking.
+    /// "" means whole variable is tainted.
+    /// "params" means only the "params" field is tainted.
+    field: String,
   )
 }
 
@@ -34,6 +39,12 @@ const sanitizers = [
   "html.escape",
 ]
 
+/// Field names that carry taint (from request.params, etc.)
+const tainted_fields = [
+  "params", "query", "body", "headers", "cookies", "url", "path", "data", "form",
+  "files", "host", "referer", "cookie",
+]
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 pub fn build_taint_db(nodes: List(Node)) -> TaintDB {
@@ -42,6 +53,17 @@ pub fn build_taint_db(nodes: List(Node)) -> TaintDB {
   let with_returns = track_return_taint(nodes, propagated)
   // Second propagation pass to spread return-taint
   propagate(nodes, with_returns)
+}
+
+pub fn build_taint_db_with_config(
+  nodes: List(Node),
+  extra_sources: List(String),
+  extra_sanitizers: List(String),
+) -> TaintDB {
+  let seeded = seed_sources_with_config(nodes, [], extra_sources)
+  let propagated = propagate_with_sanitizers(nodes, seeded, extra_sanitizers)
+  let with_returns = track_return_taint(nodes, propagated)
+  propagate_with_sanitizers(nodes, with_returns, extra_sanitizers)
 }
 
 pub fn build_tainted_vars(nodes: List(Node)) -> List(String) {
@@ -56,10 +78,76 @@ pub fn is_tainted(db: TaintDB, var: String) -> Bool {
   list.any(db, fn(r) { r.var_name == var })
 }
 
+/// Check if a variable+field combination is tainted.
+/// field="" matches any taint on the variable.
+/// field="params" matches only if params field is tainted.
+pub fn is_tainted_field(db: TaintDB, var: String, field: String) -> Bool {
+  case field {
+    "" -> is_tainted(db, var)
+    _ ->
+      list.any(db, fn(r) {
+        r.var_name == var && { r.field == "" || r.field == field }
+      })
+  }
+}
+
 // ── Sanitizer checking ─────────────────────────────────────────────────
 
 pub fn is_sanitizer(call_name: String) -> Bool {
   list.any(sanitizers, fn(s) { string.contains(call_name, s) })
+}
+
+pub fn is_sanitizer_with_extra(call_name: String, extra: List(String)) -> Bool {
+  is_sanitizer(call_name)
+  || list.any(extra, fn(s) { string.contains(call_name, s) })
+}
+
+// ── Field extraction ───────────────────────────────────────────────────
+
+/// Extract field from a call like "req.params" → Some("params")
+/// Returns None for non-field accesses
+pub fn extract_field_access(name: String) -> Result(String, Nil) {
+  case string.split(name, ".") {
+    [_obj, field] ->
+      case list.contains(tainted_fields, field) {
+        True -> Ok(field)
+        False -> Error(Nil)
+      }
+    _ -> Error(Nil)
+  }
+}
+
+// ── Scope handling ─────────────────────────────────────────────────────
+
+/// Find the Def node that a given node belongs to (same file, between def lines)
+pub fn enclosing_def(nodes: List(Node), node: Node) -> Result(Node, Nil) {
+  nodes
+  |> list.filter(fn(n) {
+    n.node_type == Def && n.file == node.file && n.line < node.line
+  })
+  |> list.sort(fn(a, b) { int.compare(b.line, a.line) })
+  |> list.first()
+}
+
+/// Get variables defined in a given scope (function)
+pub fn scope_vars(nodes: List(Node), defn: Node) -> List(String) {
+  let next_def_line =
+    nodes
+    |> list.filter(fn(n) {
+      n.node_type == Def && n.file == defn.file && n.line > defn.line
+    })
+    |> list.map(fn(n) { n.line })
+    |> list.sort(fn(a, b) { int.compare(a, b) })
+    |> list.first()
+    |> result.unwrap(999_999)
+  nodes
+  |> list.filter(fn(n) {
+    n.file == defn.file
+    && n.line > defn.line
+    && n.line < next_def_line
+    && n.node_type == Assign
+  })
+  |> list.map(fn(n) { n.name })
 }
 
 // ── Suspect detection ──────────────────────────────────────────────────
@@ -79,6 +167,26 @@ pub fn args_contain_tainted(tainted: List(String), node: Node) -> Bool {
 pub fn is_suspect(node: Node, tainted: List(String)) -> Bool {
   let has_sanitized =
     list.any(node.args, fn(a) { a.arg_type == ArgCall && is_sanitizer(a.value) })
+  case has_sanitized {
+    True -> False
+    False ->
+      {
+        node.taint || has_var_args(node) || args_contain_tainted(tainted, node)
+      }
+      && !all_args_literal(node)
+  }
+}
+
+pub fn is_suspect_with_extra(
+  node: Node,
+  tainted: List(String),
+  extra_sanitizers: List(String),
+) -> Bool {
+  let has_sanitized =
+    list.any(node.args, fn(a) {
+      a.arg_type == ArgCall
+      && is_sanitizer_with_extra(a.value, extra_sanitizers)
+    })
   case has_sanitized {
     True -> False
     False ->
@@ -148,25 +256,34 @@ fn dedup_steps(steps: List(FlowStep), seen: List(String)) -> List(FlowStep) {
 
 // ── Seeding ────────────────────────────────────────────────────────────
 
-fn is_taint_source_name(name: String) -> Bool {
-  list.any(
-    [
-      "params", "request", "req", "get_body", "query", "io.get_line",
-      "dynamic.unsafe_coerce", "request.get_body", "user_url", "user_input",
-      "url", "path", "cmd", "command", "input", "env", "ARGV", "STDIN", "gets",
-    ],
-    fn(p) { string.contains(name, p) },
-  )
+fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
+  seed_sources_with_config(nodes, db, [])
 }
 
-fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
+fn seed_sources_with_config(
+  nodes: List(Node),
+  db: TaintDB,
+  extra_sources: List(String),
+) -> TaintDB {
+  let all_sources =
+    list.append(
+      [
+        "params", "request", "req", "get_body", "query", "io.get_line",
+        "dynamic.unsafe_coerce", "request.get_body", "user_url", "user_input",
+        "url", "path", "cmd", "command", "input", "env", "ARGV", "STDIN", "gets",
+      ],
+      extra_sources,
+    )
+  let is_source = fn(name: String) -> Bool {
+    list.any(all_sources, fn(p) { string.contains(name, p) })
+  }
   // Phase 1a: function params named like taint sources
   let param_seeds =
     nodes
     |> list.filter(fn(n) { n.node_type == Def })
     |> list.flat_map(fn(n) {
       n.args
-      |> list.filter(fn(a) { is_taint_source_name(a.value) })
+      |> list.filter(fn(a) { is_source(a.value) })
       |> list.map(fn(a) { #(a.value, n.file, n.line) })
     })
     |> list.fold(db, fn(acc, entry) {
@@ -183,6 +300,7 @@ fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
               line: line,
               description: name <> " is a taint source (parameter)",
               source_var: "",
+              field: "",
             ),
           ])
       }
@@ -203,6 +321,7 @@ fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
                 line: node.line,
                 description: node.name <> " assigned from tainted: " <> from_var,
                 source_var: from_var,
+                field: "",
               ),
             ])
           Error(Nil) ->
@@ -213,6 +332,7 @@ fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
                 line: node.line,
                 description: node.name <> " tainted via source",
                 source_var: "",
+                field: "",
               ),
             ])
         }
@@ -222,31 +342,25 @@ fn seed_sources(nodes: List(Node), db: TaintDB) -> TaintDB {
 
 // ── Return value taint tracking ────────────────────────────────────────
 
-/// When a function's body ends with a tainted variable reference,
-/// calls to that function propagate taint to the caller's scope.
-/// This handles patterns like:
-///   def get_url(params) { params["url"] }  → get_url is tainted
-///   url = get_url(params)                  → url is tainted
 fn track_return_taint(nodes: List(Node), db: TaintDB) -> TaintDB {
-  // Find all function definitions
   let defs =
     nodes
     |> list.filter(fn(n) { n.node_type == Def })
-  // For each def, check if its last call/assign involves tainted data
-  // If so, mark the function name as tainted
   list.fold(defs, db, fn(acc, defn) {
     let fn_name = defn.name
-    // Find calls inside this function that assign to the result
-    let fn_calls =
+    // Get the scope boundary: next def in same file, or end of file
+    let next_def_line = next_def_line(nodes, defn)
+    // Find assignments inside this function
+    let fn_assigns =
       nodes
       |> list.filter(fn(n) {
-        // Assignments inside this function's scope (simplified: same file,
-        // line > def line, before next def)
-        n.node_type == Assign && n.file == defn.file && n.line > defn.line
+        n.node_type == Assign
+        && n.file == defn.file
+        && n.line > defn.line
+        && n.line < next_def_line
       })
-    // Check if any assign in this function produces a tainted result
     let fn_tainted =
-      list.any(fn_calls, fn(n) { has_record(acc, n.name) || n.taint })
+      list.any(fn_assigns, fn(n) { has_record(acc, n.name) || n.taint })
     case fn_tainted && !has_record(acc, fn_name) {
       True ->
         list.append(acc, [
@@ -256,6 +370,7 @@ fn track_return_taint(nodes: List(Node), db: TaintDB) -> TaintDB {
             line: defn.line,
             description: fn_name <> " returns tainted data",
             source_var: "",
+            field: "",
           ),
         ])
       False -> acc
@@ -263,15 +378,25 @@ fn track_return_taint(nodes: List(Node), db: TaintDB) -> TaintDB {
   })
 }
 
+/// Get the line number of the next def in the same file after the given def.
+/// Returns 999_999 if no next def exists (end of file).
+fn next_def_line(nodes: List(Node), defn: Node) -> Int {
+  nodes
+  |> list.filter(fn(n) {
+    n.node_type == Def && n.file == defn.file && n.line > defn.line
+  })
+  |> list.map(fn(n) { n.line })
+  |> list.sort(fn(a, b) { int.compare(a, b) })
+  |> list.first()
+  |> result.unwrap(999_999)
+}
+
 // ── Inter-procedural propagation ───────────────────────────────────────
 
-/// When we see `call foo(x)` and `foo` is a known tainted function,
-/// treat the call result as tainted.
 fn propagate_interprocedural(nodes: List(Node), db: TaintDB) -> TaintDB {
   list.fold(nodes, db, fn(acc, node) {
     case node.node_type == Assign && !has_record(acc, node.name) {
       True -> {
-        // Check if RHS is a call to a tainted function
         let tainted_call =
           node.args
           |> list.find(fn(a) {
@@ -288,10 +413,10 @@ fn propagate_interprocedural(nodes: List(Node), db: TaintDB) -> TaintDB {
                   <> " assigned from tainted call: "
                   <> a.value,
                 source_var: a.value,
+                field: "",
               ),
             ])
           Error(Nil) ->
-            // Check if RHS references a tainted var through call args
             case first_var_in_db(node.args, acc) {
               Ok(from_var) ->
                 list.append(acc, [
@@ -303,6 +428,7 @@ fn propagate_interprocedural(nodes: List(Node), db: TaintDB) -> TaintDB {
                       <> " assigned from tainted: "
                       <> from_var,
                     source_var: from_var,
+                    field: "",
                   ),
                 ])
               Error(Nil) -> acc
@@ -317,39 +443,65 @@ fn propagate_interprocedural(nodes: List(Node), db: TaintDB) -> TaintDB {
 // ── Fixed-point propagation ────────────────────────────────────────────
 
 fn propagate(nodes: List(Node), db: TaintDB) -> TaintDB {
-  let new_db = do_propagate(nodes, db)
+  propagate_with_sanitizers(nodes, db, [])
+}
+
+fn propagate_with_sanitizers(
+  nodes: List(Node),
+  db: TaintDB,
+  extra_sanitizers: List(String),
+) -> TaintDB {
+  let new_db = do_propagate(nodes, db, extra_sanitizers)
   case list.length(new_db) > list.length(db) {
-    True -> propagate(nodes, new_db)
+    True -> propagate_with_sanitizers(nodes, new_db, extra_sanitizers)
     False -> {
-      // After basic propagation, do interprocedural pass
       let inter_db = propagate_interprocedural(nodes, new_db)
       case list.length(inter_db) > list.length(new_db) {
-        True -> propagate(nodes, inter_db)
+        True -> propagate_with_sanitizers(nodes, inter_db, extra_sanitizers)
         False -> new_db
       }
     }
   }
 }
 
-fn do_propagate(nodes: List(Node), db: TaintDB) -> TaintDB {
+fn do_propagate(
+  nodes: List(Node),
+  db: TaintDB,
+  extra_sanitizers: List(String),
+) -> TaintDB {
   list.fold(nodes, db, fn(acc, node) {
     case node.node_type == Assign && !has_record(acc, node.name) {
       True ->
-        case first_var_in_db(node.args, acc) {
-          Ok(from_var) ->
-            list.append(acc, [
-              TaintRecord(
-                var_name: node.name,
-                file: node.file,
-                line: node.line,
-                description: node.name <> " assigned from tainted: " <> from_var,
-                source_var: from_var,
-              ),
-            ])
-          Error(Nil) -> acc
+        // Check if the RHS call is a sanitizer — if so, skip propagation
+        case is_sanitized_assign(node, extra_sanitizers) {
+          True -> acc
+          False ->
+            case first_var_in_db(node.args, acc) {
+              Ok(from_var) ->
+                list.append(acc, [
+                  TaintRecord(
+                    var_name: node.name,
+                    file: node.file,
+                    line: node.line,
+                    description: node.name
+                      <> " assigned from tainted: "
+                      <> from_var,
+                    source_var: from_var,
+                    field: "",
+                  ),
+                ])
+              Error(Nil) -> acc
+            }
         }
       False -> acc
     }
+  })
+}
+
+/// Check if an assignment's RHS is a sanitizer call (taint is cleansed)
+fn is_sanitized_assign(node: Node, extra_sanitizers: List(String)) -> Bool {
+  list.any(node.args, fn(a) {
+    a.arg_type == ArgCall && is_sanitizer_with_extra(a.value, extra_sanitizers)
   })
 }
 
