@@ -3,11 +3,15 @@ import catseye/node.{
 }
 import catseye/rules
 import catseye/rules/command_injection
+import catseye/rules/deserialization
+import catseye/rules/ldap_xml_injection
+import catseye/rules/open_redirect
 import catseye/rules/path_traversal
 import catseye/rules/redos
 import catseye/rules/sql_injection
 import catseye/rules/ssrf
 import catseye/rules/taint
+import catseye/rules/weak_crypto
 import gleam/int
 import gleam/io
 import gleam/list
@@ -705,6 +709,84 @@ fn file_join_traversal() -> Bool {
   assert_eq("filejoin: traversal", list.length(join_findings), 1)
 }
 
+// -- Open Redirect --
+fn open_redirect_tainted() -> Bool {
+  let n = [
+    node_(Assign, "dest", [arg_(ArgVar, "params")], True),
+    node_(Call, "redirect_to", [arg_(ArgVar, "dest")], False),
+  ]
+  let findings = open_redirect.check(n, tv(n), make_db(n))
+  assert_eq("redirect: open", list.length(findings), 1)
+}
+
+fn open_redirect_literal() -> Bool {
+  let n = [
+    node_(Call, "redirect_to", [arg_(ArgLiteral, "/home")], False),
+  ]
+  let findings = open_redirect.check(n, tv(n), make_db(n))
+  assert_eq("redirect: literal safe", list.length(findings), 0)
+}
+
+// -- Deserialization --
+fn deser_tainted() -> Bool {
+  let n = [
+    node_(Assign, "body", [arg_(ArgVar, "params")], True),
+    node_(Call, "JSON.parse", [arg_(ArgVar, "body")], False),
+  ]
+  let findings = deserialization.check(n, tv(n), make_db(n))
+  assert_eq("deser: tainted", list.length(findings), 1)
+}
+
+fn deser_literal() -> Bool {
+  let n = [
+    node_(Call, "JSON.parse", [arg_(ArgLiteral, "{\"ok\":true}")], False),
+  ]
+  let findings = deserialization.check(n, tv(n), make_db(n))
+  assert_eq("deser: literal safe", list.length(findings), 0)
+}
+
+// -- LDAP/XML Injection --
+fn ldap_injection() -> Bool {
+  let n = [
+    node_(Assign, "filter", [arg_(ArgVar, "input")], True),
+    node_(Call, "LDAP.search", [arg_(ArgVar, "filter")], False),
+  ]
+  let findings = ldap_xml_injection.check(n, tv(n), make_db(n))
+  let ldap = list.filter(findings, fn(f) { f.rule == "LDAPInjection" })
+  assert_eq("ldap: injection", list.length(ldap), 1)
+}
+
+// -- Weak Crypto --
+fn weak_crypto_md5() -> Bool {
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Digest::MD5.hexdigest",
+      args: [Arg(arg_type: ArgLiteral, value: "data", field: "")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let findings = weak_crypto.check(n)
+  assert_eq("crypto: md5", list.length(findings), 1)
+}
+
+fn weak_crypto_sha256() -> Bool {
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Digest::SHA256.hexdigest",
+      args: [Arg(arg_type: ArgLiteral, value: "data", field: "")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let findings = weak_crypto.check(n)
+  assert_eq("crypto: sha256 safe", list.length(findings), 0)
+}
+
 // -- Runner --
 pub fn main() {
   let tests = [
@@ -749,6 +831,13 @@ pub fn main() {
     #("redos: overlapping groups", redos_overlapping_groups()),
     #("env: injection", env_injection()),
     #("filejoin: traversal", file_join_traversal()),
+    #("redirect: open", open_redirect_tainted()),
+    #("redirect: literal safe", open_redirect_literal()),
+    #("deser: tainted", deser_tainted()),
+    #("deser: literal safe", deser_literal()),
+    #("ldap: injection", ldap_injection()),
+    #("crypto: md5", weak_crypto_md5()),
+    #("crypto: sha256 safe", weak_crypto_sha256()),
   ]
   let failures = list.filter(tests, fn(t) { !t.1 })
   io.println("")
