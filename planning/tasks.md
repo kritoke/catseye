@@ -90,6 +90,23 @@ POST https://api.osv.dev/v1/query
 
 ## Completed (archive to planning/archive/)
 
+### Task: Enhanced sink & pattern detection ✅
+- A. SSRF: tls_verify:false, missing timeouts (Slowloris)
+- B. Cmdi: Process.run, SQL interpolation, erlexec, env injection
+- C. Path: File.join/Path.join with tainted input
+- D. ReDoS: evil regex patterns (nested quantifiers)
+- E. Env injection: ENV[]=, putenv, os.setenv
+
+### Task: Additional security rules ✅
+- OpenRedirect: unvalidated redirect URLs (Medium)
+- InsecureDeserialization: JSON.parse/Marshal.load on tainted data (High)
+- LDAPInjection: LDAP.search with tainted filters (High)
+- XMLInjection: XML.parse/XPath with tainted queries (Medium)
+- WeakCryptography: MD5/SHA1 usage (Medium)
+- InsecureRandom: non-crypto PRNG for security contexts (Low)
+- HardcodedSecret: password/api_key vars with tainted data (High)
+
+### Task: `justfile` hardening ✅
 ### Task: Extractor field-level taint ✅
 ### Task: File-level scope isolation ✅
 ### Task: Config bridge wiring ✅
