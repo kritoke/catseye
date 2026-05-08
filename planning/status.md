@@ -84,11 +84,11 @@ Gleam (.gleam) ─→ Nim + tree-sitter XML ──→ Security Node JSON ──�
 ## Next Steps
 
 ### Short-term (next sprint)
-- [ ] Add SARIF `codeFlows` with `threadFlow` locations
+- [x] Add SARIF `codeFlows` with `threadFlow` locations
 - [ ] Field-sensitive taint: track `req.params` separately from `req.method`
-- [ ] Crystal extractor: reduce string interpolation false positives
-- [ ] Configurable sanitizer/sink/source lists via config file
-- [ ] CI integration: GitHub Actions workflow with `--format sarif`
+- [x] Crystal extractor: reduce string interpolation false positives
+- [x] Configurable sanitizer/sink/source lists via config file
+- [x] CI integration: GitHub Actions workflow with `--format sarif`
 
 ### Medium-term
 - [ ] Language extractors: Ruby, Python, Elixir
