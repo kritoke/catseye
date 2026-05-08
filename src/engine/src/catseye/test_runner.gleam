@@ -100,7 +100,10 @@ fn taint_flow() -> Bool {
 
 // -- SSRF --
 fn ssrf_var() -> Bool {
-  let n = [node_(Call, "HTTP::Client.get", [arg_(ArgVar, "url")], False)]
+  let n = [
+    node_(Assign, "url", [arg_(ArgVar, "params")], True),
+    node_(Call, "HTTP::Client.get", [arg_(ArgVar, "url")], False),
+  ]
   assert_eq("ssrf var", list.length(ssrf.check(n, tv(n), make_db(n))), 1)
 }
 
@@ -125,7 +128,7 @@ fn ssrf_tainted() -> Bool {
 }
 
 fn ssrf_all() -> Bool {
-  let n =
+  let sinks =
     list.map(
       [
         "HTTP::Client.get",
@@ -135,6 +138,7 @@ fn ssrf_all() -> Bool {
       ],
       fn(m) { node_(Call, m, [arg_(ArgVar, "u")], False) },
     )
+  let n = [node_(Assign, "u", [arg_(ArgVar, "params")], True), ..sinks]
   assert_eq("ssrf all", list.length(ssrf.check(n, tv(n), make_db(n))), 4)
 }
 
@@ -145,7 +149,10 @@ fn ssrf_non_http() -> Bool {
 
 // -- Cmdi --
 fn cmdi_system() -> Bool {
-  let n = [node_(Call, "system", [arg_(ArgVar, "c")], False)]
+  let n = [
+    node_(Assign, "c", [arg_(ArgVar, "input")], True),
+    node_(Call, "system", [arg_(ArgVar, "c")], False),
+  ]
   assert_eq(
     "cmdi system",
     list.length(command_injection.check(n, tv(n), make_db(n))),
@@ -154,7 +161,10 @@ fn cmdi_system() -> Bool {
 }
 
 fn cmdi_os_cmd() -> Bool {
-  let n = [node_(Call, "os.command", [arg_(ArgVar, "c")], False)]
+  let n = [
+    node_(Assign, "c", [arg_(ArgVar, "input")], True),
+    node_(Call, "os.command", [arg_(ArgVar, "c")], False),
+  ]
   assert_eq(
     "cmdi os.command",
     list.length(command_injection.check(n, tv(n), make_db(n))),
@@ -182,7 +192,10 @@ fn cmdi_db() -> Bool {
 
 // -- PT --
 fn pt_file() -> Bool {
-  let n = [node_(Call, "File.read", [arg_(ArgVar, "p")], False)]
+  let n = [
+    node_(Assign, "p", [arg_(ArgVar, "path")], True),
+    node_(Call, "File.read", [arg_(ArgVar, "p")], False),
+  ]
   assert_eq(
     "pt file",
     list.length(path_traversal.check(n, tv(n), make_db(n))),
@@ -200,7 +213,18 @@ fn pt_literal() -> Bool {
 }
 
 fn pt_interp() -> Bool {
-  let n = [node_(Call, "Dir.glob", [arg_(ArgCall, "<interpolation>")], False)]
+  // Interpolation is flagged only when the node has taint=true
+  // (extractor sets this when interpolated exprs are tainted)
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Dir.glob",
+      args: [Arg(arg_type: ArgCall, value: "<interpolation>", field: "")],
+      line: 1,
+      taint: True,
+      file: "test.cr",
+    ),
+  ]
   assert_eq(
     "pt interp",
     list.length(path_traversal.check(n, tv(n), make_db(n))),
@@ -210,7 +234,10 @@ fn pt_interp() -> Bool {
 
 // -- SQLi --
 fn sqli_query() -> Bool {
-  let n = [node_(Call, "DB.query", [arg_(ArgVar, "s")], False)]
+  let n = [
+    node_(Assign, "s", [arg_(ArgVar, "input")], True),
+    node_(Call, "DB.query", [arg_(ArgVar, "s")], False),
+  ]
   assert_eq(
     "sqli query",
     list.length(sql_injection.check(n, tv(n), make_db(n))),
@@ -230,6 +257,10 @@ fn sqli_literal() -> Bool {
 // -- Integration --
 fn all_rules() -> Bool {
   let n = [
+    node_(Assign, "u", [arg_(ArgVar, "params")], True),
+    node_(Assign, "c", [arg_(ArgVar, "input")], True),
+    node_(Assign, "p", [arg_(ArgVar, "path")], True),
+    node_(Assign, "s", [arg_(ArgVar, "query")], True),
     node_(Call, "HTTP::Client.get", [arg_(ArgVar, "u")], False),
     node_(Call, "system", [arg_(ArgVar, "c")], False),
     node_(Call, "File.read", [arg_(ArgVar, "p")], False),

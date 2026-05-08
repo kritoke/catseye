@@ -2,21 +2,51 @@
 
 ## In Progress
 
-(None — ready for next task)
+### Task: Sanitizer-aware is_suspect + Crystal extractor sanitizers
+**Status:** On disk, compiles, 36 tests pass, needs E2E verification
+**What was done:**
+- `is_suspect()` no longer flags every var arg — only tainted vars or node.taint
+- Crystal extractor has SANITIZERS set (URI.parse, Path.basename, etc.)
+- `sanitizer_call?()` function in extractor
+- Engine `is_sanitized_rhs()` blocks seeding for sanitizer RHS assigns
+- Added `vulnerable_lucky.cr` and `vulnerable_kemal.cr` framework test samples
+
+**Remaining:** Kemal L33 false positive (extractor marks File.read interpolation as tainted
+because `filename` is in `@tainted_vars` — extractor sanitizer check not yet applied to taint propagation)
 
 ## Up Next
 
-### Task: Extractor field-level taint
-**Goal:** Crystal `params["url"]` → emit node with field="url" so `is_tainted_field` works end-to-end
-**Files:** `src/extractor/extractor.cr`, `src/engine/src/catseye/node.gleam`, Erlang FFI
+### Task: Enhanced sink & pattern detection (Priority Feature)
 
-### Task: Conditional taint refinement
-**Goal:** `if validator.is_valid(x)` on true branch → clear taint
-**Approach:** Detect `if` nodes with validator calls, mark subsequent code as sanitized
+#### A. SSRF & Network Safety (highest priority for RSS aggregator use case)
+- **Insecure default detection:** Flag `tls_verify: false` or `OpenSSL::SSL::VerifyMode::NONE`
+- **Timeout check:** Flag any `HTTP::Client` instantiation missing `connect_timeout` or `read_timeout` (Slowloris prevention)
+- **Existing:** HTTP::Client.get/post with non-hardcoded first arg (already implemented)
 
-### Task: Test coverage for real-world Crystal frameworks
-**Goal:** Test against Lucky/Amber/Kemal patterns
-**Approach:** Add framework-specific test samples, verify known-safe patterns aren't flagged
+#### B. Command & SQL Injection (expanded sinks)
+- **Crystal sinks:** `Process.run(command, ...)` especially with `shell: true`
+- **SQL interpolation:** `DB#exec`/`DB#query`/`DB#scalar` with `#{variable}` interpolation vs `?` placeholders
+- **Gleam/Erlang sinks:** `erlexec.Shell` (unsafe) vs `erlexec.Execve` (safe); direct `:os.cmd` calls
+- **Existing:** `system()`, `os.command()` already detected
+
+#### C. File System & Path Traversal (expanded patterns)
+- **Pattern:** `File.join(base_dir, user_input)` — check if `user_input` is sanitized for `..` sequences
+- **Existing:** `File.read`/`File.write`/`File.delete` with variable paths (already implemented)
+
+#### D. Regular Expression Denial of Service (ReDoS) — NEW RULE
+- **Check:** Scan all `Regex.new` calls for evil regex patterns:
+  - Nested quantifiers: `(a+)+`
+  - Overlapping groups with repetition: `([a-zA-Z]+)*`
+- **Threat:** Malicious RSS feed with crafted string hangs Crystal at 100% CPU
+- **Files:** New `catseye/rules/redos.gleam`, update Crystal extractor to emit Regex.new nodes
+
+#### E. Environment variable injection — NEW PATTERN
+- **Check:** Tainted data flowing into `ENV[]=` or `process environment` setters
+- **Threat:** Attacker modifies PATH, LD_PRELOAD, etc.
+
+### Task: `justfile` hardening
+**Goal:** Make `just test` run the full E2E pipeline (build + extract + engine + assert findings)
+**Approach:** Add assertion steps to verify expected finding counts
 
 ---
 
@@ -57,3 +87,19 @@ POST https://api.osv.dev/v1/query
 - Should be opt-in via `--sca` flag or config `[sca] enabled = true`
 - Cache OSV results locally for offline/repeat scans
 - Rate-limit queries (batch multiple deps per request)
+
+### Task: Conditional taint refinement
+**Goal:** `if validator.is_valid(x)` on true branch → clear taint
+**Approach:** Detect `if`/`case` nodes with validator calls, mark subsequent code as sanitized
+
+### Task: Language extractors: Ruby, Python, Elixir
+
+### Task: IDE/LSP integration
+
+### Task: Dataflow graph visualization
+
+## Completed (archive to planning/archive/)
+
+### Task: Extractor field-level taint ✅
+### Task: File-level scope isolation ✅
+### Task: Config bridge wiring ✅

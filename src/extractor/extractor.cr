@@ -92,6 +92,22 @@ TAINT_SOURCES = Set{
   "env",
   "ARGV",
   "STDIN",
+  "user_input",
+  "user_url",
+  "user_id",
+  "query",
+  "url",
+  "path",
+  "cmd",
+  "command",
+  "input",
+}
+
+SANITIZERS = Set{
+  "URI.parse", "URI.encode", "URI.decode",
+  "Path.posix", "Path.basename", "Path.dirname",
+  "String.strip", "String.trim", "String.slice",
+  "Int.parse", "Float.parse",
 }
 
 private def tainted?(node : Crystal::ASTNode) : Bool
@@ -110,6 +126,15 @@ private def tainted?(node : Crystal::ASTNode) : Bool
     # "hello #{name}" with safe name → not tainted
     # "git clone #{repo}" with tainted repo → tainted
     node.expressions.any? { |expr| tainted?(expr) }
+  else
+    false
+  end
+end
+
+private def sanitizer_call?(node : Crystal::ASTNode) : Bool
+  case node
+  when Crystal::Call
+    SANITIZERS.includes?(format_call_name(node))
   else
     false
   end
@@ -170,6 +195,13 @@ class SecurityVisitor < Crystal::Visitor
       tainted = @tainted_vars.includes?(var_node.name)
     end
 
+    # Sanitizer calls cleanse taint: filename = Path.basename(input) → not tainted
+    # Also remove from @tainted_vars if reassigned through a sanitizer
+    if sanitizer_call?(node.value)
+      tainted = false
+      @tainted_vars.delete(target_name)
+    end
+
     if tainted
       @tainted_vars << target_name
     end
@@ -200,6 +232,16 @@ class SecurityVisitor < Crystal::Visitor
       # Check if arg is a variable we've marked as tainted
       if var_node = arg.as?(Crystal::Var)
         if @tainted_vars.includes?(var_node.name)
+          tainted = true
+          break
+        end
+      end
+      # Check if arg is a string interpolation with tainted vars
+      if interp = arg.as?(Crystal::StringInterpolation)
+        has_tainted = interp.expressions.any? do |expr|
+          (var_node = expr.as?(Crystal::Var)) && @tainted_vars.includes?(var_node.name)
+        end
+        if has_tainted
           tainted = true
           break
         end

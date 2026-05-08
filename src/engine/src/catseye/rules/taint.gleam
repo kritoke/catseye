@@ -1,6 +1,6 @@
 import catseye/node.{
   type Arg, type FlowStep, type Node, ArgCall, ArgVar, Assign, Def, FlowStep,
-  all_args_literal, has_var_args,
+  all_args_literal,
 }
 import gleam/int
 import gleam/list
@@ -168,7 +168,7 @@ pub fn scope_vars(nodes: List(Node), defn: Node) -> List(String) {
 pub fn arg_is_tainted(tainted: List(String), arg: Arg) -> Bool {
   case arg.arg_type {
     ArgVar -> list.contains(tainted, arg.value)
-    ArgCall -> string.contains(arg.value, "<interpolation>")
+    ArgCall -> False
     _ -> False
   }
 }
@@ -183,9 +183,7 @@ pub fn is_suspect(node: Node, tainted: List(String)) -> Bool {
   case has_sanitized {
     True -> False
     False ->
-      {
-        node.taint || has_var_args(node) || args_contain_tainted(tainted, node)
-      }
+      { node.taint || args_contain_tainted(tainted, node) }
       && !all_args_literal(node)
   }
 }
@@ -203,9 +201,7 @@ pub fn is_suspect_with_extra(
   case has_sanitized {
     True -> False
     False ->
-      {
-        node.taint || has_var_args(node) || args_contain_tainted(tainted, node)
-      }
+      { node.taint || args_contain_tainted(tainted, node) }
       && !all_args_literal(node)
   }
 }
@@ -324,8 +320,11 @@ fn seed_sources_with_config(
       }
     })
   // Phase 1b: extractor-flagged assignments (taint=true)
+  // Skip if RHS is a sanitizer call (extractor doesn't know about sanitizers)
   nodes
-  |> list.filter(fn(n) { n.node_type == Assign && n.taint })
+  |> list.filter(fn(n) {
+    n.node_type == Assign && n.taint && !is_sanitized_rhs(n.args)
+  })
   |> list.fold(param_seeds, fn(acc, node) {
     case has_record(acc, node.name) {
       True -> acc
@@ -522,6 +521,11 @@ fn is_sanitized_assign(node: Node, extra_sanitizers: List(String)) -> Bool {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+/// Check if the RHS of an assignment is a sanitizer call
+fn is_sanitized_rhs(args: List(Arg)) -> Bool {
+  list.any(args, fn(a) { a.arg_type == ArgCall && is_sanitizer(a.value) })
+}
 
 fn has_record(db: TaintDB, var: String) -> Bool {
   list.any(db, fn(r) { r.var_name == var })
