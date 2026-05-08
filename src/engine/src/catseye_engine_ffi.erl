@@ -153,9 +153,10 @@ parse_node(Map) when is_map(Map) ->
 parse_arg(Map) when is_map(Map) ->
     {arg,
         arg_type(maps:get(<<"arg_type">>, Map, <<"unknown">>)),
-        to_bin(maps:get(<<"value">>, Map, <<"">>))};
+        to_bin(maps:get(<<"value">>, Map, <<"">>)),
+        to_bin(maps:get(<<"field">>, Map, <<"">>))};
 parse_arg(_) ->
-    {arg, arg_unknown, <<>>}.
+    {arg, arg_unknown, <<>>, <<>>}.
 
 %% ── Safe accessors ─────────────────────────────────────────────────────
 

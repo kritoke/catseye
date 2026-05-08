@@ -28,7 +28,7 @@ fn node_(
 }
 
 fn arg_(type_: node.ArgType, value: String) -> Arg {
-  Arg(arg_type: type_, value: value)
+  Arg(arg_type: type_, value: value, field: "")
 }
 
 fn assert_eq(label: String, got: a, want: a) -> Bool {
@@ -441,8 +441,17 @@ fn scope_isolation() -> Bool {
     ),
   ]
   let db = make_db(n)
-  // url IS tainted (from a.cr) — no file-level isolation yet
-  assert_eq("scope: url tainted via a.cr", taint.is_tainted(db, "url"), True)
+  // File-level isolation: url in b.cr is NOT tainted (RHS is literal, propagation is file-scoped)
+  assert_eq(
+    "scope: url NOT tainted in b.cr",
+    taint.is_tainted_in_file(db, "url", "b.cr"),
+    False,
+  )
+  && assert_eq(
+    "scope: url IS tainted in a.cr",
+    taint.is_tainted_in_file(db, "url", "a.cr"),
+    True,
+  )
 }
 
 // -- Sanitized propagation --
@@ -516,6 +525,83 @@ fn config_extra_sanitizers() -> Bool {
   )
 }
 
+// -- Field from extractor args --
+fn field_from_arg() -> Bool {
+  // Arg with field set should be extractable
+  let a = Arg(arg_type: ArgCall, value: "params.[]", field: "url")
+  assert_eq("field: extract", taint.extract_arg_field(a), "url")
+}
+
+fn field_arg_seeded() -> Bool {
+  // Def param with field should seed with that field
+  let n = [
+    Node(
+      node_type: Def,
+      name: "handle",
+      args: [Arg(arg_type: ArgVar, value: "params", field: "url")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+    Node(
+      node_type: Assign,
+      name: "x",
+      args: [Arg(arg_type: ArgVar, value: "params", field: "")],
+      line: 2,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let db = make_db(n)
+  assert_eq("field: param seeded", taint.is_tainted(db, "params"), True)
+  && assert_eq("field: x propagated", taint.is_tainted(db, "x"), True)
+}
+
+// -- File scope with propagation --
+fn file_scope_propagation() -> Bool {
+  // Propagation should NOT cross file boundaries
+  let n = [
+    Node(
+      node_type: Assign,
+      name: "input",
+      args: [arg_(ArgVar, "params")],
+      line: 1,
+      taint: True,
+      file: "a.cr",
+    ),
+    Node(
+      node_type: Assign,
+      name: "url",
+      args: [arg_(ArgVar, "input")],
+      line: 2,
+      taint: False,
+      file: "a.cr",
+    ),
+    // Different file — input is NOT tainted here
+    Node(
+      node_type: Assign,
+      name: "url",
+      args: [arg_(ArgVar, "input")],
+      line: 5,
+      taint: False,
+      file: "b.cr",
+    ),
+  ]
+  let db = make_db(n)
+  // url in a.cr should be tainted (via a.cr propagation)
+  assert_eq(
+    "file: url tainted in a.cr",
+    taint.is_tainted_in_file(db, "url", "a.cr"),
+    True,
+  )
+  // url in b.cr should NOT be tainted (input not tainted in b.cr)
+  && assert_eq(
+    "file: url NOT tainted in b.cr",
+    taint.is_tainted_in_file(db, "url", "b.cr"),
+    False,
+  )
+}
+
 // -- Runner --
 pub fn main() {
   let tests = [
@@ -552,6 +638,9 @@ pub fn main() {
     #("sanitized: assign stops", sanitized_assign_stops()),
     #("config: extra sources", config_extra_sources()),
     #("config: extra sanitizers", config_extra_sanitizers()),
+    #("field: extract from arg", field_from_arg()),
+    #("field: arg seeded", field_arg_seeded()),
+    #("file: scope propagation", file_scope_propagation()),
   ]
   let failures = list.filter(tests, fn(t) { !t.1 })
   io.println("")

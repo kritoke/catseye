@@ -11,32 +11,60 @@ require "json"
 
 # ── Argument classification ────────────────────────────────────────────
 
-alias ArgNode = NamedTuple(arg_type: String, value: String)
+alias ArgNode = NamedTuple(arg_type: String, value: String, field: String)
 
 private def classify_arg(node : Crystal::ASTNode) : ArgNode
   case node
   when Crystal::StringLiteral
-    {arg_type: "literal", value: node.value}
+    {arg_type: "literal", value: node.value, field: ""}
   when Crystal::NumberLiteral
-    {arg_type: "literal", value: node.value}
+    {arg_type: "literal", value: node.value, field: ""}
   when Crystal::BoolLiteral
-    {arg_type: "literal", value: node.value.to_s}
+    {arg_type: "literal", value: node.value.to_s, field: ""}
   when Crystal::NilLiteral
-    {arg_type: "literal", value: "nil"}
+    {arg_type: "literal", value: "nil", field: ""}
   when Crystal::SymbolLiteral
-    {arg_type: "literal", value: ":#{node.value}"}
+    {arg_type: "literal", value: ":#{node.value}", field: ""}
   when Crystal::Var
-    {arg_type: "var", value: node.name}
+    {arg_type: "var", value: node.name, field: ""}
   when Crystal::InstanceVar
-    {arg_type: "var", value: node.name}
+    {arg_type: "var", value: node.name, field: ""}
   when Crystal::Path
-    {arg_type: "var", value: node.names.join("::")}
+    {arg_type: "var", value: node.names.join("::"), field: ""}
   when Crystal::Call
-    {arg_type: "call", value: format_call_name(node)}
+    # Detect field access: params["url"] → field="url"
+    field = extract_field(node)
+    {arg_type: "call", value: format_call_name(node), field: field}
   when Crystal::StringInterpolation
-    {arg_type: "call", value: "<interpolation>"}
+    {arg_type: "call", value: "<interpolation>", field: ""}
   else
-    {arg_type: "unknown", value: node.to_s[0..80]}
+    {arg_type: "unknown", value: node.to_s[0..80], field: ""}
+  end
+end
+
+# Extract field name from indexer calls: params["url"] → "url"
+private def extract_field(node : Crystal::ASTNode) : String
+  case node
+  when Crystal::Call
+    if node.name == "[]"
+      # First arg is the key: params["url"] → "url"
+      if node.args.size > 0
+        case key = node.args.first
+        when Crystal::StringLiteral
+          key.value
+        when Crystal::SymbolLiteral
+          key.value
+        else
+          ""
+        end
+      else
+        ""
+      end
+    else
+      ""
+    end
+  else
+    ""
   end
 end
 
@@ -118,7 +146,7 @@ class SecurityVisitor < Crystal::Visitor
     @nodes << {
       type:  "def",
       name:  node.name,
-      args:  node.args.map { |a| {arg_type: "var", value: a.name} },
+      args:  node.args.map { |a| {arg_type: "var", value: a.name, field: ""} },
       line:  location_line(node),
       taint: false,
       file:  @file_path,

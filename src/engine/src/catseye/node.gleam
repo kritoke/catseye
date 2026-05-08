@@ -16,7 +16,7 @@ pub type ArgType {
 }
 
 pub type Arg {
-  Arg(arg_type: ArgType, value: String)
+  Arg(arg_type: ArgType, value: String, field: String)
 }
 
 pub type Node {

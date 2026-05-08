@@ -13,6 +13,7 @@ type
   ArgNode = object
     argType: string
     value: string
+    field: string
   SecNode = object
     typ: string
     name: string
@@ -101,24 +102,24 @@ proc classifyArg(node: XmlNode): ArgNode =
   of "string":
     let qc = node.findAll("quoted_content")
     if qc.len > 0:
-      ArgNode(argType: "literal", value: qc[0].txt().strip())
+      ArgNode(argType: "literal", value: qc[0].txt().strip(), field: "")
     else:
-      ArgNode(argType: "literal", value: "")
+      ArgNode(argType: "literal", value: "", field: "")
   of "integer":
-    ArgNode(argType: "literal", value: node.txt().strip())
+    ArgNode(argType: "literal", value: node.txt().strip(), field: "")
   of "float":
-    ArgNode(argType: "literal", value: node.txt().strip())
+    ArgNode(argType: "literal", value: node.txt().strip(), field: "")
   of "identifier":
-    ArgNode(argType: "var", value: node.txt().strip())
+    ArgNode(argType: "var", value: node.txt().strip(), field: "")
   of "field_access":
     var parts: seq[string]
     for p in node.findAll("identifier"):
       parts.add(p.txt().strip())
     for l in node.findAll("label"):
       parts.add(l.txt().strip())
-    ArgNode(argType: "call", value: parts.join("."))
+    ArgNode(argType: "call", value: parts.join("."), field: "")
   else:
-    ArgNode(argType: "unknown", value: t)
+    ArgNode(argType: "unknown", value: t, field: "")
 
 proc extractArgs(callNode: XmlNode): seq[ArgNode] =
   let argsContainers = callNode.findAll("arguments")
@@ -242,7 +243,7 @@ proc toJson(nodes: seq[SecNode]): JsonNode =
   for n in nodes:
     var jargs = newJArray()
     for a in n.args:
-      jargs.add(%*{"arg_type": a.argType, "value": a.value})
+      jargs.add(%*{"arg_type": a.argType, "value": a.value, "field": a.field})
     jnodes.add(%*{
       "type": n.typ,
       "name": n.name,
