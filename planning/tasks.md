@@ -2,17 +2,7 @@
 
 ## In Progress
 
-### Task: Sanitizer-aware is_suspect + Crystal extractor sanitizers
-**Status:** On disk, compiles, 36 tests pass, needs E2E verification
-**What was done:**
-- `is_suspect()` no longer flags every var arg — only tainted vars or node.taint
-- Crystal extractor has SANITIZERS set (URI.parse, Path.basename, etc.)
-- `sanitizer_call?()` function in extractor
-- Engine `is_sanitized_rhs()` blocks seeding for sanitizer RHS assigns
-- Added `vulnerable_lucky.cr` and `vulnerable_kemal.cr` framework test samples
-
-**Remaining:** Kemal L33 false positive (extractor marks File.read interpolation as tainted
-because `filename` is in `@tainted_vars` — extractor sanitizer check not yet applied to taint propagation)
+(None — ready for next task)
 
 ## Up Next
 
