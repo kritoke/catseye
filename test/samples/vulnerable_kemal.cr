@@ -23,7 +23,7 @@ post "/convert" do |env|
 end
 
 # SAFE: static content (should NOT flag)
-get "/about" do |env|
+get "/about" do |_|
   "About page"
 end
 

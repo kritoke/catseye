@@ -1,6 +1,7 @@
 import catseye/node.{type Finding, type Node}
 import catseye/rules/command_injection
 import catseye/rules/path_traversal
+import catseye/rules/redos
 import catseye/rules/sql_injection
 import catseye/rules/ssrf
 import catseye/rules/taint
@@ -13,6 +14,7 @@ pub fn run_all_rules(nodes: List(Node)) -> List(Finding) {
   |> list.append(command_injection.check(nodes, tainted, db))
   |> list.append(path_traversal.check(nodes, tainted, db))
   |> list.append(sql_injection.check(nodes, tainted, db))
+  |> list.append(redos.check(nodes))
 }
 
 pub fn run_all_rules_with_config(
@@ -27,4 +29,5 @@ pub fn run_all_rules_with_config(
   |> list.append(command_injection.check(nodes, tainted, db))
   |> list.append(path_traversal.check(nodes, tainted, db))
   |> list.append(sql_injection.check(nodes, tainted, db))
+  |> list.append(redos.check(nodes))
 }

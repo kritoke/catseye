@@ -4,6 +4,7 @@ import catseye/node.{
 import catseye/rules
 import catseye/rules/command_injection
 import catseye/rules/path_traversal
+import catseye/rules/redos
 import catseye/rules/sql_injection
 import catseye/rules/ssrf
 import catseye/rules/taint
@@ -633,6 +634,77 @@ fn file_scope_propagation() -> Bool {
   )
 }
 
+// -- ReDoS rule --
+fn redos_evil_regex() -> Bool {
+  // Regex.new with nested quantifiers should be flagged
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Regex.new",
+      args: [Arg(arg_type: ArgLiteral, value: "(a+)+", field: "")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let findings = redos.check(n)
+  assert_eq("redos: nested quantifier", list.length(findings), 1)
+}
+
+fn redos_safe_regex() -> Bool {
+  // Safe regex should NOT be flagged
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Regex.new",
+      args: [Arg(arg_type: ArgLiteral, value: "[a-z]+", field: "")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let findings = redos.check(n)
+  assert_eq("redos: safe regex", list.length(findings), 0)
+}
+
+fn redos_overlapping_groups() -> Bool {
+  // Overlapping groups with repetition
+  let n = [
+    Node(
+      node_type: Call,
+      name: "Regex.new",
+      args: [Arg(arg_type: ArgLiteral, value: "([a-zA-Z]+)*", field: "")],
+      line: 1,
+      taint: False,
+      file: "test.cr",
+    ),
+  ]
+  let findings = redos.check(n)
+  assert_eq("redos: overlapping groups", list.length(findings), 1)
+}
+
+// -- Env injection --
+fn env_injection() -> Bool {
+  let n = [
+    node_(Assign, "val", [arg_(ArgVar, "input")], True),
+    node_(Call, "ENV[]=", [arg_(ArgVar, "val")], False),
+  ]
+  let findings = command_injection.check(n, tv(n), make_db(n))
+  let env_findings = list.filter(findings, fn(f) { f.rule == "EnvInjection" })
+  assert_eq("env: injection", list.length(env_findings), 1)
+}
+
+// -- File.join path traversal --
+fn file_join_traversal() -> Bool {
+  let n = [
+    node_(Assign, "user_path", [arg_(ArgVar, "input")], True),
+    node_(Call, "File.join", [arg_(ArgVar, "user_path")], False),
+  ]
+  let findings = path_traversal.check(n, tv(n), make_db(n))
+  let join_findings = list.filter(findings, fn(f) { f.rule == "PathTraversal" })
+  assert_eq("filejoin: traversal", list.length(join_findings), 1)
+}
+
 // -- Runner --
 pub fn main() {
   let tests = [
@@ -672,6 +744,11 @@ pub fn main() {
     #("field: extract from arg", field_from_arg()),
     #("field: arg seeded", field_arg_seeded()),
     #("file: scope propagation", file_scope_propagation()),
+    #("redos: nested quantifier", redos_evil_regex()),
+    #("redos: safe regex", redos_safe_regex()),
+    #("redos: overlapping groups", redos_overlapping_groups()),
+    #("env: injection", env_injection()),
+    #("filejoin: traversal", file_join_traversal()),
   ]
   let failures = list.filter(tests, fn(t) { !t.1 })
   io.println("")
