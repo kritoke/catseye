@@ -24,20 +24,38 @@ build: build-engine build-extractors build-cli
 scan dir: build
     ./bin/catseye {{dir}}
 
-# Scan with JSON output
+# Scan with JSON output to file
 scan-json dir: build
-    ./bin/catseye --format=json {{dir}}
+    ./bin/catseye --format json --output {{dir}}/planning/catseye-scan-results.json {{dir}}
 
-# Scan with SARIF output (GitHub Code Scanning compatible)
+# Scan with SARIF output to file
 scan-sarif dir: build
-    ./bin/catseye --format=sarif {{dir}} > catseye-results.sarif
-    @echo "✓ SARIF written to catseye-results.sarif"
+    ./bin/catseye --format sarif --output {{dir}}/planning/catseye-scan-results.sarif {{dir}}
+
+# Scan with Markdown report to file
+scan-md dir: build
+    ./bin/catseye --format markdown --output {{dir}}/planning/catseye-security-report.md {{dir}}
+
+# Scan with all output formats to planning/
+scan-all dir: build
+    @mkdir -p {{dir}}/planning
+    ./bin/catseye --format json --output {{dir}}/planning/catseye-scan-results.json {{dir}}
+    ./bin/catseye --format markdown --output {{dir}}/planning/catseye-security-report.md {{dir}}
+    ./bin/catseye --format sarif --output {{dir}}/planning/catseye-scan-results.sarif {{dir}}
+    @echo "✓ All reports written to {{dir}}/planning/"
 
 # ── Scan (Crystal only) ───────────────────────────────────────────────
 
 # Scan only Crystal (.cr) files
 scan-crystal dir: build
     ./bin/catseye --lang crystal {{dir}}
+
+# Scan Crystal and save all reports to planning/
+scan-crystal-all dir: build
+    @mkdir -p {{dir}}/planning
+    ./bin/catseye --format json --lang crystal --output {{dir}}/planning/catseye-scan-results.json {{dir}}
+    ./bin/catseye --format markdown --lang crystal --output {{dir}}/planning/catseye-security-report.md {{dir}}
+    @echo "✓ Crystal reports written to {{dir}}/planning/"
 
 # ── Scan (Gleam only) ─────────────────────────────────────────────────
 

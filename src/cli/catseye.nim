@@ -11,7 +11,7 @@
 ##   --no-color       Disable colored output
 
 import std/[os, osproc, strutils, json, parseopt, strformat, algorithm, sets,
-            parsecfg, tables]
+            parsecfg, tables, times]
 
 const
   Bold   = "\e[1m"
@@ -24,7 +24,7 @@ const
   Version = "0.2.0"
 
 type
-  OutputFormat = enum fmtTerminal, fmtJson, fmtSarif
+  OutputFormat = enum fmtTerminal, fmtJson, fmtSarif, fmtMarkdown
   LangFilter = enum langAll, langCrystal, langGleam
   Config = object
     targetDir: string
@@ -35,6 +35,7 @@ type
     format: OutputFormat
     configPath: string
     langFilter: LangFilter
+    outputPath: string
 
 # ── Config file (.catseye.toml) ────────────────────────────────────────
 
@@ -354,6 +355,7 @@ proc parseArgs(): Config =
     targetDir: "",
     configPath: "",
     langFilter: langAll,
+    outputPath: "",
   )
   var p = initOptParser(commandLineParams())
   while true:
@@ -367,6 +369,12 @@ proc parseArgs(): Config =
       of "engine":            config.engineDir = p.val
       of "no-color":          config.color = false
       of "color":             config.color = true
+      of "output", "o":
+        var outVal = p.val
+        if outVal.len == 0:
+          p.next()
+          outVal = p.key
+        config.outputPath = outVal
       of "config":            config.configPath = p.val
       of "lang":
         var langVal = p.val
@@ -389,6 +397,7 @@ proc parseArgs(): Config =
         of "json":            config.format = fmtJson
         of "sarif":           config.format = fmtSarif
         of "terminal", "text": config.format = fmtTerminal
+        of "markdown", "md":  config.format = fmtMarkdown
         else:
           echo &"Unknown format: {fmtVal} (use: json, sarif, terminal)"
           quit(1)
@@ -398,12 +407,13 @@ proc parseArgs(): Config =
         echo "Usage: catseye [options] <directory>"
         echo ""
         echo "Options:"
-        echo "  --format <fmt>       Output: terminal (default), json, sarif"
+        echo "  --format <fmt>       Output: terminal (default), json, sarif, markdown"
         echo "  --lang <lang>        Language filter: all (default), crystal, gleam"
         echo "  --config <path>      Config file (.catseye.toml)"
         echo "  --crystal-extractor  Crystal extractor path"
         echo "  --gleam-extractor    Gleam extractor binary path"
         echo "  --engine <path>      Gleam engine directory"
+        echo "  -o, --output <path>  Write JSON/SARIF result to file (creates parent dirs)"
         echo "  --no-color           Disable colored output"
         echo "  -h, --help           Show this help"
         quit(0)
@@ -525,7 +535,6 @@ proc main() =
   # Output based on format
   case config.format
   of fmtJson:
-    # Tag findings with dependency info
     for f in findings:
       let ffile = f{"file"}.getStr("")
       if depMap.hasKey(ffile) and depMap[ffile].isDep:
@@ -540,9 +549,75 @@ proc main() =
       "findings_count": findingsCount,
       "findings": findings,
     }
-    echo output.pretty()
+    if config.outputPath.len > 0:
+      createDir(parentDir(config.outputPath))
+      writeFile(config.outputPath, output.pretty())
+      echo &"Results written to {config.outputPath}"
+    else:
+      echo output.pretty()
   of fmtSarif:
-    echo toSarif(findings, config.targetDir, depMap).pretty()
+    let sarif = toSarif(findings, config.targetDir, depMap).pretty()
+    if config.outputPath.len > 0:
+      createDir(parentDir(config.outputPath))
+      writeFile(config.outputPath, sarif)
+      echo &"SARIF results written to {config.outputPath}"
+    else:
+      echo sarif
+  of fmtMarkdown:
+    var md = &"# Catseye Security Report\n\n"
+    md.add(&"**Target:** `{config.targetDir}`  \n")
+    md.add(&"**Files scanned:** {sources.len}")
+    if depCount > 0: md.add(&" ({depCount} dependencies)")
+    md.add("  \n")
+    md.add(&"**Nodes extracted:** {allNodes.len}  \n")
+    md.add(&"**Findings:** {findingsCount}  \n")
+    md.add(&"**Date:** {getDateStr()}  \n\n")
+    if findingsCount == 0:
+      md.add("No issues found.\n")
+    else:
+      md.add("## Findings\n\n")
+      var idx = 0
+      for f in findings:
+        idx.inc()
+        let rule = f["rule"].getStr()
+        let severity = f["severity"].getStr()
+        let file = f["file"].getStr()
+        let line = f["line"].getInt()
+        let message = f["message"].getStr()
+        let depKey = f{"file"}.getStr("")
+        let dep = if depMap.hasKey(depKey) and depMap[depKey].isDep: &" *(dependency: {depMap[depKey].name})*" else: ""
+        md.add(&"### {idx}. [{rule}] {severity} - `{file}:{line}`{dep}\n\n")
+        md.add(&"{message}\n\n")
+        let flow = f{"flow"}
+        if flow != nil and flow.kind == JArray and flow.len > 0:
+          md.add("**Taint flow:**\n\n")
+          for step in flow:
+            let sf = step{"file"}.getStr("")
+            let sl = step{"line"}.getInt(0)
+            let sm = step{"message"}.getStr("")
+            let loc = if sf.len > 0 and sl > 0: &" `{sf}:{sl}`" else: ""
+            md.add(&"- {sm}{loc}\n")
+          md.add("\n")
+      md.add("## Summary\n\n")
+      md.add("| # | Rule | Severity | File | Line |\n")
+      md.add("|---|------|----------|------|------|\n")
+      var sidx = 0
+      for f in findings:
+        sidx.inc()
+        let depKey = f{"file"}.getStr("")
+        let depTag = if depMap.hasKey(depKey) and depMap[depKey].isDep: &" [{depMap[depKey].name}]" else: ""
+        let r = f["rule"].getStr()
+        let s = f["severity"].getStr()
+        let fl = f["file"].getStr()
+        let ln = f["line"].getInt()
+        md.add(&"| {sidx} | {r} | {s} | `{fl}{depTag}` | {ln} |\n")
+      md.add("\n")
+    if config.outputPath.len > 0:
+      createDir(parentDir(config.outputPath))
+      writeFile(config.outputPath, md)
+      echo &"Markdown report written to {config.outputPath}"
+    else:
+      echo md
   of fmtTerminal:
     var depFindings = 0
     for f in findings:
@@ -550,15 +625,33 @@ proc main() =
       let ffile = f{"file"}.getStr("")
       if depMap.hasKey(ffile) and depMap[ffile].isDep:
         depFindings.inc()
-    echo "─────────────────────────────────────────"
+    echo "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
     if findingsCount > 0:
       var summary = &"Found {findingsCount} issue(s) across {sources.len} file(s)"
       if depFindings > 0:
         summary.add(&" ({depFindings} in dependencies)")
       config.echoError(summary & ".")
+      if config.outputPath.len > 0:
+        for f in findings:
+          let ff = f{"file"}.getStr("")
+          if depMap.hasKey(ff) and depMap[ff].isDep:
+            f{"dependency"} = %depMap[ff].name
+        let jsonOut = %*{
+          "version": Version,
+          "target": config.targetDir,
+          "files_scanned": sources.len,
+          "dependencies_scanned": depCount,
+          "nodes_extracted": allNodes.len,
+          "findings_count": findingsCount,
+          "findings": findings,
+        }
+        createDir(parentDir(config.outputPath))
+        writeFile(config.outputPath, jsonOut.pretty())
+        echo &"JSON results written to {config.outputPath}"
       quit(1)
     else:
-      config.echoSuccess(&"No issues found across {sources.len} file(s). ✨")
+      config.echoSuccess(&"No issues found across {sources.len} file(s). \xe2\x9c\xa8")
+
 
 when isMainModule:
   main()

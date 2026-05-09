@@ -48,9 +48,14 @@ just scan path/to/project
 just scan-crystal path/to/project
 just scan-gleam path/to/project
 
-# Machine-readable output
-just scan-json path/to/project
-just scan-sarif path/to/project   # writes catseye-results.sarif
+# Save reports to project's planning/ folder
+just scan-json path/to/project        # JSON → planning/catseye-scan-results.json
+just scan-md path/to/project          # Markdown → planning/catseye-security-report.md
+just scan-sarif path/to/project       # SARIF → planning/catseye-scan-results.sarif
+just scan-all path/to/project         # All three formats at once
+
+# Scan Crystal and save reports
+just scan-crystal-all path/to/project
 
 # Debug single files
 just extract foo.cr               # Crystal extractor on one file
@@ -63,7 +68,8 @@ just extract-gleam foo.gleam      # Gleam extractor on one file
 catseye [options] <directory>
 
 Options:
-  --format <fmt>       Output: terminal (default), json, sarif
+  --format <fmt>       Output: terminal (default), json, sarif, markdown
+  -o, --output <path>  Write results to file (creates parent dirs)
   --lang <lang>        Language filter: all (default), crystal, gleam
   --config <path>      Config file (.catseye.toml)
   --crystal-extractor  Path to Crystal extractor
@@ -176,6 +182,8 @@ Machine-readable with full metadata:
 
 ```bash
 just scan-json path/to/project
+# or
+./bin/catseye --format json -o results.json path/to/project
 ```
 
 ### SARIF
@@ -187,6 +195,23 @@ just scan-sarif path/to/project
 ```
 
 Results include `codeFlows` with the full taint trace for each finding.
+
+### Markdown
+
+Human and AI-readable report with findings, taint flows, and summary table:
+
+```bash
+just scan-md path/to/project
+# or
+./bin/catseye --format markdown -o report.md path/to/project
+```
+
+Generates a structured markdown file with:
+- Project metadata (target, file count, dependency count)
+- Numbered findings with rule, severity, file:line
+- Taint flow traces for each finding
+- Dependency attribution for lib/ findings
+- Summary table with all findings
 
 ## How It Works
 
