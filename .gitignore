@@ -7,7 +7,6 @@ result-*
 # Dependencies
 node_modules/
 .shards/
-lib/
 elm-stuff/
 
 # Build artifacts
@@ -29,6 +28,16 @@ erl_crash.dump
 
 # Gleam build output
 src/engine/build/
+
+# OCaml build artifacts
+src/ocaml/_build/
+src/ocaml/_opam/
+src/ocaml/.dune-cache/
+src/ocaml/*.install
+
+# Catseye state cache
+.catseye/
+.dune-cache/
 
 # Crystal cache
 crystal/

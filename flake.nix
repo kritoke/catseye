@@ -1,5 +1,5 @@
 {
-  description = "catseye Spoke - nim,gleam,crystal";
+  description = "catseye - Static security analysis for Crystal and Gleam";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -29,37 +29,85 @@
         '';
       };
 
-# Nim module definition
-nim = pkgs.nim;
-nimble = pkgs.nimble;
-# Gleam module definition - use official pre-built binary to avoid compiling from source
-gleamBin = pkgs.stdenv.mkDerivation {
-  pname = "gleam";
-  version = "1.16.0";
-  src = pkgs.fetchurl {
-    url = "https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-aarch64-unknown-linux-musl.tar.gz";
-    sha256 = "e7af3677a04a1b88f19896b7b351f407784c62e97078fe680f90a91a5da162d8";
-  };
-  dontConfigure = true;
-  dontBuild = true;
-  installPhase = ''
-    mkdir -p $out/bin
-    cp gleam $out/bin/gleam
-    chmod +x $out/bin/gleam
-  '';
-  unpackPhase = "tar xzf $src";
-  stripAllFrom = [ "bin/gleam" ];
-};
-# Note: erlang is not needed for the gleam compiler, only for running compiled gleam code
-erlang = pkgs.erlang;
-# Crystal 1.18.2 module definition
-# Use direct crystal_1_18 from nixpkgs (like fetcher.cr approach)
-# Prefer the nixpkgs-provided Crystal 1.18 package when available.
-# Fall back to pkgs.crystal if the specific attr is not present.
-crystal_1_18 = if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 else pkgs.crystal;
+      # ── Legacy toolchains (Nim, Gleam, Crystal) ──────────────────────
 
-      # Read flake.private.nix for per-developer overrides (like fetcher.cr)
-      # This allows developers to provide custom shellHook, ticket, etc.
+      nim = pkgs.nim;
+      nimble = pkgs.nimble;
+
+      gleamBin = pkgs.stdenv.mkDerivation {
+        pname = "gleam";
+        version = "1.16.0";
+        src = pkgs.fetchurl {
+          url = "https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-aarch64-unknown-linux-musl.tar.gz";
+          sha256 = "e7af3677a04a1b88f19896b7b351f407784c62e97078fe680f90a91a5da162d8";
+        };
+        dontConfigure = true;
+        dontBuild = true;
+        installPhase = ''
+          mkdir -p $out/bin
+          cp gleam $out/bin/gleam
+          chmod +x $out/bin/gleam
+        '';
+        unpackPhase = "tar xzf $src";
+        stripAllFrom = [ "bin/gleam" ];
+      };
+
+      erlang = pkgs.erlang;
+
+      crystal_1_18 =
+        if builtins.hasAttr "crystal_1_18" pkgs
+        then pkgs.crystal_1_18
+        else pkgs.crystal;
+
+      # ── OCaml toolchain ───────────────────────────────────────────────
+
+      ocamlPkgs = pkgs.ocamlPackages;
+
+      ocamlLibs = with ocamlPkgs; [
+        # Core
+        ocaml
+        dune_3
+        findlib
+
+        # CLI
+        cmdliner
+        bos
+        rresult
+        logs
+        fmt
+
+        # Data formats
+        yojson
+        toml
+        kdl
+
+        # Engine
+        ocamlgraph
+
+        # Async / Parallel (OCaml 5)
+        eio
+        eio_posix
+
+        # Testing
+        alcotest
+      ];
+
+      ocamlTools = with ocamlPkgs; [
+        ocaml-lsp
+        ocamlformat
+        utop
+        ocp-indent
+      ];
+
+      # ── Tree-sitter ───────────────────────────────────────────────────
+
+      treeSitterLibs = [
+        pkgs.tree-sitter
+        pkgs.tree-sitter-grammars.tree-sitter-gleam
+      ];
+
+      # ── Private config ────────────────────────────────────────────────
+
       privateConfig =
         if builtins.pathExists ./flake.private.nix then
           let
@@ -73,26 +121,41 @@ crystal_1_18 = if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 el
             else {}
         else {};
 
-      # Get ticket from privateConfig if provided, otherwise use the default ticket derivation
       ticket = if privateConfig ? ticket then privateConfig.ticket else defaultTicket;
-
-      # Get shellHook from privateConfig if provided
       privateShellHook = if privateConfig ? shellHook then privateConfig.shellHook else "";
-
-pwLibs = [
-        pkgs.tree-sitter
-        pkgs.tree-sitter-grammars.tree-sitter-gleam
-      ];
 
     in {
       devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [ nim nimble gleamBin crystal_1_18 rebar3 just ] ++ pwLibs;
+        buildInputs = with pkgs; [
+          # Legacy toolchains
+          nim nimble gleamBin crystal_1_18 rebar3
+
+          # OCaml toolchain
+          ocamlPkgs.ocaml
+          ocamlPkgs.dune_3
+          ocamlPkgs.findlib
+
+          # OCaml libraries
+        ] ++ ocamlLibs ++ ocamlTools ++ treeSitterLibs ++ [ just ];
 
         shellHook = ''
-          echo "catseye DevShell Active"
+          echo "╔══════════════════════════════════════╗"
+          echo "║        Catseye DevShell Active       ║"
+          echo "╚══════════════════════════════════════╝"
+          echo ""
+          echo "  Legacy: Nim $(nim --version 2>/dev/null | head -1 | awk '{print $4}')"
+          echo "          Gleam $(gleam --version 2>/dev/null | awk '{print $2}')"
+          echo "          Crystal $(crystal version 2>/dev/null | head -1 | awk '{print $2}')"
+          echo "  OCaml:  $(ocaml --version)"
+          echo "  Dune:   $(dune --version 2>/dev/null | head -1)"
+          echo ""
           export PATH="$PATH:${ticket}/bin"
           export TICKET_DIR="$PWD/.tickets"
           export TREE_SITTER_GLEAM_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-gleam}/parser"
+
+          # OCaml environment
+          export OCAMLFIND_DESTDIR="$PWD/src/ocaml/_opam/lib"
+
           if [ ! -d "$TICKET_DIR" ]; then
             echo "Initializing local Ticket storage in $TICKET_DIR"
             mkdir -p "$TICKET_DIR"

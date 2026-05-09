@@ -1,0 +1,31 @@
+rule "SSRF" severity="High" {
+    sinks {
+        sink "HTTP::Client.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "HTTP::Client.post" {
+            sanitizer "URI.parse"
+        }
+        sink "HTTP::Client.put"
+        sink "HTTP::Client.patch"
+        sink "HTTP::Client.delete"
+        sink "HTTP::Client.exec"
+        sink "hackney.get"
+        sink "hackney.post"
+        sink "req.get"
+        sink "req.post"
+    }
+    sources {
+        source "params" field="url"
+        source "request" field="body"
+        source "user_url"
+        source "url"
+        source "query"
+    }
+    conditions {
+        requires_tainted_args=true
+        skip_all_literals=true
+    }
+    message "Potential SSRF via {sink} with user-controlled URL"
+}

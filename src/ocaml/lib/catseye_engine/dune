@@ -1,0 +1,5 @@
+(library
+ (name catseye_engine)
+ (public_name catseye.engine)
+ (modules engine db seed propagate returns interproc merge)
+ (libraries catseye.types yojson logs))

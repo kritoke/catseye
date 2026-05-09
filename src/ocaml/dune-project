@@ -1,0 +1,36 @@
+(lang dune 3.23)
+
+(name catseye)
+
+(generate_opam_files true)
+
+(source
+ (github kritoke/catseye))
+
+(authors "Catseye Contributors")
+
+(maintainers "Catseye Contributors")
+
+(license MIT)
+
+(package
+ (name catseye)
+ (synopsis "Static security analysis for Crystal and Gleam applications")
+ (description
+  "Catseye finds vulnerabilities like SSRF, command injection, path traversal, and more by combining AST-based extraction with taint tracking and pattern-matching rules.")
+ (depends
+  ocaml
+  dune
+  cmdliner
+  toml
+  kdl
+  yojson
+  bos
+  rresult
+  logs
+  fmt
+  eio
+  eio_posix
+  ocaml_sqlite3
+  ocamlgraph
+  alcotest))

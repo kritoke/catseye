@@ -1,8 +1,44 @@
 # Catseye — build & dev tasks
 # Run: just <task>
 
-# Build everything
+# Build everything (legacy)
 default: build
+
+# Build OCaml version
+ocaml: build-ocaml
+
+# ── OCaml Build ──────────────────────────────────────────────────────
+
+build-ocaml:
+    cd src/ocaml && dune build
+    cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
+    @echo "✓ OCaml catseye built → bin/catseye-ocaml"
+
+build-ocaml-release:
+    cd src/ocaml && dune build --profile release
+    cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
+    @echo "✓ OCaml catseye built (release) → bin/catseye-ocaml"
+
+test-ocaml: build-ocaml
+    cd src/ocaml && dune test
+    @echo "✓ OCaml tests passed"
+
+lint-ocaml:
+    cd src/ocaml && dune build @fmt
+
+fmt-ocaml:
+    cd src/ocaml && dune fmt
+
+clean-ocaml:
+    rm -rf src/ocaml/_build
+    @echo "✓ OCaml build cleaned"
+
+# Scan using the OCaml engine
+scan-ocaml dir: build-ocaml
+    ./bin/catseye-ocaml {{dir}}
+
+scan-ocaml-json dir: build-ocaml
+    ./bin/catseye-ocaml --format json {{dir}}
 
 # ── Build ──────────────────────────────────────────────────────────────
 
@@ -131,6 +167,6 @@ analyze file:
 list:
     @just --list
 
-clean:
+clean: clean-ocaml
     rm -rf src/engine/build bin/
     @echo "✓ Cleaned"
