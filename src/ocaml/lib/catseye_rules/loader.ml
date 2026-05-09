@@ -19,7 +19,10 @@ let get_first_arg (args : Kdl.annot_value list) : string option =
   | _ -> None
 
 let parse_sinks_node (node : Kdl.node) : sink_def list =
-  let pattern = node.name in
+  let pattern = match get_first_arg node.args with
+    | Some s -> s
+    | None -> node.name
+  in
   let sanitizers =
     node.children
     |> List.filter_map (fun (child : Kdl.node) ->
@@ -32,7 +35,10 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
   [{ pattern; sanitizers; requires_field }]
 
 let parse_sources_node (node : Kdl.node) : source_def list =
-  let name = node.name in
+  let name = match get_first_arg node.args with
+    | Some s -> s
+    | None -> node.name
+  in
   let field = get_prop node.props "field" in
   [{ name; field }]
 
@@ -54,7 +60,11 @@ let parse_conditions (children : Kdl.node list) : conditions =
   ) (default_conditions ()) children
 
 let parse_rule_node (node : Kdl.node) : rule_def option =
-  let id = node.name in
+  (* Node name is "rule", actual id is first positional arg *)
+  let id = match get_first_arg node.args with
+    | Some s -> s
+    | None -> node.name
+  in
   let severity = match get_prop node.props "severity" with
     | Some s -> s
     | None -> "Medium"

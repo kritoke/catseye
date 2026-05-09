@@ -23,9 +23,5 @@ rule "SSRF" severity="High" {
         source "url"
         source "query"
     }
-    conditions {
-        requires_tainted_args=true
-        skip_all_literals=true
-    }
     message "Potential SSRF via {sink} with user-controlled URL"
 }

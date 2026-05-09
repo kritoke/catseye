@@ -1,0 +1,3 @@
+(executable
+ (name debug_rules)
+ (libraries unix catseye.engine catseye.rules catseye.types yojson))
