@@ -146,12 +146,6 @@ proc discoverSources(dir: string, filter: LangFilter): seq[SourceFile] =
 
 # ── Extractors ─────────────────────────────────────────────────────────
 
-proc getGleamGrammar(): string =
-  result = getEnv("TREE_SITTER_GLEAM_GRAMMAR")
-  if result.len == 0:
-    stderr.writeLine "Error: TREE_SITTER_GLEAM_GRAMMAR not set. Run in nix develop."
-    quit(1)
-
 proc runCrystalExtractor(extractor: string, filePath: string): (string, int) =
   let cmd = fmt"CRYSTAL_HAS_WRAPPER=1 crystal run {extractor} -- {filePath} 2>/dev/null"
   execCmdEx(cmd)
