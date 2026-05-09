@@ -2,65 +2,65 @@
 
 open Types
 
-let load_file path =
-  let ic = open_in path in
-  let content = really_input ic (in_channel_length ic) in
-  close_in ic;
-  content
+(* Helper: get string value from a property list *)
+let get_prop (props : Kdl.prop list) (key : string) : string option =
+  List.find_map (fun (k, (_, v)) ->
+    if k = key then
+      match v with
+      | `String s -> Some s
+      | _ -> None
+    else None
+  ) props
 
-let parse_sinks_node (node : Kdl.document_node) : sink_def list =
+(* Helper: get string value from first positional argument *)
+let get_first_arg (args : Kdl.annot_value list) : string option =
+  match args with
+  | [(_, `String s)] -> Some s
+  | _ -> None
+
+let parse_sinks_node (node : Kdl.node) : sink_def list =
   let pattern = node.name in
   let sanitizers =
     node.children
-    |> List.filter_map (fun (child : Kdl.document_node) ->
+    |> List.filter_map (fun (child : Kdl.node) ->
       if child.name = "sanitizer" then
-        match child.properties with
-        | [] -> Some child.name
-        | _ -> Some child.name
+        get_first_arg child.args
       else None
     )
   in
-  let requires_field =
-    node.properties
-    |> List.find_opt (fun (k, _) -> k = "requires_field")
-    |> Option.map snd
-  in
+  let requires_field = get_prop node.props "requires_field" in
   [{ pattern; sanitizers; requires_field }]
 
-let parse_sources_node (node : Kdl.document_node) : source_def list =
+let parse_sources_node (node : Kdl.node) : source_def list =
   let name = node.name in
-  let field =
-    node.properties
-    |> List.find_opt (fun (k, _) -> k = "field")
-    |> Option.map snd
-  in
+  let field = get_prop node.props "field" in
   [{ name; field }]
 
-let parse_conditions (children : Kdl.document_node list) : conditions =
-  List.fold_left (fun acc (child : Kdl.document_node) ->
+let parse_conditions (children : Kdl.node list) : conditions =
+  List.fold_left (fun acc (child : Kdl.node) ->
     match child.name with
     | "requires_tainted_args" ->
       { acc with requires_tainted_args = true }
     | "skip_all_literals" ->
       { acc with skip_all_literals = true }
     | k ->
-      let v = match child.properties with
-        | [(_, val_str)] -> val_str
-        | _ -> child.name
+      let v = match get_first_arg child.args with
+        | Some s -> s
+        | None -> match get_prop child.props "value" with
+          | Some s -> s
+          | None -> "true"
       in
       { acc with extensions = (k, v) :: acc.extensions }
   ) (default_conditions ()) children
 
-let parse_rule_node (node : Kdl.document_node) : rule_def option =
+let parse_rule_node (node : Kdl.node) : rule_def option =
   let id = node.name in
-  let severity =
-    node.properties
-    |> List.find_opt (fun (k, _) -> k = "severity")
-    |> Option.map snd
-    |> Option.value ~default:"Medium"
+  let severity = match get_prop node.props "severity" with
+    | Some s -> s
+    | None -> "Medium"
   in
   let sinks, sources, conds, message =
-    List.fold_left (fun (sinks, sources, conds, msg) (child : Kdl.document_node) ->
+    List.fold_left (fun (sinks, sources, conds, msg) (child : Kdl.node) ->
       match child.name with
       | "sinks" ->
         let new_sinks = List.concat_map parse_sinks_node child.children in
@@ -72,11 +72,9 @@ let parse_rule_node (node : Kdl.document_node) : rule_def option =
         let c = parse_conditions child.children in
         (sinks, sources, c, msg)
       | "message" ->
-        let msg_text =
-          node.properties
-          |> List.find_opt (fun (k, _) -> k = "text")
-          |> Option.map snd
-          |> Option.value ~default:(String.concat " " (List.map fst node.properties))
+        let msg_text = match get_first_arg child.args with
+          | Some s -> s
+          | None -> Kdl.to_string [node]
         in
         (sinks, sources, conds, msg_text)
       | _ -> (sinks, sources, conds, msg)
@@ -86,12 +84,12 @@ let parse_rule_node (node : Kdl.document_node) : rule_def option =
   else Some { id; severity; sinks; sources; conditions = conds; message_template = message }
 
 let parse_string (content : string) : (rule_def list, [> `Msg of string ]) result =
-  try
-    let doc = Kdl.parse_string content in
-    let rules = List.filter_map parse_rule_node doc.nodes in
+  match Kdl.of_string content with
+  | Ok doc ->
+    let rules = List.filter_map parse_rule_node doc in
     Ok rules
-  with exn ->
-    Error (`Msg (Printf.sprintf "KDL parse error: %s" (Printexc.to_string exn)))
+  | Error (msg, _) ->
+    Error (`Msg (Printf.sprintf "KDL parse error: %s" msg))
 
 let load_rules (path : string) : (rule_def list, [> `Msg of string ]) result =
   if not (Sys.file_exists path) then
@@ -105,7 +103,12 @@ let load_rules (path : string) : (rule_def list, [> `Msg of string ]) result =
     in
     let rules = List.concat_map (fun f ->
       let full_path = Filename.concat path f in
-      let content = load_file full_path in
+      let ic = open_in full_path in
+      let len = in_channel_length ic in
+      let buf = Bytes.create len in
+      really_input ic buf 0 len;
+      close_in ic;
+      let content = Bytes.to_string buf in
       match parse_string content with
       | Ok r -> r
       | Error (`Msg msg) ->
@@ -114,5 +117,9 @@ let load_rules (path : string) : (rule_def list, [> `Msg of string ]) result =
     ) files in
     Ok rules
   end else
-    let content = load_file path in
-    parse_string content
+    let ic = open_in path in
+    let len = in_channel_length ic in
+    let buf = Bytes.create len in
+    really_input ic buf 0 len;
+    close_in ic;
+    parse_string (Bytes.to_string buf)

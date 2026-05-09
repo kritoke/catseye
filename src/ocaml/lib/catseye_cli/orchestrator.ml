@@ -26,9 +26,11 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
   if exit_code = 0 then
     try
       let ic = open_in (Printf.sprintf "/tmp/catseye-extract-%d.out" (Unix.getpid ())) in
-      let content = really_input ic (in_channel_length ic) in
+      let len = in_channel_length ic in
+      let buf = Bytes.create len in
+      really_input ic buf 0 len;
       close_in ic;
-      Ok content
+      Ok (Bytes.to_string buf)
     with _ -> Error exit_code
   else Error exit_code
 
@@ -81,13 +83,13 @@ let print_finding (config : t) (f : Finding.t) =
     f.rule f.severity f.file f.line reset;
   Printf.printf "%s  %s%s\n"
     (styled dim config "") f.message (styled reset config "");
-  List.iter (fun step ->
-    let loc = if step.file <> "" && step.line > 0
-      then Printf.sprintf "  (%s:%d)" step.file step.line
+  List.iter (fun ({ Finding.file = sf; line = sl; message = sm } : Finding.flow_step) ->
+    let loc = if sf <> "" && sl > 0
+      then Printf.sprintf "  (%s:%d)" sf sl
       else ""
     in
     Printf.printf "%s    ← %s%s%s\n"
-      (styled dim config "") step.message loc (styled reset config "")
+      (styled dim config "") sm loc (styled reset config "")
   ) f.flow;
   Printf.printf "\n"
 
@@ -103,8 +105,14 @@ let output_json (config : t) (sources : source_file list)
   ] in
   let json_str = Yojson.Safe.pretty_to_string output in
   if config.output_path <> "" then begin
+    let rec mkdir_p d =
+      if not (Sys.file_exists d) then begin
+        mkdir_p (Filename.dirname d);
+        Unix.mkdir d 0o755
+      end
+    in
     let dir = Filename.dirname config.output_path in
-    if not (Sys.file_exists dir) then Unix.mkdir_p dir;
+    mkdir_p dir;
     let oc = open_out config.output_path in
     output_string oc json_str;
     output_string oc "\n";

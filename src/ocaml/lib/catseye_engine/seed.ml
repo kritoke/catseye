@@ -17,7 +17,10 @@ let known_sanitizers = [
 ]
 
 let is_source ?(extra = []) name =
-  List.exists (fun s -> String.contains_substring name ~loc:0 s) (known_sources @ extra)
+  List.exists (fun s ->
+    let len = String.length s in
+    String.length name >= len && String.sub name 0 len = s
+  ) (known_sources @ extra)
 
 let is_sanitizer ?(extra = []) name =
   List.exists (fun s -> String.starts_with ~prefix:s name) (known_sanitizers @ extra)
