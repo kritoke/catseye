@@ -5,10 +5,12 @@ rule "ReDoS" severity="Medium" {
         sink "re.compile"
         sink "regexp.compile"
     }
-    sources {
-        source "params"
-        source "user_input"
-        source "query"
+    conditions {
+        check_args_contain "+)+"
+        check_args_contain "+)*"
+        check_args_contain "*)+"
+        check_args_contain "*)*"
+        check_args_contain "?)"
     }
-    message "Potential ReDoS: {sink} with variable argument. User-controlled regex patterns can cause catastrophic backtracking."
+    message "Potential ReDoS: regex with nested quantifiers or overlapping groups. Catastrophic backtracking risk."
 }

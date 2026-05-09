@@ -1,9 +1,8 @@
 rule "OpenRedirect" severity="Medium" {
     sinks {
-        sink "redirect"
+        sink "redirect_to"
         sink "response.redirect"
         sink "send_redirect"
-        sink "HTTP::Client.get"
     }
     sources {
         source "params" field="url"

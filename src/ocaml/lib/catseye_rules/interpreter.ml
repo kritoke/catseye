@@ -73,7 +73,30 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
     |> List.filter (fun n ->
       n.Security_node.node_type = Security_node.Call
       && matches_sink sink_def.pattern n.Security_node.name
-      && is_suspect n tainted sink_def
+    )
+    |> List.filter (fun n ->
+      (* Non-taint rules: check if args contain specific patterns *)
+      if rule.conditions.check_args_contain <> [] then begin
+        List.exists (fun a ->
+          List.exists (fun pattern ->
+            let plen = String.length pattern in
+            let v = a.Security_node.value in
+            let vlen = String.length v in
+            let rec check i =
+              if i + plen > vlen then false
+              else if String.sub v i plen = pattern then true
+              else check (i + 1)
+            in
+            check 0
+          ) rule.conditions.check_args_contain
+        ) n.Security_node.args
+      end else if not rule.conditions.requires_tainted_args then begin
+        (* Pattern-only rules: flag any call matching the sink, regardless of taint *)
+        true
+      end else begin
+        (* Taint-based rules *)
+        is_suspect n tainted sink_def
+      end
     )
     |> List.map (fun n ->
       let vars = var_names_from_args n.Security_node.args in

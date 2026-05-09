@@ -1,4 +1,4 @@
-rule "Deserialization" severity="High" {
+rule "InsecureDeserialization" severity="High" {
     sinks {
         sink "JSON.parse"
         sink "YAML.parse"

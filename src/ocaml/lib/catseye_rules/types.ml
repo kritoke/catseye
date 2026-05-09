@@ -14,6 +14,7 @@ type source_def = {
 type conditions = {
   requires_tainted_args : bool;
   skip_all_literals : bool;
+  check_args_contain : string list;  (* if non-empty, flag if any arg value contains one of these substrings *)
   extensions : (string * string) list;
 }
 
@@ -31,5 +32,6 @@ type t = rule_def
 let default_conditions () : conditions = {
   requires_tainted_args = true;
   skip_all_literals = true;
+  check_args_contain = [];
   extensions = [];
 }

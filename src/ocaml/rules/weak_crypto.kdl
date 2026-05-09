@@ -1,17 +1,14 @@
 rule "WeakCryptography" severity="Medium" {
     sinks {
-        sink "OpenSSL::Cipher"
         sink "MD5"
         sink "SHA1"
         sink "Digest::MD5"
         sink "Digest::SHA1"
-        sink "DES"
-        sink "RC4"
         sink "hashlib.md5"
         sink "hashlib.sha1"
     }
-    sources {
-        source "literal"
+    conditions {
+        skip_taint_check
     }
-    message "Weak cryptographic algorithm: {sink}. Use modern alternatives (AES-256, SHA-256+)."
+    message "Weak cryptography: {sink} uses a weak hashing algorithm (MD5/SHA1). Use SHA-256 or stronger."
 }

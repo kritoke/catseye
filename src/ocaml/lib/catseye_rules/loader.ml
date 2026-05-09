@@ -45,10 +45,16 @@ let parse_sources_node (node : Kdl.node) : source_def list =
 let parse_conditions (children : Kdl.node list) : conditions =
   List.fold_left (fun acc (child : Kdl.node) ->
     match child.name with
-    | "requires_tainted_args" ->
-      { acc with requires_tainted_args = true }
+    | "skip_taint_check" ->
+      { acc with requires_tainted_args = false }
     | "skip_all_literals" ->
       { acc with skip_all_literals = true }
+    | "check_args_contain" ->
+      let pattern = match get_first_arg child.args with
+        | Some s -> s
+        | None -> ""
+      in
+      { acc with check_args_contain = pattern :: acc.check_args_contain }
     | k ->
       let v = match get_first_arg child.args with
         | Some s -> s
