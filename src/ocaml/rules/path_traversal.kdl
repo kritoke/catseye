@@ -1,4 +1,4 @@
-rule "PathTraversal" severity="High" {
+rule "PathTraversal" severity="Medium" {
     sinks {
         sink "File.read" {
             sanitizer "Path.basename"

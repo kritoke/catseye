@@ -2,4 +2,4 @@
  (name catseye_cli)
  (public_name catseye.cli)
  (modules args config discovery orchestrator)
- (libraries catseye.types catseye.engine catseye.rules yojson cmdliner bos rresult logs fmt))
+ (libraries catseye.types catseye.engine catseye.rules yojson cmdliner bos rresult logs fmt toml))

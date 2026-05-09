@@ -15,46 +15,36 @@ let lang_of_string = function
   | "all" -> All
   | s -> failwith (Printf.sprintf "Unknown language: %s" s)
 
+(** Resolve a path to absolute, using [base] as the reference directory.
+    If already absolute, return as-is. *)
+let resolve base path =
+  if Filename.is_relative path then Filename.concat base path
+  else path
+
+(** Parse CLI args using recursive descent over the argument list. *)
 let parse_args () : t =
-  let config = ref default in
   let args = Array.to_list Sys.argv |> List.tl in
-  let positional = ref [] in
-  let i = ref 0 in
-  while !i < List.length args do
-    let arg = List.nth args !i in
-    (match arg with
-    | "--format" | "-f" ->
-      incr i;
-      let fmt = List.nth args !i in
-      config := { !config with format = format_of_string fmt }
-    | "--lang" ->
-      incr i;
-      let lang = List.nth args !i in
-      config := { !config with lang_filter = lang_of_string lang }
-    | "--output" | "-o" ->
-      incr i;
-      let path = List.nth args !i in
-      config := { !config with output_path = path }
-    | "--config" ->
-      incr i;
-      let path = List.nth args !i in
-      config := { !config with crystal_extractor = path }
-    | "--crystal-extractor" ->
-      incr i;
-      let path = List.nth args !i in
-      config := { !config with crystal_extractor = path }
-    | "--rules" | "-r" ->
-      incr i;
-      let path = List.nth args !i in
-      config := { !config with rules_dir = path }
-    | "--no-color" ->
-      config := { !config with color = false }
-    | "--no-cache" ->
-      config := { !config with no_cache = true }
-    | "--parallelism" | "-p" ->
-      incr i;
-      config := { !config with parallelism = int_of_string (List.nth args !i) }
-    | "--help" | "-h" ->
+  let cwd = Sys.getcwd () in
+  let rec go acc = function
+    | [] -> acc
+    | ("--format" | "-f") :: fmt :: rest ->
+      go { acc with format = format_of_string fmt } rest
+    | "--lang" :: lang :: rest ->
+      go { acc with lang_filter = lang_of_string lang } rest
+    | ("--output" | "-o") :: path :: rest ->
+      go { acc with output_path = resolve cwd path } rest
+    | "--config" :: path :: rest
+    | "--crystal-extractor" :: path :: rest ->
+      go { acc with crystal_extractor = resolve cwd path } rest
+    | ("--rules" | "-r") :: path :: rest ->
+      go { acc with rules_dir = resolve cwd path } rest
+    | "--no-color" :: rest ->
+      go { acc with color = false } rest
+    | "--no-cache" :: rest ->
+      go { acc with no_cache = true } rest
+    | ("--parallelism" | "-p") :: n :: rest ->
+      go { acc with parallelism = int_of_string n } rest
+    | ("--help" | "-h") :: _ ->
       Printf.printf "Catseye v%s — Static security analysis\n\n" Catseye_engine.Engine.version;
       Printf.printf "Usage: catseye [options] <directory>\n\n";
       Printf.printf "Options:\n";
@@ -68,24 +58,26 @@ let parse_args () : t =
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
       Printf.printf "  -h, --help           Show this help\n";
       exit 0
-    | s when String.starts_with ~prefix:"-" s ->
-      Printf.eprintf "Unknown option: %s\n" s;
+    | opt :: _ when String.starts_with ~prefix:"-" opt ->
+      Printf.eprintf "Unknown option: %s\n" opt;
       exit 1
-    | dir ->
-      positional := dir :: !positional
-    );
-    incr i
-  done;
-  match List.rev !positional with
-  | [dir] ->
-    if not (Sys.is_directory dir) then begin
-      Printf.eprintf "Error: directory not found: %s\n" dir;
+    | dir :: rest when Sys.is_directory dir ->
+      (* First positional that's a directory = target *)
+      if acc.target_dir <> "" then begin
+        Printf.eprintf "Error: too many positional arguments\n"; exit 1
+      end;
+      go { acc with target_dir = dir } rest
+    | unknown :: _ ->
+      Printf.eprintf "Error: not a directory: %s\n" unknown;
       exit 1
-    end;
-    { !config with target_dir = dir }
-  | [] ->
+  in
+  let cfg = go default args in
+  if cfg.target_dir = "" then begin
     Printf.eprintf "Error: no target directory specified.\nUsage: catseye <directory>\n";
     exit 1
-  | _ ->
-    Printf.eprintf "Error: too many positional arguments\n";
-    exit 1
+  end;
+  (* Resolve relative defaults against cwd *)
+  { cfg with
+    crystal_extractor = resolve cwd cfg.crystal_extractor
+  ; rules_dir = resolve cwd cfg.rules_dir
+  }

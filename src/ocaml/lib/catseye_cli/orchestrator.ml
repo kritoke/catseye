@@ -129,8 +129,9 @@ let output_json (config : t) (sources : source_file list)
     print_string json_str
 
 let run (config : t) : int =
+  let config = Config.load config in
   (* Step 1: Discover sources *)
-  let sources = discover_sources config.target_dir config.lang_filter in
+  let sources = discover_sources config.target_dir config.lang_filter config.exclude_dirs in
   if sources = [] then begin
     Printf.printf "No .cr or .gleam files found in %s\n" config.target_dir;
     exit 0

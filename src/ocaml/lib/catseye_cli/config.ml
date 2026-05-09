@@ -21,6 +21,7 @@ type t = {
   rules_dir : string;
   extra_sources : string list;
   extra_sanitizers : string list;
+  exclude_dirs : string list;
   parallelism : int;
   cache_dir : string;
   incremental : bool;
@@ -38,9 +39,117 @@ let default = {
   rules_dir = "rules";
   extra_sources = [];
   extra_sanitizers = [];
+  exclude_dirs = ["node_modules"; ".git"; "vendor"; "spec"];
   parallelism = 0;
   cache_dir = ".catseye";
   incremental = true;
   crystal_workers = 2;
   no_cache = false;
 }
+
+(** Walk up from [dir] looking for .catseye.toml. *)
+let find_config dir =
+  let rec walk d =
+    let candidate = Filename.concat d ".catseye.toml" in
+    if Sys.file_exists candidate then Some candidate
+    else
+      let parent = Filename.dirname d in
+      if parent = d then None
+      else walk parent
+  in
+  walk dir
+
+(** Read a string list from a TOML table at the given dotted path. *)
+let get_string_list table path =
+  let keys = String.split_on_char '.' path in
+  let rec descend tbl = function
+    | [] -> None
+    | [k] ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TArray (NodeString lst) -> Some lst
+        | _ -> None
+      with Not_found -> None)
+    | k :: rest ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TTable t -> descend t rest
+        | _ -> None
+      with Not_found -> None)
+  in
+  descend table keys
+
+(** Read an integer from a TOML table. *)
+let get_int table path default =
+  let keys = String.split_on_char '.' path in
+  let rec descend tbl = function
+    | [] -> default
+    | [k] ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TInt n -> n
+        | _ -> default
+      with Not_found -> default)
+    | k :: rest ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TTable t -> descend t rest
+        | _ -> default
+      with Not_found -> default)
+  in
+  descend table keys
+
+(** Read a string from a TOML table. *)
+let get_string table path default =
+  let keys = String.split_on_char '.' path in
+  let rec descend tbl = function
+    | [] -> default
+    | [k] ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TString s -> s
+        | _ -> default
+      with Not_found -> default)
+    | k :: rest ->
+      (try
+        let open Toml.Types in
+        match Table.find (Toml.Min.key k) tbl with
+        | TTable t -> descend t rest
+        | _ -> default
+      with Not_found -> default)
+  in
+  descend table keys
+
+(** Load .catseye.toml and overlay onto config. *)
+let load_toml (path : string) (cfg : t) : t =
+  try
+    let table =
+      let ic = open_in path in
+      let len = in_channel_length ic in
+      let buf = Bytes.create len in
+      really_input ic buf 0 len;
+      close_in ic;
+      Toml.Parser.(from_string (Bytes.to_string buf) |> unsafe) in
+    { cfg with
+      exclude_dirs =
+        (match get_string_list table "scan.exclude" with
+         | Some extra -> List.sort_uniq String.compare (cfg.exclude_dirs @ extra)
+         | None -> cfg.exclude_dirs)
+    ; extra_sources = (match get_string_list table "analysis.extra_sources" with Some l -> l | None -> [])
+    ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
+    ; parallelism = get_int table "analysis.parallelism" cfg.parallelism
+    ; crystal_extractor = get_string table "scan.crystal_extractor" cfg.crystal_extractor
+    ; rules_dir = get_string table "scan.rules_dir" cfg.rules_dir
+    }
+  with _ -> cfg
+
+(** Load config: CLI args → TOML overlay → final config. *)
+let load (cli : t) : t =
+  match find_config cli.target_dir with
+  | None -> cli
+  | Some path -> load_toml path cli

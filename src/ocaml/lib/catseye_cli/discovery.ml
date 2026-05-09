@@ -36,15 +36,21 @@ let extract_dep_name (path : string) : string =
   in
   find_lib 0
 
-let discover_sources (dir : string) (filter : lang_filter) : source_file list =
+let discover_sources (dir : string) (filter : lang_filter) (exclude : string list) : source_file list =
   let results = ref [] in
+  let should_skip entry =
+    List.mem entry exclude
+    || (String.length entry > 0 && entry.[0] = '.')
+  in
   let rec walk path =
     try
     if Sys.is_directory path then begin
       let entries = Sys.readdir path in
       Array.iter (fun entry ->
-        let full = Filename.concat path entry in
-        walk full
+        if not (should_skip entry) then begin
+          let full = Filename.concat path entry in
+          walk full
+        end
       ) entries
     end else begin
       let is_lib = is_lib_path path in

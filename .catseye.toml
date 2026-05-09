@@ -1,0 +1,26 @@
+# Example .catseye.toml
+# Place in project root. Catseye auto-discovers it.
+
+[scan]
+# File extensions to include (default: .cr, .gleam)
+# extensions = [".cr", ".gleam"]
+
+# Directories to exclude
+exclude = ["node_modules", ".git", "vendor", "lib", "spec"]
+
+# Maximum file size to scan (bytes)
+# max_file_size = 1_000_000
+
+[output]
+# Default output format: terminal, json, sarif, markdown
+# format = "terminal"
+
+[analysis]
+# Extra taint sources (beyond built-in list)
+# extra_sources = ["my_source"]
+
+# Extra sanitizer patterns
+# extra_sanitizers = ["my_sanitizer"]
+
+# Parallelism (0 = auto-detect CPU count)
+# parallelism = 0
