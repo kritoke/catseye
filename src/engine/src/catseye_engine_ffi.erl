@@ -11,7 +11,7 @@ read_stdin_acc(Acc) ->
     case io:get_line("") of
         eof -> {ok, Acc};
         {error, _} -> {error, nil};
-        Line when is_list(Line) -> read_stdin_acc(<<Acc/binary, (list_to_binary(Line))/binary>>);
+        Line when is_list(Line) -> read_stdin_acc(<<Acc/binary, (unicode:characters_to_binary(Line))/binary>>);
         Line when is_binary(Line) -> read_stdin_acc(<<Acc/binary, Line/binary>>)
     end.
 

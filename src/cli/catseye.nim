@@ -11,7 +11,7 @@
 ##   --no-color       Disable colored output
 
 import std/[os, osproc, strutils, json, parseopt, strformat, algorithm, sets,
-            parsecfg]
+            parsecfg, tables]
 
 const
   Bold   = "\e[1m"
@@ -25,6 +25,7 @@ const
 
 type
   OutputFormat = enum fmtTerminal, fmtJson, fmtSarif
+  LangFilter = enum langAll, langCrystal, langGleam
   Config = object
     targetDir: string
     crystalExtractor: string
@@ -33,6 +34,7 @@ type
     color: bool
     format: OutputFormat
     configPath: string
+    langFilter: LangFilter
 
 # ── Config file (.catseye.toml) ────────────────────────────────────────
 
@@ -99,13 +101,46 @@ proc echoBold(config: Config, codes: string, text: string) =
 type SourceFile = object
   path: string
   lang: string
+  isDependency: bool
+  dependencyName: string
 
-proc discoverSources(dir: string): seq[SourceFile] =
+proc extractDepName(path: string): string =
+  ## Extract dependency name from a path containing /lib/<name>/
+  ## e.g. "/project/lib/ameba/src/foo.cr" -> "ameba"
+  for i in 0..(path.len - 5):
+    if path[i] == DirSep and path[i+1] == 'l' and path[i+2] == 'i' and path[i+3] == 'b' and path[i+4] == DirSep:
+      let rest = path[i+5 .. ^1]
+      let endIdx = rest.find(DirSep)
+      if endIdx > 0:
+        return rest[0 ..< endIdx]
+      else:
+        return rest
+  return ""
+
+proc isLibPath(path: string): bool =
+  ## Check if path contains a /lib/ directory segment (not just "lib" suffix)
+  var i = 0
+  let s = path
+  while i < s.len:
+    if s[i] == DirSep or s[i] == AltSep:
+      if i + 4 < s.len and s[i+1] == 'l' and s[i+2] == 'i' and s[i+3] == 'b' and
+         (s[i+4] == DirSep or s[i+4] == AltSep):
+        return true
+    i.inc()
+  return false
+
+proc discoverSources(dir: string, filter: LangFilter): seq[SourceFile] =
   for path in walkDirRec(dir):
-    if path.endsWith(".cr"):
-      result.add SourceFile(path: path, lang: "crystal")
-    elif path.endsWith(".gleam"):
-      result.add SourceFile(path: path, lang: "gleam")
+    let isLib = isLibPath(path)
+    if path.endsWith(".cr") and filter != langGleam:
+      result.add SourceFile(
+        path: path,
+        lang: "crystal",
+        isDependency: isLib,
+        dependencyName: if isLib: extractDepName(path) else: ""
+      )
+    elif path.endsWith(".gleam") and filter != langCrystal:
+      result.add SourceFile(path: path, lang: "gleam", isDependency: false, dependencyName: "")
   result.sort(proc(a, b: SourceFile): int = cmp(a.path, b.path))
 
 # ── Extractors ─────────────────────────────────────────────────────────
@@ -158,7 +193,9 @@ proc printFlow(config: Config, finding: JsonNode) =
       let loc = if sf.len > 0 and sl > 0: &"  ({sf}:{sl})" else: ""
       config.echoStyled(Dim, &"    ← {sm}{loc}")
 
-proc printFinding(config: Config, finding: JsonNode) =
+type DepInfo = tuple[isDep: bool, name: string]
+
+proc printFinding(config: Config, finding: JsonNode, depMap: TableRef[string, DepInfo]) =
   let rule     = finding["rule"].getStr()
   let severity = finding["severity"].getStr()
   let file     = finding["file"].getStr()
@@ -166,16 +203,19 @@ proc printFinding(config: Config, finding: JsonNode) =
   let message  = finding["message"].getStr()
   let c = severityColor(severity)
   config.echoBold(c, &"[{rule}] {severity}  {file}:{line}")
+  # Show dependency tag if file is from lib/
+  if depMap.hasKey(file) and depMap[file].isDep:
+    config.echoStyled(Dim, &"  dependency: {depMap[file].name}")
   config.echoStyled(Dim, &"  {message}")
   printFlow(config, finding)
   echo ""
 
-proc printBanner(config: Config, crCount, gleamCount: int) =
+proc printBanner(config: Config, crCount, gleamCount, depCount: int) =
   config.echoBold(Cyan, "╔══════════════════════════════════════╗")
   config.echoBold(Cyan, fmt"║            Catseye v{Version}           ║")
   config.echoBold(Cyan, "╚══════════════════════════════════════╝")
   config.echoStyled(Green, &"  Target:   {config.targetDir}")
-  config.echoPlain(&"  Files:    {crCount} Crystal, {gleamCount} Gleam")
+  config.echoPlain(&"  Files:    {crCount} Crystal, {gleamCount} Gleam" & (if depCount > 0: &" ({depCount} dependencies)" else: ""))
   config.echoPlain(&"  Engine:   Gleam/BEAM (taint v2)")
   echo ""
 
@@ -244,7 +284,7 @@ proc buildCodeFlows(finding: JsonNode, targetDir: string): seq[JsonNode] =
       "threadFlows": [{"locations": threadingItems}],
     })
 
-proc buildSarifResults(findings: JsonNode, rules: seq[JsonNode], targetDir: string): seq[JsonNode] =
+proc buildSarifResults(findings: JsonNode, rules: seq[JsonNode], targetDir: string, depMap: TableRef[string, DepInfo]): seq[JsonNode] =
   for f in findings:
     let rule     = f["rule"].getStr()
     let severity = f["severity"].getStr()
@@ -272,11 +312,15 @@ proc buildSarifResults(findings: JsonNode, rules: seq[JsonNode], targetDir: stri
     }
     if codeFlows.len > 0:
       res["codeFlows"] = %*(codeFlows)
+    # Tag dependency findings
+    if depMap.hasKey(file) and depMap[file].isDep:
+      res["properties"] = %*{"dependency": depMap[file].name}
+      res["message"]["text"] = %(&"[{depMap[file].name}] " & message)
     result.add(res)
 
-proc toSarif(findings: JsonNode, targetDir: string): JsonNode =
+proc toSarif(findings: JsonNode, targetDir: string, depMap: TableRef[string, DepInfo]): JsonNode =
   let rules = buildSarifRules(findings)
-  let results = buildSarifResults(findings, rules, targetDir)
+  let results = buildSarifResults(findings, rules, targetDir, depMap)
   return %*{
     "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
     "version": "2.1.0",
@@ -309,6 +353,7 @@ proc parseArgs(): Config =
     format: fmtTerminal,
     targetDir: "",
     configPath: "",
+    langFilter: langAll,
   )
   var p = initOptParser(commandLineParams())
   while true:
@@ -323,6 +368,18 @@ proc parseArgs(): Config =
       of "no-color":          config.color = false
       of "color":             config.color = true
       of "config":            config.configPath = p.val
+      of "lang":
+        var langVal = p.val
+        if langVal.len == 0:
+          p.next()
+          langVal = p.key
+        case langVal.toLowerAscii()
+        of "crystal", "cr":     config.langFilter = langCrystal
+        of "gleam":             config.langFilter = langGleam
+        of "all":               config.langFilter = langAll
+        else:
+          echo &"Unknown language: {langVal} (use: crystal, gleam, all)"
+          quit(1)
       of "format":
         var fmtVal = p.val
         if fmtVal.len == 0:
@@ -342,6 +399,7 @@ proc parseArgs(): Config =
         echo ""
         echo "Options:"
         echo "  --format <fmt>       Output: terminal (default), json, sarif"
+        echo "  --lang <lang>        Language filter: all (default), crystal, gleam"
         echo "  --config <path>      Config file (.catseye.toml)"
         echo "  --crystal-extractor  Crystal extractor path"
         echo "  --gleam-extractor    Gleam extractor binary path"
@@ -381,19 +439,24 @@ proc main() =
   let cfgOverrides = loadConfigFile(configFile)
 
   # Step 1: Discover sources
-  let sources = discoverSources(config.targetDir)
+  let sources = discoverSources(config.targetDir, config.langFilter)
   if sources.len == 0:
     echo &"No .cr or .gleam files found in {config.targetDir}"
     quit(0)
 
   var crCount = 0
   var gleamCount = 0
+  var depCount = 0
+  let depMap = newTable[string, DepInfo]()
   for s in sources:
     if s.lang == "crystal": crCount.inc()
     elif s.lang == "gleam": gleamCount.inc()
+    if s.isDependency:
+      depCount.inc()
+      depMap[s.path] = (isDep: true, name: s.dependencyName)
 
   if config.format == fmtTerminal:
-    printBanner(config, crCount, gleamCount)
+    printBanner(config, crCount, gleamCount, depCount)
     if configFile.len > 0:
       config.echoStyled(Dim, &"  Config:   {configFile}")
 
@@ -462,24 +525,37 @@ proc main() =
   # Output based on format
   case config.format
   of fmtJson:
+    # Tag findings with dependency info
+    for f in findings:
+      let ffile = f{"file"}.getStr("")
+      if depMap.hasKey(ffile) and depMap[ffile].isDep:
+        f{"dependency"} = %depMap[ffile].name
     var output = %*{
       "version": Version,
       "target": config.targetDir,
       "config": configFile,
       "files_scanned": sources.len,
+      "dependencies_scanned": depCount,
       "nodes_extracted": allNodes.len,
       "findings_count": findingsCount,
       "findings": findings,
     }
     echo output.pretty()
   of fmtSarif:
-    echo toSarif(findings, config.targetDir).pretty()
+    echo toSarif(findings, config.targetDir, depMap).pretty()
   of fmtTerminal:
+    var depFindings = 0
     for f in findings:
-      printFinding(config, f)
+      printFinding(config, f, depMap)
+      let ffile = f{"file"}.getStr("")
+      if depMap.hasKey(ffile) and depMap[ffile].isDep:
+        depFindings.inc()
     echo "─────────────────────────────────────────"
     if findingsCount > 0:
-      config.echoError(&"Found {findingsCount} issue(s) across {sources.len} file(s).")
+      var summary = &"Found {findingsCount} issue(s) across {sources.len} file(s)"
+      if depFindings > 0:
+        summary.add(&" ({depFindings} in dependencies)")
+      config.echoError(summary & ".")
       quit(1)
     else:
       config.echoSuccess(&"No issues found across {sources.len} file(s). ✨")

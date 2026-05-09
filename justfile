@@ -9,11 +9,41 @@ default: build
 build-engine:
     cd src/engine && gleam build
 
+build-extractors: build-engine
+    nim c --out:bin/gleam_extractor src/extractor/gleam_extractor.nim
+
 build-cli:
     nim c --out:bin/catseye src/cli/catseye.nim
 
-build: build-engine build-cli
+build: build-engine build-extractors build-cli
     @echo "✓ All components built"
+
+# ── Scan (all languages) ───────────────────────────────────────────────
+
+# Scan a directory for all supported languages
+scan dir: build
+    ./bin/catseye {{dir}}
+
+# Scan with JSON output
+scan-json dir: build
+    ./bin/catseye --format=json {{dir}}
+
+# Scan with SARIF output (GitHub Code Scanning compatible)
+scan-sarif dir: build
+    ./bin/catseye --format=sarif {{dir}} > catseye-results.sarif
+    @echo "✓ SARIF written to catseye-results.sarif"
+
+# ── Scan (Crystal only) ───────────────────────────────────────────────
+
+# Scan only Crystal (.cr) files
+scan-crystal dir: build
+    ./bin/catseye --lang crystal {{dir}}
+
+# ── Scan (Gleam only) ─────────────────────────────────────────────────
+
+# Scan only Gleam (.gleam) files
+scan-gleam dir: build
+    ./bin/catseye --lang gleam {{dir}}
 
 # ── Test ───────────────────────────────────────────────────────────────
 
@@ -50,35 +80,38 @@ test: build unit-test
 lint: lint-gleam lint-crystal lint-nim
     @echo "✓ All lints passed"
 
-# Check Gleam formatting
 lint-gleam:
     cd src/engine && nix develop --command bash -c 'gleam format --check src'
 
-# Check Crystal with ameba
 lint-crystal:
     nix develop --command bash -c 'CRYSTAL_HAS_WRAPPER=1 ameba src/extractor/ test/samples/'
 
-# Check Nim with compiler checks
 lint-nim:
     nix develop --command bash -c 'nim check src/cli/catseye.nim && nim check src/extractor/gleam_extractor.nim'
 
-# Auto-fix Gleam formatting
 fmt-gleam:
     cd src/engine && nix develop --command bash -c 'gleam format src'
 
 # ── Utilities ──────────────────────────────────────────────────────────
 
+# Run Crystal extractor on a single file (debug)
 extract file:
     CRYSTAL_HAS_WRAPPER=1 crystal run src/extractor/extractor.cr -- {{file}}
 
+# Run Gleam extractor on a single file (debug)
+extract-gleam file: build-extractors
+    ./bin/gleam_extractor {{file}}
+
+# Pipe JSON to the engine directly (debug)
 analyze file:
     @cat {{file}} | erl -noshell \
         -pa src/engine/build/dev/erlang/catseye_engine/ebin \
         -pa src/engine/build/dev/erlang/gleam_stdlib/ebin \
         -eval 'catseye:main(), erlang:halt()'
 
-scan dir: build
-    ./bin/catseye {{dir}}
+# List all recipes
+list:
+    @just --list
 
 clean:
     rm -rf src/engine/build bin/
