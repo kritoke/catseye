@@ -37,8 +37,7 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
   match src.lang with
   | "crystal" ->
-    let cmd = Printf.sprintf
-      "CRYSTAL_HAS_WRAPPER=1 crystal run %s -- %s 2>/dev/null"
+    let cmd = Printf.sprintf "%s %s 2>/dev/null"
       (Filename.quote config.crystal_extractor)
       (Filename.quote src.path)
     in
