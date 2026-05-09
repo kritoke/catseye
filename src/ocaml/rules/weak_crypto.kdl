@@ -1,7 +1,5 @@
 rule "WeakCryptography" severity="Medium" {
     sinks {
-        sink "MD5"
-        sink "SHA1"
         sink "Digest::MD5"
         sink "Digest::SHA1"
         sink "hashlib.md5"

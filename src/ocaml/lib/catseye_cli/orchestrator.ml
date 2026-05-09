@@ -52,8 +52,16 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
       with _ -> None
     else None
   | "gleam" ->
-    (* TODO: Phase 2 — OCaml tree-sitter extractor *)
-    None
+    (try
+      let nodes = Catseye_engine.Gleam.extract src.path in
+      (match nodes with
+       | Ok ns -> Some ns
+       | Error (`Msg msg) ->
+         Printf.eprintf "Gleam extraction failed: %s\n" msg;
+         None)
+     with e ->
+       Printf.eprintf "Gleam extraction error: %s\n" (Printexc.to_string e);
+       None)
   | _ -> None
 
 let print_banner (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =

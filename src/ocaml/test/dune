@@ -1,6 +1,1 @@
-(executable
- (name test_weak)
- (libraries unix catseye.rules catseye.types yojson))
-(executable
- (name debug_rules)
- (libraries unix catseye.engine catseye.rules catseye.types yojson))
+(executable (name test_gleam) (libraries unix catseye.engine catseye.types yojson))
