@@ -1,0 +1,19 @@
+rule "SQLInjection" severity="Critical" {
+    sinks {
+        sink "db.exec"
+        sink "db.query"
+        sink "db.scalar"
+        sink "db.query_one"
+        sink "db.query_all"
+        sink "db.execute"
+        sink "database.exec"
+        sink "database.query"
+    }
+    sources {
+        source "params"
+        source "query"
+        source "user_input"
+        source "request"
+    }
+    message "Potential SQL injection via {sink} with tainted argument(s): {tainted_vars}."
+}

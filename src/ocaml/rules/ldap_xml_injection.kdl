@@ -1,0 +1,15 @@
+rule "LDAPInjection" severity="High" {
+    sinks {
+        sink "LDAP.search"
+        sink "LDAP.query"
+        sink "ldap.search"
+        sink "ldap.bind"
+    }
+    sources {
+        source "params"
+        source "user_input"
+        source "username"
+        source "query"
+    }
+    message "Potential LDAP injection via {sink} with user-controlled input: {tainted_vars}."
+}

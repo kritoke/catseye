@@ -1,0 +1,14 @@
+rule "ReDoS" severity="Medium" {
+    sinks {
+        sink "Regex.new"
+        sink "Regex.compile"
+        sink "re.compile"
+        sink "regexp.compile"
+    }
+    sources {
+        source "params"
+        source "user_input"
+        source "query"
+    }
+    message "Potential ReDoS: {sink} with variable argument. User-controlled regex patterns can cause catastrophic backtracking."
+}

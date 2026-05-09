@@ -1,0 +1,16 @@
+rule "OpenRedirect" severity="Medium" {
+    sinks {
+        sink "redirect"
+        sink "response.redirect"
+        sink "send_redirect"
+        sink "HTTP::Client.get"
+    }
+    sources {
+        source "params" field="url"
+        source "url"
+        source "redirect_url"
+        source "return_to"
+        source "next"
+    }
+    message "Potential open redirect via {sink} with user-controlled URL: {tainted_vars}."
+}

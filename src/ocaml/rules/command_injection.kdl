@@ -1,0 +1,42 @@
+rule "CommandInjection" severity="Critical" {
+    sinks {
+        sink "system"
+        sink "Process.run"
+        sink "os.command"
+        sink "os.cmd"
+        sink "shell.cmd"
+        sink "cmd.run"
+        sink ":os.cmd"
+        sink "erlexec.Shell"
+    }
+    sources {
+        source "params"
+        source "gets"
+        source "STDIN"
+        source "ARGV"
+        source "env"
+        source "user_input"
+        source "input"
+        source "cmd"
+        source "command"
+        source "repo"
+    }
+    message "Potential command injection via {sink}. User input may flow into a shell command."
+}
+
+rule "EnvInjection" severity="High" {
+    sinks {
+        sink "ENV[]="
+        sink "ENV.[]="
+        sink "putenv"
+        sink "os.setenv"
+        sink "os.putenv"
+        sink "system.putenv"
+    }
+    sources {
+        source "params"
+        source "env"
+        source "user_input"
+    }
+    message "Potential environment injection via {sink}. Validate and whitelist allowed variable names and values."
+}

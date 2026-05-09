@@ -3,13 +3,30 @@
 open Types
 open Catseye_types
 
-(* Check if a call name matches a sink pattern (prefix match) *)
+(* Check if a call name matches a sink pattern (substring match, like Gleam engine) *)
 let matches_sink (pattern : string) (name : string) : bool =
-  String.starts_with ~prefix:pattern name
+  let plen = String.length pattern in
+  let nlen = String.length name in
+  (* Check if pattern is a substring of name *)
+  let rec check i =
+    if i + plen > nlen then false
+    else if String.sub name i plen = pattern then true
+    else check (i + 1)
+  in
+  check 0
 
-(* Check if a call name matches a sanitizer pattern *)
+(* Check if a call name matches a sanitizer pattern (substring) *)
 let matches_sanitizer (patterns : string list) (name : string) : bool =
-  List.exists (fun p -> String.starts_with ~prefix:p name) patterns
+  List.exists (fun p ->
+    let plen = String.length p in
+    let nlen = String.length name in
+    let rec check i =
+      if i + plen > nlen then false
+      else if String.sub name i plen = p then true
+      else check (i + 1)
+    in
+    check 0
+  ) patterns
 
 (* Check if any arg is a variable (not literal) *)
 let has_var_args (node : Security_node.t) : bool =

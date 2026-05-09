@@ -1,0 +1,18 @@
+rule "Deserialization" severity="High" {
+    sinks {
+        sink "JSON.parse"
+        sink "YAML.parse"
+        sink "XML.parse"
+        sink "Marshal.load"
+        sink "Oj.load"
+        sink "json.decode"
+        sink "yaml.parse"
+    }
+    sources {
+        source "params"
+        source "request"
+        source "body"
+        source "user_input"
+    }
+    message "Potential insecure deserialization via {sink}. Deserializing untrusted data can lead to RCE."
+}
