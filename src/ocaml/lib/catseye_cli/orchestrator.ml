@@ -145,7 +145,7 @@ let run (config : t) : int =
   List.iter (fun src ->
     if config.format = Terminal then
       Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
-    match extract_file config src with
+    match (try extract_file config src with Sys_error _ -> None) with
     | Some nodes -> all_nodes := nodes @ !all_nodes
     | None ->
       if config.format = Terminal then

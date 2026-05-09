@@ -39,6 +39,7 @@ let extract_dep_name (path : string) : string =
 let discover_sources (dir : string) (filter : lang_filter) : source_file list =
   let results = ref [] in
   let rec walk path =
+    try
     if Sys.is_directory path then begin
       let entries = Sys.readdir path in
       Array.iter (fun entry ->
@@ -53,6 +54,7 @@ let discover_sources (dir : string) (filter : lang_filter) : source_file list =
       else if Filename.check_suffix path ".gleam" && filter <> Crystal then
         results := { path; lang = "gleam"; is_dependency = false; dependency_name = "" } :: !results
     end
+    with Sys_error _ -> ()
   in
   walk dir;
   List.sort (fun a b -> String.compare a.path b.path) !results
