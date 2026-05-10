@@ -64,6 +64,15 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
        None)
   | _ -> None
 
+(** Extract nodes from a source file, handling logging and caching.
+    Returns nodes if extraction succeeded, or None on failure. *)
+let extract_with_log (config : t) (src : source_file) 
+    : Security_node.t list option =
+  if config.format = Terminal then
+    Printf.printf "%s→ Extracting: %s%s\n" 
+      (styled cyan config "") src.path (styled reset config "");
+  try extract_file config src with Sys_error _ -> None
+
 let print_banner (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =
   Printf.printf "%s\n" (styled (bold ^ cyan) config
     "╔══════════════════════════════════════╗");
@@ -146,28 +155,26 @@ let run (config : t) : int =
   let all_nodes = ref [] in
   let cache_hits = ref 0 in
   List.iter (fun src ->
-    if config.no_cache then begin
-      (* No cache — always extract *)
-      if config.format = Terminal then
-        Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
-      match (try extract_file config src with Sys_error _ -> None) with
-      | Some nodes -> all_nodes := nodes @ !all_nodes
-      | None -> ()
-    end else begin
-      (* Check cache first *)
-      match Catseye_engine.Cache.check src.path with
-      | Some cached ->
-        incr cache_hits;
-        all_nodes := cached @ !all_nodes
-      | None ->
-        if config.format = Terminal then
-          Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
-        (match (try extract_file config src with Sys_error _ -> None) with
-         | Some nodes ->
-           Catseye_engine.Cache.store src.path nodes;
-           all_nodes := nodes @ !all_nodes
-         | None -> ())
-    end
+    let nodes = 
+      if config.no_cache then
+        (* No cache — always extract *)
+        extract_with_log config src
+      else
+        (* Check cache first, extract if miss *)
+        match Catseye_engine.Cache.check src.path with
+        | Some cached ->
+          incr cache_hits;
+          Some cached
+        | None ->
+          (match extract_with_log config src with
+           | Some ns ->
+             Catseye_engine.Cache.store src.path ns;
+             Some ns
+           | None -> None)
+    in
+    match nodes with
+    | Some ns -> all_nodes := List.rev_append ns !all_nodes
+    | None -> ()
   ) sources;
   let nodes = !all_nodes in
   if nodes = [] then begin

@@ -22,16 +22,14 @@ jobs:
       - name: Build Catseye
         run: |
           nix develop --command bash -c '
-            cd /workspace
-            nim c --out:bin/catseye src/cli/catseye.nim
-            nim c --out:bin/gleam_extractor src/extractor/gleam_extractor.nim
-            cd src/engine && gleam build
+            cd src/ocaml && dune build
+            cp _build/default/bin/main.exe ../../bin/catseye-ocaml
           '
 
       - name: Run Security Scan
         run: |
           nix develop --command bash -c '
-            bin/catseye --format=sarif . > catseye-results.sarif
+            bin/catseye-ocaml --rules src/ocaml/rules --format sarif . > catseye-results.sarif
           '
 
       - name: Upload SARIF Results

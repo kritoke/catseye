@@ -6,8 +6,6 @@ result-*
 
 # Dependencies
 node_modules/
-.shards/
-elm-stuff/
 
 # Build artifacts
 bin/
@@ -22,12 +20,8 @@ bin/
 build/
 _build/
 
-# Erlang crash dumps
-erl_crash.dump
+# Crash dumps
 *.dump
-
-# Gleam build output
-src/engine/build/
 
 # OCaml build artifacts
 src/ocaml/_build/

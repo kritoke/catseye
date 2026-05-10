@@ -127,4 +127,77 @@ let call_node =
 
 ---
 
-*Last updated: 2026-05-09*
+## Deferred: Anti-Pattern Refactoring (2026-05-10)
+
+Code quality improvements identified during OCaml code review.
+
+### A3 — Simplify interproc nesting
+
+**File**: `src/ocaml/lib/catseye_engine/interproc.ml`
+
+**Issue**: 4-level nesting with duplicated record creation (same `{var_name; file; line; ...}` appears 3x).
+
+**Why deferred**: Complexity, medium risk of breaking control flow. The `trace` function in DAG was the actual bottleneck.
+
+**Revisit trigger**: When DAG tracing is stable, revisit interproc for cleaner code.
+
+**How**: Extract `make_taint_record` helper, precompute call lookup map, use strategy pattern.
+
+### A7 — Tokenizer helper functions
+
+**File**: `src/ocaml/lib/catseye_engine/gleam.ml`
+
+**Issue**: 50-line `tokenize` function with dense nested conditionals.
+
+**Why deferred**: Lower priority. Tokenizer behavior is correct and well-tested. Refactoring is cosmetic.
+
+**Revisit trigger**: When Gleam extractor behavior needs to change.
+
+**How**: Extract named helpers with `rec` and `and` for `handle_text`, `handle_open_tag`, etc.
+
+---
+
+## Deferred: Pre-Existing Bugs
+
+### B2 — Message template truncation
+
+**File**: `src/ocaml/lib/catseye_rules/interpreter.ml`
+
+**Issue**: Finding messages truncated to `"rs}"` instead of full template.
+
+**Example**: Template `"Potential open redirect via {sink} with user-controlled URL: {tainted_vars}."` produces `"rs}"`.
+
+**Revisit trigger**: When message readability is needed for user-facing output.
+
+**How**: Add debug tracing to `substitute_template`, fix string handling.
+
+### B3 — Taint source matching
+
+**File**: `src/ocaml/lib/catseye_engine/constants.ml`
+
+**Issue**: Function parameters need exact names (`params`) to be recognized. Generic names (`p`) not matched.
+
+**Revisit trigger**: When testing shows Crystal code with generic param names is missed.
+
+**How**: Add `"p"` to `known_sources` list.
+
+---
+
+## Summary Table (Updated)
+
+| Item | File | Risk | Revisit trigger |
+|------|------|------|----------------|
+| parallel.ml | `parallel.ml` | Low | 30+ stable differential runs |
+| merge_db | `merge.ml` | Low | D2 resolved |
+| Db O(n) check | `db.ml` | Low | Profiling shows >10% DB time |
+| D1: same-line search | `interproc.ml` | Medium | Inspect raw tree-sitter JSON |
+| D2: cross-file taint | `propagate.ml` | High | Phase 0 finds missing cross-file flows |
+| N3: Blake3 | `cache.ml` | Low | Profiling shows >10% hash time |
+| A3: interproc nesting | `interproc.ml` | Medium | After DAG stability |
+| A7: tokenizer helpers | `gleam.ml` | Low | Gleam extractor changes |
+| B2: message template | `interpreter.ml` | Low | User-facing output needed |
+| B3: taint source matching | `constants.ml` | Low | Testing shows missed cases |
+
+---
+
+*Last updated: 2026-05-10*

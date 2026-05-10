@@ -4,6 +4,9 @@ open Catseye_types
 
 module StringMap = Map.Make(String)
 
+(** Named constants for Hashtbl initial sizes *)
+let taint_dedup_size = 64
+
 type taint_source =
   | Known_source of string       (* standard source name *)
   | From_var of string           (* propagated from another tainted var *)
@@ -39,10 +42,11 @@ let is_tainted_in_file (db : t) (var : string) (file : string) : bool =
   | None -> false
 
 let get_tainted_vars (db : t) : string list =
+  let seen = Hashtbl.create taint_dedup_size in
   StringMap.fold (fun _ records acc ->
     List.fold_left (fun acc r ->
-      if List.mem r.var_name acc then acc
-      else r.var_name :: acc
+      if Hashtbl.mem seen r.var_name then acc
+      else (Hashtbl.add seen r.var_name true; r.var_name :: acc)
     ) acc records
   ) db []
 

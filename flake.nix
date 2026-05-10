@@ -29,31 +29,6 @@
         '';
       };
 
-      # ── Legacy toolchains (Nim, Gleam, Crystal) ──────────────────────
-
-      nim = pkgs.nim;
-      nimble = pkgs.nimble;
-
-      gleamBin = pkgs.stdenv.mkDerivation {
-        pname = "gleam";
-        version = "1.16.0";
-        src = pkgs.fetchurl {
-          url = "https://github.com/gleam-lang/gleam/releases/download/v1.16.0/gleam-v1.16.0-aarch64-unknown-linux-musl.tar.gz";
-          sha256 = "e7af3677a04a1b88f19896b7b351f407784c62e97078fe680f90a91a5da162d8";
-        };
-        dontConfigure = true;
-        dontBuild = true;
-        installPhase = ''
-          mkdir -p $out/bin
-          cp gleam $out/bin/gleam
-          chmod +x $out/bin/gleam
-        '';
-        unpackPhase = "tar xzf $src";
-        stripAllFrom = [ "bin/gleam" ];
-      };
-
-      erlang = pkgs.erlang;
-
       crystal_1_18 =
         if builtins.hasAttr "crystal_1_18" pkgs
         then pkgs.crystal_1_18
@@ -118,8 +93,7 @@
             if builtins.substring 0 2 content == "#!" then {}
             else if try_with_args.success then try_with_args.value
             else if try_no_args.success then (if try_no_args.value ? outputs then {} else try_no_args.value)
-            else {}
-        else {};
+            else {};
 
       ticket = if privateConfig ? ticket then privateConfig.ticket else defaultTicket;
       privateShellHook = if privateConfig ? shellHook then privateConfig.shellHook else "";
@@ -127,8 +101,8 @@
     in {
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = with pkgs; [
-          # Legacy toolchains
-          nim nimble gleamBin crystal_1_18 rebar3
+          # Crystal extractor
+          crystal_1_18
 
           # OCaml toolchain
           ocamlPkgs.ocaml
@@ -143,9 +117,7 @@
           echo "║        Catseye DevShell Active       ║"
           echo "╚══════════════════════════════════════╝"
           echo ""
-          echo "  Legacy: Nim $(nim --version 2>/dev/null | head -1 | awk '{print $4}')"
-          echo "          Gleam $(gleam --version 2>/dev/null | awk '{print $2}')"
-          echo "          Crystal $(crystal version 2>/dev/null | head -1 | awk '{print $2}')"
+          echo "  Crystal $(crystal version 2>/dev/null | head -1 | awk '{print $2}')"
           echo "  OCaml:  $(ocaml --version)"
           echo "  Dune:   $(dune --version 2>/dev/null | head -1)"
           echo ""
