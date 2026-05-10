@@ -80,7 +80,7 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     | Some sink ->
       (match build_dag sink db nodes with
        | None -> results := f :: !results
-       | Some dag -> 
+       | Some dag ->
          let flow = dag_to_flow_steps dag nodes in
          results := { f with Finding.flow = flow } :: !results)
   ) raw_findings;

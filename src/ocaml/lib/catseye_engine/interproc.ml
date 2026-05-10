@@ -9,6 +9,8 @@
 open Catseye_types
 open Db
 
+module StringMap = Map.Make(String)
+
 let is_sanitizer_call (name : string) : bool =
   Constants.is_sanitizer name
 
@@ -35,7 +37,18 @@ let taint_source_of_call (call : Security_node.t) (db : Db.t) : string =
   |> Option.map (fun a -> a.Security_node.value)
   |> Option.value ~default:call.Security_node.name
 
+(** Build a (file,line) → Call node map for O(1) lookup. *)
+let build_call_map (nodes : Security_node.t list) : Security_node.t StringMap.t =
+  List.fold_left (fun m n ->
+    if n.Security_node.node_type = Security_node.Call then
+      StringMap.add
+        (n.Security_node.file ^ ":" ^ string_of_int n.Security_node.line) n m
+    else m
+  ) StringMap.empty nodes
+
 let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t =
+  (* Precompute call lookup map — O(n) instead of O(n²) *)
+  let call_map = build_call_map nodes in
   List.fold_left (fun acc node ->
     if node.Security_node.node_type <> Security_node.Assign then acc
     else if Db.has_record acc node.Security_node.name then acc
@@ -64,13 +77,11 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
         }
       | None ->
         (* Strategy 2: A call arg is tainted → return is tainted.
-           Find the Call node at the same location to check for sanitizers. *)
+           Use precomputed call_map for O(1) lookup instead of scanning all nodes. *)
         let call_node =
-          List.find_opt (fun n ->
-            n.Security_node.node_type = Security_node.Call
-            && n.Security_node.file = node.Security_node.file
-            && n.Security_node.line = node.Security_node.line
-          ) nodes
+          StringMap.find_opt
+            (node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line)
+            call_map
         in
         (match call_node with
          | Some cn when is_sanitizer_call cn.Security_node.name ->

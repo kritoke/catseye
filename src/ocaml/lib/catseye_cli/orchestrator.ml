@@ -299,6 +299,15 @@ let crows_nest_to_json (target_dir : string) (results : Catseye_crowsnest.Aggreg
     ]);
   ]
 
+(* ── Timing helper ──────────────────────────────────────────────────── *)
+
+let time_phase label f =
+  let t0 = Unix.gettimeofday () in
+  let result = f () in
+  let t1 = Unix.gettimeofday () in
+  Printf.eprintf "  [timing] %s: %.3fs\n" label (t1 -. t0);
+  result
+
 (* ── Main pipeline ──────────────────────────────────────────────────── *)
 
 let run (config : t) : int =
@@ -309,7 +318,8 @@ let run (config : t) : int =
   let crows_nest_results = run_crows_nest config in
 
   (* Step 1: Discover sources *)
-  let sources = discover_sources config.target_dir config.lang_filter config.exclude_dirs in
+  let sources = time_phase "discovery" (fun () ->
+    discover_sources config.target_dir config.lang_filter config.exclude_dirs) in
   if sources = [] then begin
     (* Still print Crow's Nest if we have results *)
     (match crows_nest_results with
@@ -326,42 +336,45 @@ let run (config : t) : int =
   if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
 
   (* Step 2: Extract (with cache) *)
-  let all_nodes = ref [] in
-  let cache_hits = ref 0 in
-  List.iter (fun src ->
-    let nodes =
-      if config.no_cache then
-        (* No cache — always extract *)
-        extract_with_log config src
-      else
-        (* Check cache first, extract if miss *)
-        match Catseye_engine.Cache.check src.path with
-        | Some cached ->
-          incr cache_hits;
-          Some cached
-        | None ->
-          (match extract_with_log config src with
-           | Some ns ->
-             Catseye_engine.Cache.store src.path ns;
-             Some ns
-           | None -> None)
-    in
-    match nodes with
-    | Some ns -> all_nodes := List.rev_append ns !all_nodes
-    | None -> ()
-  ) sources;
-  let nodes = !all_nodes in
+  let (nodes, cache_hits) = time_phase "extraction" (fun () ->
+    let all_nodes = ref [] in
+    let cache_hits = ref 0 in
+    List.iter (fun src ->
+      let nodes =
+        if config.no_cache then
+          (* No cache — always extract *)
+          extract_with_log config src
+        else
+          (* Check cache first, extract if miss *)
+          match Catseye_engine.Cache.check src.path with
+          | Some cached ->
+            incr cache_hits;
+            Some cached
+          | None ->
+            (match extract_with_log config src with
+             | Some ns ->
+               Catseye_engine.Cache.store src.path ns;
+               Some ns
+             | None -> None)
+      in
+      match nodes with
+      | Some ns -> all_nodes := List.rev_append ns !all_nodes
+      | None -> ()
+    ) sources;
+    (!all_nodes, !cache_hits)
+  ) in
   if nodes = [] then begin
     Printf.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
     exit 0
   end;
 
   (* Step 3: Load rules *)
-  let rules = match Catseye_rules.Loader.load_rules config.rules_dir with
+  let rules = time_phase "rules" (fun () ->
+    match Catseye_rules.Loader.load_rules config.rules_dir with
     | Ok r -> r
     | Error (`Msg msg) ->
       Printf.eprintf "Warning: %s\n" msg;
-      []
+      [])
   in
 
   (* Step 4: Analyze *)
@@ -374,7 +387,8 @@ let run (config : t) : int =
         (styled cyan config "") (List.length nodes)
   end;
 
-  let findings = Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes in
+  let findings = time_phase "analysis" (fun () ->
+    Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes) in
 
   (* Step 4b: Predator Vision — reachability analysis *)
   let reachability = if config.predator_vision && findings <> [] then begin
@@ -435,7 +449,7 @@ let run (config : t) : int =
       | Some results -> Some (crows_nest_to_json config.target_dir results)
       | None -> None
     in
-    output_json config sources nodes reachability !cache_hits
+    output_json config sources nodes reachability cache_hits
       ?supply_chain ();
     if reachability <> [] then 1 else 0
   | Sarif ->

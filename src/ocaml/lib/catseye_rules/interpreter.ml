@@ -25,25 +25,27 @@ let contains_substring ~pattern ~in_ = is_substring ~pattern ~in_
 let substitute_template (template : string) ~(sink : string) ~(vars : string) : string =
   let substitute s what with_ =
     let wlen = String.length what in
-    let rec loop acc i =
-      let len = String.length s in
-      if i + wlen > len then
-        (* No match at or after i; done — prepend accumulated parts *)
-        let rest = if i < len then String.sub s i (len - i) else "" in
-        String.concat "" (List.rev (rest :: acc))
-      else if String.sub s i wlen = what then
-        (* Found match: prepend everything before + replacement, then
-           continue scanning the remainder for further occurrences *)
-        let before = if i > 0 then String.sub s 0 i else "" in
-        loop (before :: with_ :: acc) (i + wlen)
-      else
-        loop acc (i + 1)
-    in
-    loop [] 0
+    if wlen = 0 then s  (* empty pattern → no substitution *)
+    else
+      let result = Buffer.create (String.length s + String.length with_) in
+      let rec scan i =
+        let len = String.length s in
+        if i + wlen > len then
+          Buffer.add_substring result s i (len - i)
+        else if String.sub s i wlen = what then begin
+          Buffer.add_substring result s i 0;  (* add nothing — already past *)
+          Buffer.add_string result with_;
+          scan (i + wlen)
+        end else begin
+          Buffer.add_char result s.[i];
+          scan (i + 1)
+        end
+      in
+      scan 0;
+      Buffer.contents result
   in
-  template
-  |> substitute "{sink}" sink
-  |> substitute "{tainted_vars}" vars
+  let r1 = substitute template "{sink}" sink in
+  substitute r1 "{tainted_vars}" vars
 
 (* ── Sink / Sanitizer Matching ─────────────────────────────────────── *)
 
