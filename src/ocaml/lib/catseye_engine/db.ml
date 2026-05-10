@@ -77,9 +77,9 @@ let has_record (db : t) (var : string) : bool =
 let db_size (db : t) : int =
   StringMap.fold (fun _ records acc -> acc + List.length records) db 0
 
-(** Shared logic: given an assignment node, check if any ArgVar arg is tainted
-    (same-file or global), and if not sanitized by a call arg. Returns the
-    source variable name if taint is found. *)
+(** Shared taint-check: given an Assign node, return the source var name if
+    any ArgVar arg is tainted (same-file or global) and none of the args is a
+    sanitizer call. *)
 let check_assignment_taint (node : Security_node.t) (acc : t) : string option =
   let is_sanitized =
     List.exists (fun a ->

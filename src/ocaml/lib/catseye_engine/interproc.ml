@@ -93,7 +93,7 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
          | _ ->
            (* Fallback: use shared taint-check helper (handles same-file
               and global taint, sanitizer calls, and ArgVar matching) *)
-           match Propagate.check_assignment_taint node acc with
+           match Db.check_assignment_taint node acc with
            | Some source_var ->
              Db.add_record acc {
                var_name = node.Security_node.name

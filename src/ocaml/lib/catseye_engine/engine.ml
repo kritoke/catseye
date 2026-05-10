@@ -20,19 +20,18 @@ let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   propagate nodes with_interproc
 
 (** Convert a vulnerability DAG to flow steps for a finding.
-    Traces paths from entry points toward the sink node. *)
+    Traces paths from entry points toward the sink node using DFS with
+    post-order append (via fold_right). After all branches are collected,
+    one List.rev puts steps in source → ... → sink order. *)
 let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
     (_all : Security_node.t list) : Finding.flow_step list =
   let open Catseye_types.Dag_types in
-  (* Build a lookup: node_id → dag_node *)
-  let node_of_id id =
-    List.find_opt (fun n -> n.id = id) dag.nodes in
-  (* Build outgoing edges: node_id → list of (dst_id, edge_label) *)
+  let node_of_id id = List.find_opt (fun n -> n.id = id) dag.nodes in
   let succs src =
     List.filter_map (fun e ->
-      if e.src = src then Some (e.dst, e.label) else None
+      if e.src = src then Some e.dst else None
     ) dag.edges
-    |> List.sort (fun (a, _) (b, _) -> String.compare a b)
+    |> List.sort String.compare
   in
   let visited = Hashtbl.create 16 in
   let rec dfs acc node_id =
@@ -42,20 +41,14 @@ let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
       match node_of_id node_id with
       | None -> acc
       | Some n ->
-        let step = { Finding.file = n.file; line = n.line; message = n.label } in
         if node_id = dag.exit_point then
-          (* Sink reached — include and stop this branch *)
-          step :: acc
+          { Finding.file = n.file; line = n.line; message = n.label } :: acc
         else
-          (* Continue tracing forward through successors *)
-          let acc' = step :: acc in
-          List.fold_left (fun a (dst, _label) ->
-            dfs a dst
-          ) acc' (succs node_id)
+          let acc' = { Finding.file = n.file; line = n.line; message = n.label } :: acc in
+          List.fold_right (fun dst a -> dfs a dst) (succs node_id) acc'
     end
   in
-  let steps = List.fold_left dfs [] dag.entry_points in
-  (* Reverse so steps go source → ... → sink *)
+  let steps = List.fold_right (fun entry acc -> dfs acc entry) dag.entry_points [] in
   List.rev steps
 
 (** Run the full analysis pipeline and return findings with populated flow.
