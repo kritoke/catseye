@@ -10,3 +10,22 @@ rule "WeakCryptography" severity="Medium" {
     }
     message "Weak cryptography: {sink} uses a weak hashing algorithm (MD5/SHA1). Use SHA-256 or stronger."
 }
+
+rule "InsecureRandom" severity="Low" {
+    sinks {
+        sink "int.random"
+        sink "float.random"
+        sink "list.random"
+        sink "Math.random"
+        sink "Random.rand"
+        sink "random" {
+            sanitizer "SecureRandom"
+            sanitizer "Secure"
+            sanitizer "Crypto"
+        }
+    }
+    conditions {
+        skip_taint_check
+    }
+    message "Insecure random: {sink} may use a non-cryptographic PRNG. Use SecureRandom for security contexts."
+}
