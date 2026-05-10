@@ -208,10 +208,8 @@ let run (config : t) : int =
     output_json config sources nodes findings !cache_hits;
     if findings <> [] then 1 else 0
   | Sarif ->
-    (* TODO: Phase 4 — SARIF output from DAG *)
-    Printf.printf "{\"error\": \"SARIF output not yet implemented in OCaml engine\"}\n";
-    1
+    print_string (Sarif.to_sarif findings);
+    if findings <> [] then 1 else 0
   | Markdown ->
-    (* TODO: Phase 4 — Markdown output from DAG *)
-    Printf.printf "# Catseye Security Report\n\n*SARIF output not yet implemented*\n";
-    1
+    print_string (Markdown.to_markdown findings config.target_dir);
+    if findings <> [] then 1 else 0

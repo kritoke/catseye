@@ -1,4 +1,4 @@
-rule "PathTraversal" severity="Medium" {
+rule "PathTraversal" severity="High" {
     sinks {
         sink "File.read" {
             sanitizer "Path.basename"
@@ -16,6 +16,18 @@ rule "PathTraversal" severity="Medium" {
         sink "simplifile.write"
         sink "simplifile.delete"
     }
+    sources {
+        source "params" field="path"
+        source "path"
+        source "url"
+        source "filename"
+        source "filepath"
+        source "user_path"
+    }
+    message "Potential path traversal via {sink} with variable argument(s): {tainted_vars}. Validate and sanitize path components."
+}
+
+rule "PathTraversal" severity="Medium" {
     sinks {
         sink "File.join"
         sink "Path.join"
@@ -28,5 +40,5 @@ rule "PathTraversal" severity="Medium" {
         source "filepath"
         source "user_path"
     }
-    message "Potential path traversal via {sink} with variable argument(s): {tainted_vars}. Validate and sanitize path components."
+    message "Potential path traversal via {sink} (path join) with variable argument(s): {tainted_vars}. Validate path components."
 }
