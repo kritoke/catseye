@@ -1,8 +1,8 @@
 # Catseye — build & dev tasks
 # Run: just <task>
 #
-# All OCaml/dune tasks are wrapped with nix develop so the
-# toolchain (ocaml, dune, opam libs) is always available.
+# All OCaml/dune tasks and scan tasks are wrapped with nix develop
+# so the full toolchain (ocaml, dune, tree-sitter) is always available.
 
 # ── Nix wrapper ───────────────────────────────────────────────────────
 
@@ -42,48 +42,46 @@ clean-ocaml:
 
 # ── Scan ──────────────────────────────────────────────────────────────
 
-# Scan — terminal output
+# Scan — terminal output (default: Hunter persona on)
 scan dir: build-ocaml
-    ./bin/catseye-ocaml --rules src/ocaml/rules {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules {{dir}}"
 
-# Scan with Hunter persona + Predator Vision + Crow's Nest
+# Scan with all Hunter features
 scan-hunter dir: build-ocaml
-    ./bin/catseye-ocaml --rules src/ocaml/rules --predator-vision --crows-nest {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --predator-vision --crows-nest {{dir}}"
+
+# Scan — plain output (no persona)
+scan-plain dir: build-ocaml
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --no-persona {{dir}}"
 
 # Scan — JSON to stdout
 scan-json dir: build-ocaml
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format json {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format json {{dir}}"
 
 # Scan — JSON to file
 scan-json-file dir: build-ocaml
     @mkdir -p {{dir}}/planning
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format json \
-        -o {{dir}}/planning/catseye-scan-results.json {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format json -o {{dir}}/planning/catseye-scan-results.json {{dir}}"
     @echo "✓ JSON → {{dir}}/planning/catseye-scan-results.json"
 
 # Scan — SARIF to file
 scan-sarif dir: build-ocaml
     @mkdir -p {{dir}}/planning
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format sarif \
-        -o {{dir}}/planning/catseye-scan-results.sarif {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format sarif -o {{dir}}/planning/catseye-scan-results.sarif {{dir}}"
     @echo "✓ SARIF → {{dir}}/planning/catseye-scan-results.sarif"
 
 # Scan — Markdown to file
 scan-md dir: build-ocaml
     @mkdir -p {{dir}}/planning
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format markdown \
-        -o {{dir}}/planning/catseye-security-report.md {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format markdown -o {{dir}}/planning/catseye-security-report.md {{dir}}"
     @echo "✓ Markdown → {{dir}}/planning/catseye-security-report.md"
 
 # Scan — all formats to planning/
 scan-all dir: build-ocaml
     @mkdir -p {{dir}}/planning
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format json \
-        -o {{dir}}/planning/catseye-scan-results.json {{dir}}
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format markdown \
-        -o {{dir}}/planning/catseye-security-report.md {{dir}}
-    ./bin/catseye-ocaml --rules src/ocaml/rules --format sarif \
-        -o {{dir}}/planning/catseye-scan-results.sarif {{dir}}
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format json -o {{dir}}/planning/catseye-scan-results.json {{dir}}"
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format markdown -o {{dir}}/planning/catseye-security-report.md {{dir}}"
+    just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format sarif -o {{dir}}/planning/catseye-scan-results.sarif {{dir}}"
     @echo "✓ All reports → {{dir}}/planning/"
 
 # ── Test ───────────────────────────────────────────────────────────────
@@ -91,13 +89,13 @@ scan-all dir: build-ocaml
 test: test-ocaml
     @echo ""
     @echo "=== E2E: Vulnerable samples ==="
-    @./bin/catseye-ocaml --rules src/ocaml/rules --format=json test/samples/ > /tmp/catseye-test-out.json 2>/dev/null
+    @just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format=json test/samples/ > /tmp/catseye-test-out.json 2>/dev/null"
     @python3 -c "import json,sys; d=json.load(open('/tmp/catseye-test-out.json')); c=d['findings_count']; print(f'  Findings: {c} (expect >= 10)'); sys.exit(1 if c<10 else 0)"
     @echo "  ✓ Finding count OK"
     @echo ""
     @echo "=== E2E: Safe samples ==="
     @mkdir -p /tmp/catseye-safe-test && cp test/samples/safe.cr /tmp/catseye-safe-test/
-    @./bin/catseye-ocaml --rules src/ocaml/rules --format=json /tmp/catseye-safe-test > /tmp/catseye-safe-out.json 2>/dev/null
+    @just _nix "cd /workspaces/catseye && ./bin/catseye-ocaml --rules src/ocaml/rules --format=json /tmp/catseye-safe-test > /tmp/catseye-safe-out.json 2>/dev/null"
     @python3 -c "import json,sys; d=json.load(open('/tmp/catseye-safe-out.json')); c=d['findings_count']; print(f'  Findings: {c} (expect 0)'); sys.exit(1 if c!=0 else 0)"
     @echo "  ✓ Safe samples clean"
     @echo ""

@@ -314,7 +314,7 @@ let extract file_path =
   | Error e -> Error e
   | Ok grammar ->
   let cmd = Printf.sprintf
-    "tree-sitter parse -l '%s' --lang-name gleam -x '%s' 2>/dev/null"
+    "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null"
     grammar file_path in
   let (out, inp, err) = Unix.open_process_full cmd (Unix.environment ()) in
   let buf = Buffer.create 8192 in
