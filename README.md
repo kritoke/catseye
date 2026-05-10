@@ -26,8 +26,8 @@ nix develop
 # Build
 just ocaml
 
-# Scan a project
-just scan dir path/to/project/src
+# Scan a project (terminal, Hunter persona)
+just scan path/to/project/src
 
 # JSON output
 just scan-json path/to/project/src
@@ -42,14 +42,17 @@ just scan-all path/to/project/src
 catseye-ocaml [options] <directory>
 
 Options:
-  --format <fmt>       Output: terminal (default), json, sarif, markdown
-  -o, --output <path>  Write results to file
-  --rules <path>       Rules directory (default: rules/)
-  --lang <lang>        Language filter: all (default), crystal, gleam
-  --no-color           Disable colored output
-  --no-cache           Disable extraction cache
-  --parallelism <n>    Parallel extraction workers (0 = auto)
-  -h, --help           Show help
+  --format <fmt>         Output: terminal (default), json, sarif, markdown
+  -o, --output <path>    Write results to file
+  --rules <path>         Rules directory (default: rules/)
+  --lang <lang>          Language filter: all (default), crystal, gleam
+  --no-color             Disable colored output
+  --no-cache             Disable extraction cache
+  --no-persona           Disable Hunter persona (plain terminal output)
+  --predator-vision      Enable reachability heatmap (attack surface analysis)
+  --crows-nest           Enable supply chain audit (CVE + staleness)
+  --parallelism <n>      Parallel extraction workers (0 = auto)
+  -h, --help             Show help
 ```
 
 ### Config File
@@ -64,6 +67,72 @@ exclude = ["node_modules", ".git", "vendor", "spec"]
 extra_sources = ["user_input", "raw_params"]
 extra_sanitizers = ["sanitize_path", "escape_shell"]
 parallelism = 4
+
+[persona]
+enabled = true            # Set false for plain terminal output
+
+[predator_vision]
+enabled = false           # Set true to enable by default
+
+[crows_nest]
+enabled = false           # Set true to enable by default
+```
+
+## Hunter Persona
+
+Catseye's terminal output uses a "Hunter" theme — a cat stalking prey through the tall grass of your codebase:
+
+| Internal Severity | Catseye Level | Icon | Meaning |
+|-------------------|---------------|------|---------|
+| Critical / High | **Hiss** | 🐱⚡ | Dangerous vulnerability found |
+| Medium / Low | **Meow** | 🐾 | Suspicious pattern, worth investigating |
+| Info / Safe | **Purr** | 😸 | No issues found |
+
+Example output:
+```
+ ╭──────────────────────────────────────────╮
+ │  🐈‍⬛  Catseye v0.3.0                      │
+ │     The Hunter enters the tall grass...  │
+ ╰──────────────────────────────────────────╯
+  Target:   ./src
+  Files:    66 Crystal, 12 Gleam
+  Scent:    Fresh code detected
+
+  🐾 Stalking src/controller.cr
+  👀 Watching... 5,337 nodes to inspect
+  🎯 Pouncing on taint flows...
+
+  🐱⚡ HISS  CommandInjection  src/controller.cr:42
+       Found os.command() with tainted input
+       ← Source: request.params (controller.cr:15)
+       ↓  Sink: os.command(cmd) (controller.cr:42)
+
+  😸 PURR  The codebase is clean.
+  The Hunter rests.
+```
+
+Disable with `--no-persona` for plain output. JSON/SARIF/Markdown are unaffected.
+
+## Predator Vision
+
+Reachability-first analysis. Detects HTTP handlers and CLI entry points, builds a call graph, and tags findings as **Live** (reachable from the internet), **Dormant** (not reachable), or **Safe** (sanitized).
+
+```bash
+just scan-hunter path/to/project     # enables --predator-vision --crows-nest
+```
+
+Terminal output includes a per-file heatmap showing the ratio of live vs dormant sinks.
+
+## Crow's Nest
+
+Supply chain audit for Crystal Shards and Gleam Hex packages:
+
+- **CVE scanning** via OSV.dev API
+- **Staleness detection** via GitHub/Hex APIs (last release, commit activity, retirement status)
+- **Offline cache** in SQLite with 24h TTL
+
+```bash
+catseye-ocaml --rules rules/ --crows-nest path/to/project
 ```
 
 ## Detection Rules
@@ -89,24 +158,24 @@ Rules are defined as KDL files in `src/ocaml/rules/`. Each rule specifies sinks,
 ## Output Formats
 
 ### Terminal (default)
-Colored, human-readable output with file locations and severity indicators.
+Colored, human-readable output with Hunter persona. Use `--no-persona` for plain output.
 
 ### JSON
 Machine-readable with full metadata:
 ```bash
-./bin/catseye-ocaml --format json path/to/project
+just scan-json path/to/project
 ```
 
 ### SARIF
 GitHub Code Scanning compatible (SARIF 2.1.0):
 ```bash
-./bin/catseye-ocaml --format sarif path/to/project
+catseye-ocaml --format sarif path/to/project
 ```
 
 ### Markdown
 Human and AI-readable report:
 ```bash
-./bin/catseye-ocaml --format markdown path/to/project
+catseye-ocaml --format markdown path/to/project
 ```
 
 ## Performance
@@ -119,6 +188,8 @@ Human and AI-readable report:
 
 The OCaml engine produces a single 4.8MB native binary with no runtime dependencies.
 
+**Note:** Projects with large numbers of Call/Def nodes may experience slower analysis due to DAG construction. The `max_trace_depth` limit (50) prevents infinite recursion, but complex taint chains can still take time.
+
 ## How It Works
 
 ### 1. Crystal Extractor (`src/extractor/extractor.cr`)
@@ -127,7 +198,7 @@ Pre-built native binary. Parses Crystal source via `Crystal::Parser` and extract
 
 ### 2. Gleam Extractor (`src/ocaml/lib/catseye_engine/gleam.ml`)
 
-Calls `tree-sitter parse -l <grammar> --lang-name gleam -x <file>` and parses the XML output using a functional recursive descent parser. No external dependencies beyond the tree-sitter binary and Gleam grammar.
+Calls `tree-sitter parse --lib-path <grammar> --lang-name gleam -x <file>` and parses the XML output using a functional recursive descent parser. Requires `TREE_SITTER_GLEAM_GRAMMAR` env var (set automatically in `nix develop` or via `just` recipes).
 
 ### 3. OCaml Engine (`src/ocaml/`)
 
@@ -182,9 +253,16 @@ catseye/
 │   │   │   │   ├── interproc.ml       # Inter-procedural analysis
 │   │   │   │   ├── returns.ml         # Return-value taint
 │   │   │   │   ├── gleam.ml           # Gleam tree-sitter extractor
+│   │   │   │   ├── reachability.ml    # Predator Vision reachability
 │   │   │   │   ├── dag.ml             # Vulnerability DAG builder
 │   │   │   │   ├── parallel.ml        # Domain parallelism
 │   │   │   │   └── cache.ml           # Extraction cache
+│   │   │   ├── catseye_crowsnest/      # Supply chain audit
+│   │   │   │   ├── manifest.ml        # shard.yml + gleam.toml parsing
+│   │   │   │   ├── osv.ml             # OSV.dev CVE query
+│   │   │   │   ├── staleness.ml       # GitHub/Hex staleness scoring
+│   │   │   │   ├── aggregator.ml      # CVE + staleness → Hiss/Meow/Purr
+│   │   │   │   └── cache.ml           # SQLite cache (24h TTL)
 │   │   │   ├── catseye_rules/          # KDL rule system
 │   │   │   │   ├── types.ml           # Rule type definitions
 │   │   │   │   ├── loader.ml          # KDL → rule_def parser
@@ -193,22 +271,19 @@ catseye/
 │   │   │   │   ├── args.ml            # Argument parsing
 │   │   │   │   ├── config.ml          # TOML config loader
 │   │   │   │   ├── discovery.ml       # File discovery + exclusion
-│   │   │   │   ├── orchestrator.ml    # Scan pipeline
+│   │   │   │   ├── orchestrator.ml    # Scan pipeline + Hunter persona
+│   │   │   │   ├── heatmap.ml         # Predator Vision terminal heatmap
+│   │   │   │   ├── crowsnest_format.ml # Crow's Nest terminal output
 │   │   │   │   ├── sarif.ml           # SARIF output
 │   │   │   │   └── markdown.ml        # Markdown output
 │   │   │   └── catseye_types/          # Shared types
 │   │   │       ├── security_node.ml   # Security Node type
-│   │   │       ├── finding.ml         # Finding type + JSON encoding
+│   │   │       ├── finding.ml         # Finding type + reachability
 │   │   │       └── dag_types.ml       # DAG types
-│   │   └── rules/                      # KDL rule files
-│   │       ├── ssrf.kdl
-│   │       ├── command_injection.kdl
-│   │       ├── sql_injection.kdl
-│   │       └── ... (11 rules)
+│   │   └── rules/                      # KDL rule files (11 rules)
 │   └── extractor/
 │       └── extractor.cr               # Crystal AST extractor
 ├── test/samples/                       # Vulnerable + safe test files
-├── planning/ocaml-rewrite/             # Rewrite plan + results
 ├── flake.nix                           # Nix dev shell
 └── justfile                            # Task runner
 ```
@@ -219,7 +294,7 @@ catseye/
 nix develop             # Enter dev shell (OCaml 5.4, Crystal, tree-sitter)
 just ocaml              # Build
 just test               # Run tests
-just scan dir path      # Scan a project
+just scan path/to/dir   # Scan a project
 just fmt-ocaml          # Format OCaml code
 just lint-ocaml         # Check formatting
 just clean              # Clean build artifacts
@@ -237,7 +312,7 @@ just clean              # Clean build artifacts
    }
    ```
 2. Rebuild: `just ocaml`
-3. Test: `just scan dir path/to/project`
+3. Test: `just scan path/to/project`
 4. For non-taint rules, add conditions:
    ```kdl
    conditions {
