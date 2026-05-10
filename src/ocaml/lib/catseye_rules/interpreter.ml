@@ -3,6 +3,15 @@
 open Types
 open Catseye_types
 
+let contains_substring sub s =
+  let slen = String.length sub in
+  let slen_s = String.length s in
+  slen > 0 &&
+  let rec loop i =
+    i + slen <= slen_s && (String.sub s i slen = sub || loop (i + 1))
+  in
+  loop 0
+
 (* Check if a call name matches a sink pattern (substring match, like Gleam engine) *)
 let matches_sink (pattern : string) (name : string) : bool =
   let plen = String.length pattern in
@@ -79,17 +88,17 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
       if rule.conditions.check_args_contain <> [] then begin
         List.exists (fun a ->
           List.exists (fun pattern ->
-            let plen = String.length pattern in
-            let v = a.Security_node.value in
-            let vlen = String.length v in
-            let rec check i =
-              if i + plen > vlen then false
-              else if String.sub v i plen = pattern then true
-              else check (i + 1)
-            in
-            check 0
+            contains_substring pattern a.Security_node.value
           ) rule.conditions.check_args_contain
         ) n.Security_node.args
+      end else if rule.conditions.check_args_missing <> [] then begin
+        (* Flag if NO arg value contains any of the missing patterns *)
+        n.Security_node.args <> []
+        && not (List.exists (fun a ->
+          List.exists (fun pattern ->
+            contains_substring pattern a.Security_node.value
+          ) rule.conditions.check_args_missing
+        ) n.Security_node.args)
       end else if not rule.conditions.requires_tainted_args then begin
         (* Pattern-only rules: flag any call matching the sink, regardless of taint *)
         true
@@ -122,4 +131,11 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
 (* Run all rules against all nodes *)
 let run_all (rules : rule_def list) (nodes : Security_node.t list)
     (tainted : string list) : Finding.t list =
-  List.concat_map (fun rule -> check_rule rule nodes tainted) rules
+  let raw = List.concat_map (fun rule -> check_rule rule nodes tainted) rules in
+  (* Deduplicate: same (rule, file, line) → keep first occurrence only *)
+  let seen = Hashtbl.create 64 in
+  List.filter (fun (f : Finding.t) ->
+    let key = f.Finding.rule ^ ":" ^ f.Finding.file ^ ":" ^ string_of_int f.Finding.line in
+    if Hashtbl.mem seen key then false
+    else begin Hashtbl.replace seen key true; true end
+  ) raw

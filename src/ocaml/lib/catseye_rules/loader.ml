@@ -55,6 +55,12 @@ let parse_conditions (children : Kdl.node list) : conditions =
         | None -> ""
       in
       { acc with check_args_contain = pattern :: acc.check_args_contain }
+    | "check_args_missing" ->
+      let pattern = match get_first_arg child.args with
+        | Some s -> s
+        | None -> ""
+      in
+      { acc with check_args_missing = pattern :: acc.check_args_missing }
     | k ->
       let v = match get_first_arg child.args with
         | Some s -> s

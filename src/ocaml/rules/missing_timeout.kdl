@@ -1,0 +1,10 @@
+rule "MissingTimeout" severity="Medium" {
+    sinks {
+        sink "HTTP::Client.new"
+        sink "HTTP::Client.start"
+    }
+    conditions {
+        check_args_missing "timeout"
+    }
+    message "Missing timeout: {sink} does not set connect_timeout or read_timeout. This enables Slowloris DoS attacks. Add explicit timeout values."
+}
