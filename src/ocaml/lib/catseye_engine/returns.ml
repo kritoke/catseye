@@ -4,7 +4,7 @@ open Catseye_types
 open Db
 
 (* Find the next def line in the same file after a given line *)
-let next_def_line (nodes : Security_node.t list) (file : string) (line : int) : int =
+let next_def_line (nodes : Security_node.t list) (file : string) (line : int) : int option =
   nodes
   |> List.filter (fun n ->
     n.Security_node.node_type = Security_node.Def
@@ -13,7 +13,7 @@ let next_def_line (nodes : Security_node.t list) (file : string) (line : int) : 
   )
   |> List.map (fun n -> n.Security_node.line)
   |> List.sort compare
-  |> function [] -> 999_999 | hd :: _ -> hd
+  |> function [] -> None | hd :: _ -> Some hd
 
 (* Track functions whose body produces tainted data *)
 let track_return_taint (nodes : Security_node.t list) (db : Db.t) : Db.t =
@@ -29,7 +29,9 @@ let track_return_taint (nodes : Security_node.t list) (db : Db.t) : Db.t =
         n.Security_node.node_type = Security_node.Assign
         && n.Security_node.file = def.Security_node.file
         && n.Security_node.line > def.Security_node.line
-        && n.Security_node.line < ndl
+        && match ndl with
+           | Some next_line -> n.Security_node.line < next_line
+           | None -> true
       )
     in
     let fn_tainted =

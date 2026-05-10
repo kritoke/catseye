@@ -24,6 +24,30 @@ let matches_sink (pattern : string) (name : string) : bool =
   in
   check 0
 
+(* Substitute {var} placeholders in a message template *)
+let substitute_template (template : string) ~(sink : string) ~(vars : string) : string =
+  let substitute s what with_ =
+    let wlen = String.length what in
+    let rec loop acc i =
+      let len = String.length s in
+      if i + wlen > len then
+        (* No match at or after i; done — prepend accumulated parts *)
+        let rest = if i < len then String.sub s i (len - i) else "" in
+        String.concat "" (List.rev (rest :: acc))
+      else if String.sub s i wlen = what then
+        (* Found match: prepend everything before + replacement, then
+           continue scanning the remainder for further occurrences *)
+        let before = if i > 0 then String.sub s 0 i else "" in
+        loop (before :: with_ :: acc) (i + wlen)
+      else
+        loop acc (i + 1)
+    in
+    loop [] 0
+  in
+  template
+  |> substitute "{sink}" sink
+  |> substitute "{tainted_vars}" vars
+
 (* Check if a call name matches a sanitizer pattern (substring) *)
 let matches_sanitizer (patterns : string list) (name : string) : bool =
   List.exists (fun p ->
@@ -109,13 +133,7 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
     )
     |> List.map (fun n ->
       let vars = var_names_from_args n.Security_node.args in
-      let msg = rule.message_template in
-      let msg = String.concat "" [
-        String.sub msg 0 (min (String.length msg) 20);
-        n.Security_node.name;
-        " called with variable argument(s): ";
-        vars
-      ] in
+      let msg = substitute_template rule.message_template ~sink:n.Security_node.name ~vars in
       { Finding.rule = rule.id
       ; severity = rule.severity
       ; file = n.Security_node.file

@@ -1,5 +1,7 @@
 (* lib/catseye_engine/db.ml *)
 
+open Catseye_types
+
 module StringMap = Map.Make(String)
 
 type taint_source =
@@ -74,3 +76,22 @@ let has_record (db : t) (var : string) : bool =
 
 let db_size (db : t) : int =
   StringMap.fold (fun _ records acc -> acc + List.length records) db 0
+
+(** Shared logic: given an assignment node, check if any ArgVar arg is tainted
+    (same-file or global), and if not sanitized by a call arg. Returns the
+    source variable name if taint is found. *)
+let check_assignment_taint (node : Security_node.t) (acc : t) : string option =
+  let is_sanitized =
+    List.exists (fun a ->
+      a.Security_node.arg_type = Security_node.ArgCall
+      && Constants.is_sanitizer a.Security_node.value
+    ) node.Security_node.args
+  in
+  if is_sanitized then None
+  else
+    List.find_opt (fun a ->
+      a.Security_node.arg_type = Security_node.ArgVar
+      && (is_tainted_in_file acc a.Security_node.value node.Security_node.file
+          || is_tainted acc a.Security_node.value)
+    ) node.Security_node.args
+    |> Option.map (fun a -> a.Security_node.value)

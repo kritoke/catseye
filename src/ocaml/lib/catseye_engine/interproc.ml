@@ -1,15 +1,16 @@
 (* lib/catseye_engine/interproc.ml
    Inter-procedural taint propagation.
    Two strategies:
-   1. Return-value: if fn_name is in the taint DB (marked by returns.ml), propagate to assign
+   1. Return-value: if fn_name is in the taint DB (marked by returns.ml),
+      propagate its taint to any variable assigned from the call.
    2. Call-arg: if a call receives tainted args, its return value is tainted
-      (covers external functions we can't analyze) *)
+      (covers external functions we can't analyze). *)
 
 open Catseye_types
 open Db
 
 let is_sanitizer_call (name : string) : bool =
-  Seed.is_sanitizer name
+  Constants.is_sanitizer name
 
 (** Check if any arg of a call is tainted. *)
 let call_has_tainted_args (args : Security_node.arg list) (db : Db.t) (file : string) =
@@ -23,6 +24,16 @@ let call_has_tainted_args (args : Security_node.arg list) (db : Db.t) (file : st
       Db.has_record db a.Security_node.value
     | _ -> false
   ) args
+
+(** Extract a human-readable taint source name from a call node's args. *)
+let taint_source_of_call (call : Security_node.t) (db : Db.t) : string =
+  List.find_opt (fun a ->
+    a.Security_node.arg_type = Security_node.ArgVar
+    && (Db.is_tainted_in_file db a.Security_node.value call.Security_node.file
+        || Db.is_tainted db a.Security_node.value)
+  ) call.Security_node.args
+  |> Option.map (fun a -> a.Security_node.value)
+  |> Option.value ~default:call.Security_node.name
 
 let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t =
   List.fold_left (fun acc node ->
@@ -52,8 +63,8 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
                             ; origin = From_var a.Security_node.value }
         }
       | None ->
-        (* Strategy 2: Any call arg is tainted → return is tainted *)
-        (* Find the call node corresponding to this assignment *)
+        (* Strategy 2: A call arg is tainted → return is tainted.
+           Find the Call node at the same location to check for sanitizers. *)
         let call_node =
           List.find_opt (fun n ->
             n.Security_node.node_type = Security_node.Call
@@ -66,15 +77,7 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
            (* Sanitizer call — result is clean *)
            acc
          | Some cn when call_has_tainted_args cn.Security_node.args acc cn.Security_node.file ->
-           let src =
-             List.find_opt (fun a ->
-               a.Security_node.arg_type = Security_node.ArgVar
-               && (Db.is_tainted_in_file acc a.Security_node.value cn.Security_node.file
-                   || Db.is_tainted acc a.Security_node.value)
-             ) cn.Security_node.args
-             |> Option.map (fun a -> a.Security_node.value)
-             |> Option.value ~default:cn.Security_node.name
-           in
+           let src = taint_source_of_call cn acc in
            Db.add_record acc {
              var_name = node.Security_node.name
            ; file = node.Security_node.file
@@ -88,28 +91,22 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
                                ; origin = From_var src }
            }
          | _ ->
-           (* Fallback: check if any var arg is tainted *)
-           let tainted_var =
-             node.Security_node.args
-             |> List.find_opt (fun a ->
-               a.Security_node.arg_type = Security_node.ArgVar
-               && Db.is_tainted_in_file acc a.Security_node.value node.Security_node.file
-             )
-           in
-           (match tainted_var with
-            | Some a ->
-              Db.add_record acc {
-                var_name = node.Security_node.name
-              ; file = node.Security_node.file
-              ; line = node.Security_node.line
-              ; description = node.Security_node.name
-                  ^ " assigned from tainted: " ^ a.Security_node.value
-              ; source_var = a.Security_node.value
-              ; field = None
-              ; status = Tainted { source = a.Security_node.value
-                                  ; field = None
-                                  ; origin = From_var a.Security_node.value }
-              }
-            | None -> acc))
+           (* Fallback: use shared taint-check helper (handles same-file
+              and global taint, sanitizer calls, and ArgVar matching) *)
+           match Propagate.check_assignment_taint node acc with
+           | Some source_var ->
+             Db.add_record acc {
+               var_name = node.Security_node.name
+             ; file = node.Security_node.file
+             ; line = node.Security_node.line
+             ; description = node.Security_node.name
+                 ^ " assigned from tainted: " ^ source_var
+             ; source_var
+             ; field = None
+             ; status = Tainted { source = source_var
+                                 ; field = None
+                                 ; origin = From_var source_var }
+             }
+           | None -> acc)
     end
   ) db nodes
