@@ -34,3 +34,16 @@
   ocaml_sqlite3
   ocamlgraph
   alcotest))
+
+(package
+ (name catseye-crowsnest)
+ (synopsis "Catseye supply chain audit — CVE scanning and staleness detection")
+ (description
+  "Crow's Nest module for Catseye. Audits Crystal Shards and Gleam hex packages for known CVEs, end-of-life status, and maintenance staleness.")
+ (allow_empty)
+ (depends
+  ocaml
+  dune
+  yojson
+  ocaml_sqlite3
+  unix))

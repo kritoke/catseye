@@ -147,6 +147,7 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
       ; flow = []
       ; language = n.Security_node.language
       ; dependency = None
+      ; reachability = None
       }
     )
   ) rule.sinks

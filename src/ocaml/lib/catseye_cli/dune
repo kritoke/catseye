@@ -1,5 +1,5 @@
 (library
  (name catseye_cli)
  (public_name catseye.cli)
- (modules args config discovery orchestrator sarif markdown)
- (libraries catseye.types catseye.engine catseye.rules yojson cmdliner bos rresult logs fmt toml))
+ (modules args config discovery orchestrator sarif markdown heatmap crowsnest_format)
+ (libraries catseye.types catseye.engine catseye.rules catseye.crowsnest yojson cmdliner bos rresult logs fmt toml))

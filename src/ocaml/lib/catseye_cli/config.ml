@@ -27,6 +27,9 @@ type t = {
   incremental : bool;
   crystal_workers : int;
   no_cache : bool;
+  persona : bool;
+  predator_vision : bool;
+  crows_nest : bool;
 }
 
 let default = {
@@ -45,6 +48,9 @@ let default = {
   incremental = true;
   crystal_workers = 2;
   no_cache = false;
+  persona = true;
+  predator_vision = false;
+  crows_nest = false;
 }
 
 (** Walk up from [dir] looking for .catseye.toml. *)
@@ -135,6 +141,12 @@ let load_toml (path : string) (cfg : t) : t =
       really_input ic buf 0 len;
       close_in ic;
       Toml.Parser.(from_string (Bytes.to_string buf) |> unsafe) in
+    let get_bool table path default =
+      match get_int table path (-1) with
+      | 0 -> false
+      | 1 -> true
+      | _ -> default
+    in
     { cfg with
       exclude_dirs =
         (match get_string_list table "scan.exclude" with
@@ -145,6 +157,9 @@ let load_toml (path : string) (cfg : t) : t =
     ; parallelism = get_int table "analysis.parallelism" cfg.parallelism
     ; crystal_extractor = get_string table "scan.crystal_extractor" cfg.crystal_extractor
     ; rules_dir = get_string table "scan.rules_dir" cfg.rules_dir
+    ; persona = get_bool table "persona.enabled" cfg.persona
+    ; predator_vision = get_bool table "predator_vision.enabled" cfg.predator_vision
+    ; crows_nest = get_bool table "crows_nest.enabled" cfg.crows_nest
     }
   with _ -> cfg
 

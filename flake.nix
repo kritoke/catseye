@@ -59,6 +59,9 @@
         # Engine
         ocamlgraph
 
+        # Database
+        ocaml_sqlite3
+
         # Async / Parallel (OCaml 5)
         eio
         eio_posix
@@ -85,15 +88,20 @@
 
       privateConfig =
         if builtins.pathExists ./flake.private.nix then
-          let
-            content = builtins.readFile ./flake.private.nix;
-            try_with_args = builtins.tryEval (import ./flake.private.nix { inherit pkgs; });
-            try_no_args = builtins.tryEval (import ./flake.private.nix);
-          in
-            if builtins.substring 0 2 content == "#!" then {}
-            else if try_with_args.success then try_with_args.value
-            else if try_no_args.success then (if try_no_args.value ? outputs then {} else try_no_args.value)
-            else {};
+          (let content = builtins.readFile ./flake.private.nix;
+           in
+             if builtins.substring 0 2 content == "#!" then {}
+             else
+               let try_with_args = builtins.tryEval (import ./flake.private.nix { inherit pkgs; });
+               in
+                 if try_with_args.success then try_with_args.value
+                 else
+                   let try_no_args = builtins.tryEval (import ./flake.private.nix);
+                   in
+                     if try_no_args.success then
+                       if builtins.hasAttr "outputs" try_no_args.value then {} else try_no_args.value
+                     else {})
+        else {};
 
       ticket = if privateConfig ? ticket then privateConfig.ticket else defaultTicket;
       privateShellHook = if privateConfig ? shellHook then privateConfig.shellHook else "";

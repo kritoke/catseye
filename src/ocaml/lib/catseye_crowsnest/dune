@@ -1,0 +1,6 @@
+(library
+ (name catseye_crowsnest)
+ (public_name catseye.crowsnest)
+ (modules manifest osv staleness aggregator cache)
+ (libraries catseye.types yojson unix logs sqlite3)
+ (flags (:standard -w -8-26)))

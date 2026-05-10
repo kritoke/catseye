@@ -42,6 +42,12 @@ let parse_args () : t =
       go { acc with color = false } rest
     | "--no-cache" :: rest ->
       go { acc with no_cache = true } rest
+    | "--no-persona" :: rest ->
+      go { acc with persona = false } rest
+    | ("--predator-vision" | "-pv") :: rest ->
+      go { acc with predator_vision = true } rest
+    | ("--crows-nest" | "-cn") :: rest ->
+      go { acc with crows_nest = true } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
     | ("--help" | "-h") :: _ ->
@@ -55,6 +61,9 @@ let parse_args () : t =
       Printf.printf "  --crystal-extractor  Crystal extractor path\n";
       Printf.printf "  --no-color           Disable colored output\n";
       Printf.printf "  --no-cache           Disable extraction cache\n";
+      Printf.printf "  --no-persona         Disable Hunter persona (plain terminal output)\n";
+      Printf.printf "  --predator-vision    Enable reachability heatmap\n";
+      Printf.printf "  --crows-nest         Enable supply chain audit\n";
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
       Printf.printf "  -h, --help           Show this help\n";
       exit 0
