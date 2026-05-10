@@ -101,12 +101,13 @@ let print_finding (config : t) (f : Finding.t) =
   Printf.printf "\n"
 
 let output_json (config : t) (sources : source_file list)
-    (nodes : Security_node.t list) (findings : Finding.t list) =
+    (nodes : Security_node.t list) (findings : Finding.t list) (cache_hits : int) =
   let output = `Assoc [
     ("version", `String version);
     ("target", `String config.target_dir);
     ("files_scanned", `Int (List.length sources));
     ("nodes_extracted", `Int (List.length nodes));
+    ("cache_hits", `Int cache_hits);
     ("findings_count", `Int (List.length findings));
     ("findings", Finding.encode_many findings);
   ] in
@@ -141,16 +142,32 @@ let run (config : t) : int =
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
   if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
 
-  (* Step 2: Extract *)
+  (* Step 2: Extract (with cache) *)
   let all_nodes = ref [] in
+  let cache_hits = ref 0 in
   List.iter (fun src ->
-    if config.format = Terminal then
-      Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
-    match (try extract_file config src with Sys_error _ -> None) with
-    | Some nodes -> all_nodes := nodes @ !all_nodes
-    | None ->
+    if config.no_cache then begin
+      (* No cache — always extract *)
       if config.format = Terminal then
-        Printf.printf "%s  ⚠ Extraction failed%s\n" (styled yellow config "") (styled reset config "")
+        Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
+      match (try extract_file config src with Sys_error _ -> None) with
+      | Some nodes -> all_nodes := nodes @ !all_nodes
+      | None -> ()
+    end else begin
+      (* Check cache first *)
+      match Catseye_engine.Cache.check src.path with
+      | Some cached ->
+        incr cache_hits;
+        all_nodes := cached @ !all_nodes
+      | None ->
+        if config.format = Terminal then
+          Printf.printf "%s→ Extracting: %s%s\n" (styled cyan config "") src.path (styled reset config "");
+        (match (try extract_file config src with Sys_error _ -> None) with
+         | Some nodes ->
+           Catseye_engine.Cache.store src.path nodes;
+           all_nodes := nodes @ !all_nodes
+         | None -> ())
+    end
   ) sources;
   let nodes = !all_nodes in
   if nodes = [] then begin
@@ -188,7 +205,7 @@ let run (config : t) : int =
       0
     end
   | Json ->
-    output_json config sources nodes findings;
+    output_json config sources nodes findings !cache_hits;
     if findings <> [] then 1 else 0
   | Sarif ->
     (* TODO: Phase 4 — SARIF output from DAG *)
