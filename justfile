@@ -49,7 +49,7 @@ clean-ocaml:
 # Run catseye-ocaml inside nix with the correct binary and rules paths
 # Exit code 1 = findings found (not an error), 2+ = actual error
 _do-scan dir flags:
-    just _nix "cd {{root}} && ./bin/catseye-ocaml --rules src/ocaml/rules {{flags}} {{dir}}; exit_code=$$?; if [ $$exit_code -gt 1 ]; then exit $$exit_code; fi"
+    just _nix "cd {{root}} && ./bin/catseye-ocaml --rules src/ocaml/rules {{flags}} {{dir}} || [ $? -le 1 ]"
 
 # ── Scan ──────────────────────────────────────────────────────────────
 
