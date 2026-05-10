@@ -1,29 +1,40 @@
 # Catseye — build & dev tasks
 # Run: just <task>
+#
+# All OCaml/dune tasks are wrapped with nix develop so the
+# toolchain (ocaml, dune, opam libs) is always available.
+
+# ── Nix wrapper ───────────────────────────────────────────────────────
+
+# Internal: run a command inside the nix dev shell
+_nix cmd:
+    nix develop --command bash -c "{{cmd}}"
 
 # ── OCaml Engine ──────────────────────────────────────────────────────
 
 ocaml: build-ocaml
 
 build-ocaml:
-    cd src/ocaml && dune build
-    cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
+    just _nix "cd src/ocaml && dune build"
+    @mkdir -p bin
+    cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
     @echo "✓ OCaml engine built → bin/catseye-ocaml"
 
 build-ocaml-release:
-    cd src/ocaml && dune build --profile release
-    cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
+    just _nix "cd src/ocaml && dune build --profile release"
+    @mkdir -p bin
+    cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
     @echo "✓ OCaml engine built (release) → bin/catseye-ocaml"
 
 test-ocaml: build-ocaml
-    cd src/ocaml && dune test
+    just _nix "cd src/ocaml && dune test"
     @echo "✓ OCaml tests passed"
 
 lint-ocaml:
-    cd src/ocaml && dune build @fmt
+    just _nix "cd src/ocaml && dune build @fmt"
 
 fmt-ocaml:
-    cd src/ocaml && dune fmt
+    just _nix "cd src/ocaml && dune fmt"
 
 clean-ocaml:
     rm -rf src/ocaml/_build
@@ -34,6 +45,10 @@ clean-ocaml:
 # Scan — terminal output
 scan dir: build-ocaml
     ./bin/catseye-ocaml --rules src/ocaml/rules {{dir}}
+
+# Scan with Hunter persona + Predator Vision + Crow's Nest
+scan-hunter dir: build-ocaml
+    ./bin/catseye-ocaml --rules src/ocaml/rules --predator-vision --crows-nest {{dir}}
 
 # Scan — JSON to stdout
 scan-json dir: build-ocaml
