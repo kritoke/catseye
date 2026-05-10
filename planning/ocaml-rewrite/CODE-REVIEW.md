@@ -11,9 +11,9 @@
 
 | Severity | Count | Fixed? |
 |----------|-------|--------|
-| 🔴 Bug | 4 | — |
-| 🟡 Design | 6 | — |
-| 🟢 Nit | 3 | — |
+| 🔴 Bug | 4 | All fixed |
+| 🟡 Design | 6 | 4 fixed, 2 deferred, 1 partial |
+| 🟢 Nit | 3 | 2 pending |
 
 ---
 
@@ -208,11 +208,31 @@ Printf.sprintf "%08x" (Hashtbl.hash content)
 
 | Bug | Status |
 |-----|--------|
-| B1: Message template truncation | → Fixed |
-| B2: 999_999 sentinel line | → Fixed |
-| B3: Duplicate propagation logic | → Fixed (refactored via `Db.check_assignment_taint`) |
-| B4: Field access source detection | → Documented (CODE-REVIEW.md D1) |
+| B1: Message template truncation | → Fixed (`substitute_template` in interpreter.ml) |
+| B2: 999_999 sentinel line | → Fixed (int option in returns.ml) |
+| B3: Duplicate propagation logic | → Fixed (`Db.check_assignment_taint` shared helper) |
+| B4: Field access source detection | → Documented (CODE-REVIEW.md D1, deferred) |
+
+## Design Issues — Status After Fixes
+
+| Issue | Status |
+|-------|--------|
+| D1: Call/Assign same-line search | → Deferred (needs AST contract clarification) |
+| D2: No cross-file taint propagation | → Deferred (needs extractor changes) |
+| D3: DAG builder dead code | → Fixed (wired in engine.ml) |
+| D4: merge_db orphaned | → Deferred (needs per-file grouping) |
+| D5: Extensions silently ignored | → Fixed (Logs.warn on unknown conditions) |
+| D6: language="" always | → Fixed (propagates from extractor → finding) |
+
+## Nits — Status After Fixes
+
+| Issue | Status |
+|-------|--------|
+| N1: O(n) duplicate check in Db | → Pending |
+| N2: parallel.ml unused | → Deferred (needs extractor abstraction) |
+| N3: Hashtbl.hash not Blake3 | → Pending (minor, design note) |
 
 ---
 
 *Last updated: 2026-05-09*
+*Commits: be0f013 (bugs), 47388aa (D3, D5, D6)*

@@ -43,6 +43,7 @@ let parse_sources_node (node : Kdl.node) : source_def list =
   [{ name; field }]
 
 let parse_conditions (children : Kdl.node list) : conditions =
+  let known = ["skip_taint_check"; "skip_all_literals"; "check_args_contain"; "check_args_missing"] in
   List.fold_left (fun acc (child : Kdl.node) ->
     match child.name with
     | "skip_taint_check" ->
@@ -61,6 +62,8 @@ let parse_conditions (children : Kdl.node list) : conditions =
         | None -> ""
       in
       { acc with check_args_missing = pattern :: acc.check_args_missing }
+    | k when List.mem k known ->
+      { acc with extensions = (k, "true") :: acc.extensions }
     | k ->
       let v = match get_first_arg child.args with
         | Some s -> s
@@ -68,6 +71,7 @@ let parse_conditions (children : Kdl.node list) : conditions =
           | Some s -> s
           | None -> "true"
       in
+      Logs.warn (fun m -> m "Unknown rule condition '%s' (value='%s'); ignoring" k v);
       { acc with extensions = (k, v) :: acc.extensions }
   ) (default_conditions ()) children
 

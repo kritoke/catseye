@@ -26,6 +26,7 @@ type t = {
   line : int;
   taint : bool;
   file : string;
+  language : string;  (* "gleam", "crystal", etc. *)
 }
 
 let arg_type_of_string = function
@@ -86,9 +87,11 @@ let decode (json : Yojson.Safe.t) : t =
     ; line = int_val (List.assoc "line" dict)
     ; taint = bool_val (List.assoc "taint" dict)
     ; file = get (List.assoc "file" dict)
+    ; language = (match List.assoc_opt "language" dict with
+                  | Some v -> get v | None -> "")
     }
   | _ ->
-    { node_type = Call; name = ""; args = []; line = 0; taint = false; file = "" }
+    { node_type = Call; name = ""; args = []; line = 0; taint = false; file = ""; language = "" }
 
 let decode_many (json : Yojson.Safe.t) : t list =
   Yojson.Safe.Util.to_list json |> List.map decode
@@ -109,6 +112,7 @@ let encode (n : t) : Yojson.Safe.t =
     ; ("line", `Int n.line)
     ; ("taint", `Bool n.taint)
     ; ("file", `String n.file)
+    ; ("language", `String n.language)
     ]
 
 let encode_many (nodes : t list) : Yojson.Safe.t =

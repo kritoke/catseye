@@ -6,6 +6,7 @@ open Seed
 open Propagate
 open Returns
 open Interproc
+open Dag
 
 let version = "0.3.0"
 
@@ -18,9 +19,63 @@ let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   (* Second pass propagation after inter-procedural *)
   propagate nodes with_interproc
 
-(** Run the full analysis pipeline and return findings *)
+(** Convert a vulnerability DAG to flow steps for a finding.
+    Traces paths from entry points toward the sink node. *)
+let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
+    (_all : Security_node.t list) : Finding.flow_step list =
+  let open Catseye_types.Dag_types in
+  (* Build a lookup: node_id → dag_node *)
+  let node_of_id id =
+    List.find_opt (fun n -> n.id = id) dag.nodes in
+  (* Build outgoing edges: node_id → list of (dst_id, edge_label) *)
+  let succs src =
+    List.filter_map (fun e ->
+      if e.src = src then Some (e.dst, e.label) else None
+    ) dag.edges
+    |> List.sort (fun (a, _) (b, _) -> String.compare a b)
+  in
+  let visited = Hashtbl.create 16 in
+  let rec dfs acc node_id =
+    if Hashtbl.mem visited node_id then acc
+    else begin
+      Hashtbl.replace visited node_id true;
+      match node_of_id node_id with
+      | None -> acc
+      | Some n ->
+        let step = { Finding.file = n.file; line = n.line; message = n.label } in
+        if node_id = dag.exit_point then
+          (* Sink reached — include and stop this branch *)
+          step :: acc
+        else
+          (* Continue tracing forward through successors *)
+          let acc' = step :: acc in
+          List.fold_left (fun a (dst, _label) ->
+            dfs a dst
+          ) acc' (succs node_id)
+    end
+  in
+  let steps = List.fold_left dfs [] dag.entry_points in
+  (* Reverse so steps go source → ... → sink *)
+  List.rev steps
+
+(** Run the full analysis pipeline and return findings with populated flow.
+    The DAG is built for each finding to trace the taint path. *)
 let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     (nodes : Security_node.t list) : Finding.t list =
   let db = build_taint_db ~extra_sources nodes in
   let tainted = get_tainted_vars db in
-  Catseye_rules.Interpreter.run_all rules nodes tainted
+  let raw_findings = Catseye_rules.Interpreter.run_all rules nodes tainted in
+  (* Populate flow steps by building a DAG for each finding *)
+  List.map (fun f ->
+    let sink_node = List.find_opt (fun n ->
+      n.Security_node.node_type = Security_node.Call
+      && n.Security_node.file = f.Finding.file
+      && n.Security_node.line = f.Finding.line
+    ) nodes in
+    match sink_node with
+    | None -> f
+    | Some sink ->
+      match build_dag sink db nodes with
+      | None -> f
+      | Some dag -> { f with Finding.flow = dag_to_flow_steps dag nodes }
+  ) raw_findings

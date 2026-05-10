@@ -139,8 +139,8 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
       ; file = n.Security_node.file
       ; line = n.Security_node.line
       ; message = msg
-      ; flow = []  (* filled in by DAG builder later *)
-      ; language = ""
+      ; flow = []
+      ; language = n.Security_node.language
       ; dependency = None
       }
     )
