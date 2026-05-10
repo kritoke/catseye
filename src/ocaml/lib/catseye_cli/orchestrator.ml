@@ -453,8 +453,22 @@ let run (config : t) : int =
       ?supply_chain ();
     if reachability <> [] then 1 else 0
   | Sarif ->
-    print_string (Sarif.to_sarif reachability);
+    let content = Sarif.to_sarif reachability in
+    if config.output_path <> "" then begin
+      let oc = open_out config.output_path in
+      output_string oc content; output_string oc "\n";
+      close_out oc;
+      Printf.printf "Results written to %s\n" config.output_path
+    end else
+      print_string content;
     if reachability <> [] then 1 else 0
   | Markdown ->
-    print_string (Markdown.to_markdown reachability config.target_dir);
+    let content = Markdown.to_markdown reachability config.target_dir in
+    if config.output_path <> "" then begin
+      let oc = open_out config.output_path in
+      output_string oc content; output_string oc "\n";
+      close_out oc;
+      Printf.printf "Results written to %s\n" config.output_path
+    end else
+      print_string content;
     if reachability <> [] then 1 else 0
