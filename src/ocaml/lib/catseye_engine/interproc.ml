@@ -20,7 +20,6 @@ let call_has_tainted_args (args : Security_node.arg list) (db : Db.t) (file : st
     match a.Security_node.arg_type with
     | Security_node.ArgVar ->
       Db.is_tainted_in_file db a.Security_node.value file
-      || Db.is_tainted db a.Security_node.value
     | Security_node.ArgCall ->
       (* Nested call — check if the function itself returns tainted data *)
       Db.has_record db a.Security_node.value
@@ -31,8 +30,7 @@ let call_has_tainted_args (args : Security_node.arg list) (db : Db.t) (file : st
 let taint_source_of_call (call : Security_node.t) (db : Db.t) : string =
   List.find_opt (fun a ->
     a.Security_node.arg_type = Security_node.ArgVar
-    && (Db.is_tainted_in_file db a.Security_node.value call.Security_node.file
-        || Db.is_tainted db a.Security_node.value)
+    && Db.is_tainted_in_file db a.Security_node.value call.Security_node.file
   ) call.Security_node.args
   |> Option.map (fun a -> a.Security_node.value)
   |> Option.value ~default:call.Security_node.name
