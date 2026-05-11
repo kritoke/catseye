@@ -1,12 +1,13 @@
 (* lib/catseye_engine/cache.ml
-   Incremental analysis cache — SQLite + Blake3 hashing.
-   Skips re-extraction for unchanged files. *)
+   Persistent extraction cache — SQLite-backed.
+   Skips re-extraction for unchanged files across runs.
+   Falls back to in-memory Hashtbl if SQLite is unavailable. *)
 
 open Catseye_types
 open Security_node
 
 (** Blake3-inspired fast hash for file content fingerprinting.
-    Uses OCaml's Hashtbl.hash for now — swap for real Blake3 when bindings available. *)
+    Uses OCaml's Hashtbl.hash — swap for real Blake3 when bindings available. *)
 let fingerprint (content : string) : string =
   Printf.sprintf "%08x" (Hashtbl.hash content)
 
@@ -21,60 +22,152 @@ let file_hash (path : string) : string =
     fingerprint (Bytes.to_string buf)
   with Sys_error _ -> ""
 
-module Store = struct
-  type entry = {
-    path : string;
-    hash : string;
-    nodes : t list;
-    analyzed_at : float;
-  }
+(* ── SQLite-backed persistent cache ─────────────────────────────────── *)
 
-  (** In-memory cache for now. SQLite upgrade path in Phase 4. *)
-  let tbl : (string, entry) Hashtbl.t = Hashtbl.create 64
+type db_cache = {
+  db : Sqlite3.db;
+  dir : string;
+}
 
-  let get path =
-    try Some (Hashtbl.find tbl path)
-    with Not_found -> None
+type t =
+  | Sqlite of db_cache
+  | Memory of (string, string * Security_node.t list) Hashtbl.t  (* path → (hash, nodes) *)
+  | Disabled
 
-  let put path hash nodes =
-    Hashtbl.replace tbl path {
-      path; hash; nodes;
-      analyzed_at = Unix.gettimeofday ()
-    }
+(** Create parent directories recursively. *)
+let rec mkdir_p d =
+  if not (Sys.file_exists d) then begin
+    mkdir_p (Filename.dirname d);
+    Unix.mkdir d 0o755
+  end
 
-  let is_fresh path current_hash =
-    match get path with
-    | None -> false
-    | Some e -> e.hash = current_hash
-end
+(** Open a SQLite-backed cache. Creates the database and schema if needed. *)
+let open_sqlite (dir : string) : db_cache =
+  mkdir_p dir;
+  let db_path = Filename.concat dir "extraction.db" in
+  let db = Sqlite3.db_open db_path in
+  let _ = Sqlite3.exec db
+    "CREATE TABLE IF NOT EXISTS extraction_cache (\
+    \n  path TEXT PRIMARY KEY,\
+    \n  hash TEXT NOT NULL,\
+    \n  nodes_json TEXT NOT NULL,\
+    \n  analyzed_at REAL NOT NULL)" in
+  let _ = Sqlite3.exec db
+    "CREATE INDEX IF NOT EXISTS idx_extraction_hash ON extraction_cache (hash)" in
+  { db; dir }
 
-(** Check if a file needs re-extraction.
-    Returns Some cached_nodes if fresh, None if stale/missing. *)
-let check (path : string) : t list option =
+(** Open a cache of the appropriate type.
+    - If no_cache is true → Disabled
+    - If SQLite opens successfully → Sqlite
+    - Otherwise → Memory (fallback)
+*)
+let open_cache ~no_cache ~cache_dir : t =
+  if no_cache then Disabled
+  else
+    try Sqlite (open_sqlite cache_dir)
+    with exn ->
+      Logs.warn (fun m -> m "SQLite cache open failed (%s), using in-memory fallback"
+        (Printexc.to_string exn));
+      Memory (Hashtbl.create 64)
+
+(** Close the cache (flushes SQLite). *)
+let close = function
+  | Sqlite c -> ignore (Sqlite3.db_close c.db)
+  | Memory _ | Disabled -> ()
+
+(** Clear all cached entries. *)
+let clear = function
+  | Sqlite c ->
+    let _ = Sqlite3.exec c.db "DELETE FROM extraction_cache" in
+    ()
+  | Memory tbl -> Hashtbl.clear tbl
+  | Disabled -> ()
+
+(** Delete the cache database file entirely. *)
+let delete_cache (cache_dir : string) : unit =
+  let db_path = Filename.concat cache_dir "extraction.db" in
+  if Sys.file_exists db_path then
+    try Sys.remove db_path
+    with Sys_error _ -> ()
+
+(* ── Check (cache lookup) ───────────────────────────────────────────── *)
+
+let check_sqlite (c : db_cache) (path : string) : Security_node.t list option =
   let hash = file_hash path in
-  match Store.get path with
-  | Some entry when entry.Store.hash = hash ->
-    Some entry.Store.nodes
+  let sql = "SELECT nodes_json, hash FROM extraction_cache WHERE path = ?1" in
+  let stmt = Sqlite3.prepare c.db sql in
+  Sqlite3.bind stmt 1 (Sqlite3.Data.TEXT path) |> ignore;
+  let result = match Sqlite3.step stmt with
+    | Sqlite3.Rc.ROW ->
+      (match (Sqlite3.column stmt 0, Sqlite3.column stmt 1) with
+       | Sqlite3.Data.TEXT nodes_json, Sqlite3.Data.TEXT stored_hash ->
+         if stored_hash = hash then
+           try Some (decode_many (Yojson.Safe.from_string nodes_json))
+           with _ -> None
+         else None
+       | _ -> None)
+    | _ -> None
+  in
+  ignore (Sqlite3.finalize stmt);
+  result
+
+let check_memory (tbl : (string, string * Security_node.t list) Hashtbl.t) (path : string) : Security_node.t list option =
+  let hash = file_hash path in
+  match Hashtbl.find_opt tbl path with
+  | Some (stored_hash, nodes) when stored_hash = hash -> Some nodes
   | _ -> None
 
-(** Store extraction results. *)
-let store (path : string) (nodes : t list) : unit =
+(** Check if a file has a fresh cache entry. Returns cached nodes or None. *)
+let check (cache : t) (path : string) : Security_node.t list option =
+  match cache with
+  | Sqlite c -> check_sqlite c path
+  | Memory tbl -> check_memory tbl path
+  | Disabled -> None
+
+(* ── Store (cache write) ────────────────────────────────────────────── *)
+
+let store_sqlite (c : db_cache) (path : string) (nodes : Security_node.t list) : unit =
   let hash = file_hash path in
-  Store.put path hash nodes
+  let nodes_json = Yojson.Safe.to_string (encode_many nodes) in
+  let sql = "INSERT OR REPLACE INTO extraction_cache (path, hash, nodes_json, analyzed_at) VALUES (?1, ?2, ?3, ?4)" in
+  let stmt = Sqlite3.prepare c.db sql in
+  Sqlite3.bind stmt 1 (Sqlite3.Data.TEXT path) |> ignore;
+  Sqlite3.bind stmt 2 (Sqlite3.Data.TEXT hash) |> ignore;
+  Sqlite3.bind stmt 3 (Sqlite3.Data.TEXT nodes_json) |> ignore;
+  Sqlite3.bind stmt 4 (Sqlite3.Data.FLOAT (Unix.gettimeofday ())) |> ignore;
+  let _ = Sqlite3.step stmt in
+  ignore (Sqlite3.finalize stmt)
 
-(** Invalidate cache for a specific file. *)
-let invalidate (path : string) : unit =
-  Hashtbl.remove Store.tbl path
+let store_memory (tbl : (string, string * Security_node.t list) Hashtbl.t) (path : string) (nodes : Security_node.t list) : unit =
+  let hash = file_hash path in
+  Hashtbl.replace tbl path (hash, nodes)
 
-(** Clear entire cache. *)
-let clear () : unit =
-  Hashtbl.clear Store.tbl
+(** Store extraction results in the cache. *)
+let store (cache : t) (path : string) (nodes : Security_node.t list) : unit =
+  match cache with
+  | Sqlite c -> store_sqlite c path nodes
+  | Memory tbl -> store_memory tbl path nodes
+  | Disabled -> ()
 
-(** Cache statistics. *)
-let stats () : int * int =
-  let total = Hashtbl.length Store.tbl in
-  let fresh = Hashtbl.fold (fun _ e acc ->
-    let hash = file_hash e.Store.path in
-    if hash = e.Store.hash then acc + 1 else acc
-  ) Store.tbl 0 in
-  (fresh, total)
+(* ── Stats ──────────────────────────────────────────────────────────── *)
+
+(** Return (cached_entries, total_db_size_kb) for SQLite, (entries, 0) otherwise. *)
+let stats = function
+  | Sqlite c ->
+    let stmt = Sqlite3.prepare c.db "SELECT COUNT(*) FROM extraction_cache" in
+    let count = match Sqlite3.step stmt with
+      | Sqlite3.Rc.ROW ->
+        (match Sqlite3.column stmt 0 with
+         | Sqlite3.Data.INT n -> Int64.to_int n
+         | _ -> 0)
+      | _ -> 0
+    in
+    ignore (Sqlite3.finalize stmt);
+    let db_path = Filename.concat c.dir "extraction.db" in
+    let size_kb =
+      try (Unix.stat db_path).Unix.st_size / 1024
+      with _ -> 0
+    in
+    (count, size_kb)
+  | Memory tbl -> (Hashtbl.length tbl, 0)
+  | Disabled -> (0, 0)

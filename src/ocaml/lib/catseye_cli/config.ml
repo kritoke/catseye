@@ -28,6 +28,7 @@ type t = {
   incremental : bool;
   crystal_workers : int;
   no_cache : bool;
+  clear_cache : bool;
   persona : bool;
   predator_vision : bool;
   crows_nest : bool;
@@ -51,6 +52,7 @@ let default = {
   incremental = true;
   crystal_workers = 2;
   no_cache = false;
+  clear_cache = false;
   persona = true;
   predator_vision = false;
   crows_nest = false;

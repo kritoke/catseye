@@ -335,6 +335,17 @@ let run (config : t) : int =
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
   if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
 
+  (* Step 1b: Handle --clear-cache *)
+  if config.clear_cache then begin
+    Catseye_engine.Cache.delete_cache config.cache_dir;
+    if config.format = Terminal then
+      Printf.printf "  Cache cleared.\n"
+  end;
+
+  (* Step 1c: Open persistent cache *)
+  let cache = Catseye_engine.Cache.open_cache
+    ~no_cache:config.no_cache ~cache_dir:config.cache_dir in
+
   (* Step 2: Extract (with cache, optional parallel) *)
   let (nodes, cache_hits) = time_phase "extraction" (fun () ->
     let all_nodes = ref [] in
@@ -342,22 +353,18 @@ let run (config : t) : int =
     let uncached = ref [] in
     (* Phase 1: Check cache for all files *)
     List.iter (fun src ->
-      if config.no_cache then
+      match Catseye_engine.Cache.check cache src.path with
+      | Some cached ->
+        incr cache_hits;
+        List.iter (fun n -> all_nodes := n :: !all_nodes) cached
+      | None ->
         uncached := src :: !uncached
-      else
-        match Catseye_engine.Cache.check src.path with
-        | Some cached ->
-          incr cache_hits;
-          List.iter (fun n -> all_nodes := n :: !all_nodes) cached
-        | None ->
-          uncached := src :: !uncached
     ) sources;
     (* Phase 2: Extract uncached files — parallel if parallelism > 0 *)
     let extract_one src =
       match extract_with_log config src with
       | Some ns ->
-        if not config.no_cache then
-          Catseye_engine.Cache.store src.path ns;
+        Catseye_engine.Cache.store cache src.path ns;
         Some ns
       | None -> None
     in
@@ -374,6 +381,7 @@ let run (config : t) : int =
     (List.rev !all_nodes, !cache_hits)
   ) in
   if nodes = [] then begin
+    Catseye_engine.Cache.close cache;
     Printf.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
     exit 0
   end;
@@ -481,6 +489,7 @@ let run (config : t) : int =
   end else reachability in
 
   (* Step 5: Report *)
+  Catseye_engine.Cache.close cache;
   match config.format with
   | Terminal ->
     (* Print Crow's Nest results if available *)

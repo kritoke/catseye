@@ -43,6 +43,10 @@ let parse_args () : t =
       go { acc with color = false } rest
     | "--no-cache" :: rest ->
       go { acc with no_cache = true } rest
+    | "--clear-cache" :: rest ->
+      go { acc with clear_cache = true } rest
+    | "--cache-dir" :: path :: rest ->
+      go { acc with cache_dir = resolve cwd path } rest
     | "--no-persona" :: rest ->
       go { acc with persona = false } rest
     | ("--predator-vision" | "-pv") :: rest ->
@@ -64,6 +68,8 @@ let parse_args () : t =
       Printf.printf "  --crystal-extractor  Crystal extractor path\n";
       Printf.printf "  --no-color           Disable colored output\n";
       Printf.printf "  --no-cache           Disable extraction cache\n";
+      Printf.printf "  --clear-cache       Clear cache and run full scan\n";
+      Printf.printf "  --cache-dir <path>  Cache directory (default: .catseye)\n";
       Printf.printf "  --no-persona         Disable Hunter persona (plain terminal output)\n";
       Printf.printf "  --predator-vision    Enable reachability heatmap\n";
       Printf.printf "  --crows-nest         Enable supply chain audit\n";
