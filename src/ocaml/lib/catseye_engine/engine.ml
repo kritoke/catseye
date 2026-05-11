@@ -8,7 +8,7 @@ open Returns
 open Interproc
 open Dag
 
-let version = "0.3.0"
+let version = Catseye_types.Version.version
 
 (** Named constants *)
 let dag_visited_size = 16

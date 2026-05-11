@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build Crystal Extractor
+        run: nix develop --command bash -c 'crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release'
+
+      - name: Build OCaml Engine
+        run: |
+          nix develop --command bash -c '
+            cd src/ocaml && dune build
+            cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          '
+
+      - name: Run OCaml Tests
+        run: nix develop --command bash -c 'cd src/ocaml && dune test'
+
+      - name: Verify Binary Works
+        run: |
+          nix develop --command bash -c '
+            ./bin/catseye-ocaml --version
+            ./bin/catseye-ocaml --rules src/ocaml/rules --format json test/samples/ > /tmp/ci-scan.json
+          '
+
+      - name: Verify Findings Count
+        run: |
+          nix develop --command bash -c '
+            COUNT=$(python3 -c "import json; d=json.load(open(\"/tmp/ci-scan.json\")); print(d[\"findings_count\"])")
+            if [ "$COUNT" -lt 10 ]; then
+              echo "ERROR: Expected >= 10 findings, got $COUNT"
+              exit 1
+            fi
+            echo "OK: $COUNT findings detected"
+          '
+
+      - name: Verify Safe Samples Clean
+        run: |
+          nix develop --command bash -c '
+            ./bin/catseye-ocaml --rules src/ocaml/rules --format json test/samples/safe_sql.cr > /tmp/safe-scan.json
+            COUNT=$(python3 -c "import json; d=json.load(open(\"/tmp/safe-scan.json\")); print(d[\"findings_count\"])")
+            if [ "$COUNT" -gt 0 ]; then
+              echo "ERROR: Expected 0 findings for safe sample, got $COUNT"
+              exit 1
+            fi
+            echo "OK: Safe sample clean ($COUNT findings)"
+          '

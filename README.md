@@ -220,15 +220,46 @@ catseye-ocaml --format markdown path/to/project
 
 ## Performance
 
-| Project | Files | OCaml Time |
-|---------|-------|------------|
-| quickheadlines | 66 | 0.16s |
-| PrismatIQ | 37 | 0.12s |
-| test/samples | 8 | 0.14s |
+| Project | Files | Nodes | Extraction | Analysis | Findings |
+|---------|-------|-------|------------|----------|----------|
+| quickheadlines | 66 | 5,507 | 0.6s | 0.05s | 2 security + 102 smells |
+| test/samples | 19 | ~300 | 0.7s | 0.05s | 15+5 |
+| test/samples (cached) | 19 | ~300 | 0.02s | 0.05s | 15+5 |
 
-The OCaml engine produces a single 4.8MB native binary with no runtime dependencies.
+## Persistent Cache
 
-**Note:** Projects with large numbers of Call/Def nodes may experience slower analysis due to DAG construction. The `max_trace_depth` limit (50) prevents infinite recursion, but complex taint chains can still take time.
+Catseye caches extraction results in SQLite (`~/.catseye/extraction.db`). Unchanged files are served from cache on subsequent scans.
+
+```
+# First scan — cold cache
+$ catseye --rules rules/ src/     # 0.7s extraction
+
+# Second scan — warm cache
+$ catseye --rules rules/ src/     # 0.02s extraction
+```
+
+| Flag | Purpose |
+|------|----------|
+| `--cache-dir <path>` | Custom cache directory (default: `.catseye`) |
+| `--clear-cache` | Wipe cache and run full scan |
+| `--no-cache` | Disable caching entirely |
+
+## Cross-File Taint Propagation
+
+Taint flows across file boundaries automatically. If `helpers.cr` defines a function that returns tainted data, any file that calls it receives taint:
+
+```crystal
+# helpers.cr
+def get_user_url(params)
+  params["url"]  # tainted
+end
+
+# controller.cr
+url = get_user_url(params)  # taint propagates cross-file
+HTTP::Client.get(url)        # flagged: SSRF
+```
+
+No configuration required — cross-file propagation is enabled by default.
 
 ## How It Works
 
