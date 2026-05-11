@@ -226,6 +226,22 @@ class SecurityVisitor < Crystal::Visitor
     true
   end
 
+  # ── Require / Import tracking ────────────────────────────────────
+
+  def visit(node : Crystal::Require) : Bool
+    @nodes << {
+      type:     "import",
+      name:     "require",
+      args:     [{arg_type: "literal", value: node.string, field: ""}],
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true
+  end
+
   # ── Method definitions ─────────────────────────────────────────────
 
   def visit(node : Crystal::Def) : Bool

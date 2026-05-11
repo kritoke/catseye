@@ -6,6 +6,7 @@ type node_type =
   | Def
   | Var
   | Literal
+  | Import
 
 type arg_type =
   | ArgVar
@@ -48,6 +49,7 @@ let node_type_of_string = function
   | "def" -> Def
   | "var" -> Var
   | "literal" -> Literal
+  | "import" -> Import
   | _ -> Call
 
 let string_of_node_type = function
@@ -56,6 +58,7 @@ let string_of_node_type = function
   | Def -> "def"
   | Var -> "var"
   | Literal -> "literal"
+  | Import -> "import"
 
 (* JSON decoding *)
 let decode_arg (json : Yojson.Safe.t) : arg =
