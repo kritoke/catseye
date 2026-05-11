@@ -503,35 +503,88 @@ end
 
 # ── Main ───────────────────────────────────────────────────────────────
 
-if ARGV.size < 1
-  STDERR.puts "Usage: crystal run extractor.cr -- <file.cr>"
-  exit 1
+# Shared extraction function — used by both CLI and worker modes.
+def extract_file(file_path : String) : String
+  unless File.file?(file_path)
+    return [{id: 0, status: "error", error: "File not found: #{file_path}"}].to_json
+  end
+
+  begin
+    source = File.read(file_path)
+    parser = Crystal::Parser.new(source)
+    parser.filename = file_path
+    ast = parser.parse
+
+    visitor = SecurityVisitor.new(file_path)
+    ast.accept(visitor)
+    annotated = SecurityVisitor.annotate_timeouts(visitor.nodes)
+
+    annotated.to_json
+  rescue ex : Crystal::SyntaxException
+    STDERR.puts "Parse error in #{file_path}: #{ex.message}"
+    "[]"
+  rescue ex : Exception
+    STDERR.puts "Error processing #{file_path}: #{ex.message}"
+    "[]"
+  end
 end
 
-file_path = ARGV[0]
+# ── Mode selection ─────────────────────────────────────────────────────
 
-unless File.file?(file_path)
-  STDERR.puts "Error: file not found: #{file_path}"
-  exit 1
-end
+if ARGV.includes?("--serve")
+  # Persistent worker mode: read NDJSON requests from stdin, write responses to stdout.
+  #
+  # Protocol:
+  #   Request:  {"id": N, "method": "extract", "file": "/path/to/file.cr"}
+  #   Response: {"id": N, "status": "ok", "nodes": [...]}
+  #   Error:    {"id": N, "status": "error", "error": "message"}
+  #   Ping:     {"id": 0, "method": "ping"}  → {"id": 0, "status": "ok"}
+  #   Shutdown: {"id": 0, "method": "shutdown"} → exit
 
-begin
-  source = File.read(file_path)
-  parser = Crystal::Parser.new(source)
-  parser.filename = file_path
-  ast = parser.parse
+  STDERR.puts "Catseye Crystal worker started (PID: #{Process.pid})"
 
-  visitor = SecurityVisitor.new(file_path)
-  ast.accept(visitor)
+  loop do
+    line = STDIN.gets
+    break if line.nil? || line.strip.empty?
 
-  # Post-process: annotate timeout configuration on HTTP::Client.new nodes
-  annotated = SecurityVisitor.annotate_timeouts(visitor.nodes)
+    begin
+      request = JSON.parse(line)
+      id = request["id"].as_i
 
-  puts annotated.to_json
-rescue ex : Crystal::SyntaxException
-  STDERR.puts "Parse error in #{file_path}: #{ex.message}"
-  puts "[]"
-rescue ex : Exception
-  STDERR.puts "Error processing #{file_path}: #{ex.message}"
-  puts "[]"
+      case request["method"].as_s
+      when "extract"
+        file = request["file"].as_s
+        nodes_json = extract_file(file)
+        # Parse nodes back to build the response
+        nodes = JSON.parse(nodes_json)
+        STDOUT.puts({id: id, status: "ok", nodes: nodes}.to_json)
+        STDOUT.flush
+      when "ping"
+        STDOUT.puts({id: id, status: "ok"}.to_json)
+        STDOUT.flush
+      when "shutdown"
+        break
+      else
+        STDOUT.puts({id: id, status: "error", error: "Unknown method"}.to_json)
+        STDOUT.flush
+      end
+    rescue ex : JSON::ParseException
+      STDERR.puts "Worker: invalid JSON request"
+      # Can't determine id — skip
+    rescue ex : Exception
+      STDERR.puts "Worker error: #{ex.message}"
+    end
+  end
+
+  STDERR.puts "Catseye Crystal worker shutting down"
+else
+  # Single-file CLI mode (original behavior)
+  if ARGV.size < 1
+    STDERR.puts "Usage: crystal run extractor.cr -- <file.cr>"
+    STDERR.puts "       crystal run extractor.cr -- --serve"
+    exit 1
+  end
+
+  file_path = ARGV[0]
+  puts extract_file(file_path)
 end

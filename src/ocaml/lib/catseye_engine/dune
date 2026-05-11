@@ -1,5 +1,5 @@
 (library
  (name catseye_engine)
  (public_name catseye.engine)
- (modules engine db seed propagate returns interproc merge gleam parallel dag cache constants reachability)
+ (modules engine db seed propagate returns interproc merge gleam parallel dag cache constants reachability worker_pool)
  (libraries catseye.types catseye.rules yojson unix logs sqlite3))

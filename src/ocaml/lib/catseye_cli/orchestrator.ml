@@ -346,7 +346,7 @@ let run (config : t) : int =
   let cache = Catseye_engine.Cache.open_cache
     ~no_cache:config.no_cache ~cache_dir:config.cache_dir in
 
-  (* Step 2: Extract (with cache, optional parallel) *)
+  (* Step 2: Extract (with cache, optional worker pool or parallel) *)
   let (nodes, cache_hits) = time_phase "extraction" (fun () ->
     let all_nodes = ref [] in
     let cache_hits = ref 0 in
@@ -360,7 +360,31 @@ let run (config : t) : int =
       | None ->
         uncached := src :: !uncached
     ) sources;
-    (* Phase 2: Extract uncached files — parallel if parallelism > 0 *)
+    (* Split uncached by language *)
+    let uncached_crystal = List.filter (fun s -> s.lang = "crystal") !uncached in
+    let uncached_other = List.filter (fun s -> s.lang <> "crystal") !uncached in
+    (* Phase 2a: Extract Crystal files via worker pool if configured *)
+    if config.crystal_workers > 1 && uncached_crystal <> [] then begin
+      let pool = Catseye_engine.Worker_pool.create
+        config.crystal_extractor config.crystal_workers in
+      List.iter (fun src ->
+        match Catseye_engine.Worker_pool.extract_with_recovery pool src.path with
+        | Some ns ->
+          Catseye_engine.Cache.store cache src.path ns;
+          List.iter (fun n -> all_nodes := n :: !all_nodes) ns
+        | None -> ()
+      ) uncached_crystal;
+      Catseye_engine.Worker_pool.shutdown pool
+    end else
+      (* No worker pool — extract Crystal files normally *)
+      List.iter (fun src ->
+        match extract_with_log config src with
+        | Some ns ->
+          Catseye_engine.Cache.store cache src.path ns;
+          List.iter (fun n -> all_nodes := n :: !all_nodes) ns
+        | None -> ()
+      ) uncached_crystal;
+    (* Phase 2b: Extract non-Crystal files (Gleam, etc.) *)
     let extract_one src =
       match extract_with_log config src with
       | Some ns ->
@@ -368,16 +392,16 @@ let run (config : t) : int =
         Some ns
       | None -> None
     in
-    if config.parallelism > 0 && List.length !uncached > 1 then begin
-      (* Parallel extraction using Domains *)
-      let results = Catseye_engine.Parallel.extract_parallel extract_one !uncached in
+    if config.parallelism > 0 && List.length uncached_other > 1 then
+      (* Parallel extraction using Domains for non-Crystal files *)
+      let results = Catseye_engine.Parallel.extract_parallel extract_one uncached_other in
       List.iter (fun ns -> all_nodes := List.rev_append ns !all_nodes) results
-    end else
+    else
       List.iter (fun src ->
         match extract_one src with
         | Some ns -> all_nodes := List.rev_append ns !all_nodes
         | None -> ()
-      ) !uncached;
+      ) uncached_other;
     (List.rev !all_nodes, !cache_hits)
   ) in
   if nodes = [] then begin
