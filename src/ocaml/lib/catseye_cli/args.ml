@@ -6,6 +6,7 @@ let format_of_string = function
   | "json" -> Json
   | "sarif" -> Sarif
   | "markdown" | "md" -> Markdown
+  | "dot" | "graphviz" -> Dot
   | "terminal" | "text" -> Terminal
   | s -> failwith (Printf.sprintf "Unknown format: %s" s)
 
@@ -48,13 +49,15 @@ let parse_args () : t =
       go { acc with predator_vision = true } rest
     | ("--crows-nest" | "-cn") :: rest ->
       go { acc with crows_nest = true } rest
+    | ("--claws" | "-cl") :: rest ->
+      go { acc with claws = true } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
     | ("--help" | "-h") :: _ ->
       Printf.printf "Catseye v%s — Static security analysis\n\n" Catseye_engine.Engine.version;
       Printf.printf "Usage: catseye [options] <directory>\n\n";
       Printf.printf "Options:\n";
-      Printf.printf "  --format <fmt>       Output: terminal (default), json, sarif, markdown\n";
+      Printf.printf "  --format <fmt>       Output: terminal (default), json, sarif, markdown, dot\n";
       Printf.printf "  --lang <lang>        Language filter: all (default), crystal, gleam\n";
       Printf.printf "  --output <path>      Write results to file\n";
       Printf.printf "  --rules <path>       Rules directory (default: rules/)\n";
@@ -64,6 +67,7 @@ let parse_args () : t =
       Printf.printf "  --no-persona         Disable Hunter persona (plain terminal output)\n";
       Printf.printf "  --predator-vision    Enable reachability heatmap\n";
       Printf.printf "  --crows-nest         Enable supply chain audit\n";
+      Printf.printf "  --claws              Enable code smell & DRY detection\n";
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
       Printf.printf "  -h, --help           Show this help\n";
       exit 0

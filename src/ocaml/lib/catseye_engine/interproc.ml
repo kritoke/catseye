@@ -63,6 +63,16 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
       in
       match tainted_call with
       | Some a ->
+        (* Check if the tainted call is actually a sanitizer — if so, result is clean *)
+        let call_node =
+          StringMap.find_opt
+            (node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line)
+            call_map
+        in
+        (match call_node with
+         | Some cn when is_sanitizer_call cn.Security_node.name ->
+           acc  (* Sanitizer overrides return-value taint *)
+         | _ ->
         Db.add_record acc {
           var_name = node.Security_node.name
         ; file = node.Security_node.file
@@ -74,7 +84,7 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
         ; status = Tainted { source = a.Security_node.value
                             ; field = None
                             ; origin = From_var a.Security_node.value }
-        }
+        })
       | None ->
         (* Strategy 2: A call arg is tainted → return is tainted.
            Use precomputed call_map for O(1) lookup instead of scanning all nodes. *)

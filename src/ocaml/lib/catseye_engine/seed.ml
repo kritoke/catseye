@@ -39,7 +39,7 @@ let seed_from_taint_flags (nodes : Security_node.t list) (db : Db.t) : Db.t =
   |> List.filter (fun n ->
     (* Skip if RHS is a sanitizer call *)
     match n.Security_node.args with
-    | [{ Security_node.arg_type = ArgCall; value }] ->
+    | [{ Security_node.arg_type = ArgCall; value; _ }] ->
       not (is_sanitizer value)
     | _ -> true
   )

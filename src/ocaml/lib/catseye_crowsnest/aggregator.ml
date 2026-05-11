@@ -140,7 +140,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
           | None ->
             let r = Osv.query "hex" dep.name version in
             (match cache with
-             | Some c -> ()
+             | Some _c -> ()
              | None -> ());
             r
         in

@@ -95,15 +95,15 @@ let build_scopes (nodes : Security_node.t list) : scope_info list =
   let all_scopes = ref [] in
   Hashtbl.iter (fun _file defs ->
     let sorted = List.sort (fun a b -> compare a.start_line b.start_line) defs in
-    let rec set_ends prev = function
+    let rec set_ends = function
       | [] -> ()
       | [last] ->
         all_scopes := { last with end_line = max_int } :: !all_scopes
       | cur :: ((next :: _) as rest) ->
         all_scopes := { cur with end_line = next.start_line } :: !all_scopes;
-        set_ends (Some cur) rest
+        set_ends rest
     in
-    set_ends None sorted
+    set_ends sorted
   ) file_defs;
   !all_scopes
 

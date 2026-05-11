@@ -4,12 +4,24 @@ rule "PathTraversal" severity="High" {
             sanitizer "Path.basename"
             sanitizer "Path.dirname"
             sanitizer "Path.posix"
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "File.expand_path"
         }
         sink "File.write" {
             sanitizer "Path.basename"
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "File.expand_path"
         }
-        sink "File.delete"
-        sink "File.open"
+        sink "File.delete" {
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "File.expand_path"
+        }
+        sink "File.open" {
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "File.expand_path"
+        }
         sink "Dir.glob"
         sink "Dir.entries"
         sink "simplifile.read"
@@ -29,8 +41,14 @@ rule "PathTraversal" severity="High" {
 
 rule "PathTraversal" severity="Medium" {
     sinks {
-        sink "File.join"
-        sink "Path.join"
+        sink "File.join" {
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+        }
+        sink "Path.join" {
+            sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+        }
     }
     sources {
         source "params" field="path"

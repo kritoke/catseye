@@ -57,9 +57,13 @@ _do-scan dir flags:
 scan dir: build-ocaml
     just _do-scan {{dir}} ""
 
-# Scan with all Hunter features
+# Scan with all Hunter features + Claws code smell analysis
 scan-hunter dir: build-ocaml
-    just _do-scan {{dir}} "--predator-vision --crows-nest"
+    just _do-scan {{dir}} "--predator-vision --crows-nest --claws"
+
+# Scan — Claws code smell & DRY analysis only
+scan-claws dir: build-ocaml
+    just _do-scan {{dir}} "--claws"
 
 # Scan — plain output (no persona)
 scan-plain dir: build-ocaml
@@ -87,12 +91,12 @@ scan-md dir: build-ocaml
     just _do-scan {{dir}} "--format markdown -o {{dir}}/planning/catseye-security-report.md"
     @echo "✓ Markdown → {{dir}}/planning/catseye-security-report.md"
 
-# Scan — all formats to planning/
+# Scan — all formats + Claws to planning/
 scan-all dir: build-ocaml
     @mkdir -p {{dir}}/planning
-    just _do-scan {{dir}} "--format json -o {{dir}}/planning/catseye-scan-results.json"
-    just _do-scan {{dir}} "--format markdown -o {{dir}}/planning/catseye-security-report.md"
-    just _do-scan {{dir}} "--format sarif -o {{dir}}/planning/catseye-scan-results.sarif"
+    just _do-scan {{dir}} "--format json --claws -o {{dir}}/planning/catseye-scan-results.json"
+    just _do-scan {{dir}} "--format markdown --claws -o {{dir}}/planning/catseye-security-report.md"
+    just _do-scan {{dir}} "--format sarif --claws -o {{dir}}/planning/catseye-scan-results.sarif"
     @echo "✓ All reports → {{dir}}/planning/"
 
 # ── Test ───────────────────────────────────────────────────────────────
@@ -101,14 +105,19 @@ test: test-ocaml
     @echo ""
     @echo "=== E2E: Vulnerable samples ==="
     @just _do-scan "test/samples/" "--format json" > /tmp/catseye-test-out.json 2>/dev/null
-    @python3 -c "import json,sys; d=json.load(open('/tmp/catseye-test-out.json')); c=d['findings_count']; print(f'  Findings: {c} (expect >= 10)'); sys.exit(1 if c<10 else 0)"
+    @python3 -c "import json,sys; data=open('/tmp/catseye-test-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; print(f'  Findings: {c} (expect >= 10)'); sys.exit(1 if c<10 else 0)"
     @echo "  ✓ Finding count OK"
     @echo ""
     @echo "=== E2E: Safe samples ==="
     @mkdir -p /tmp/catseye-safe-test && cp test/samples/safe.cr /tmp/catseye-safe-test/
     @just _do-scan "/tmp/catseye-safe-test/" "--format json" > /tmp/catseye-safe-out.json 2>/dev/null
-    @python3 -c "import json,sys; d=json.load(open('/tmp/catseye-safe-out.json')); c=d['findings_count']; print(f'  Findings: {c} (expect 0)'); sys.exit(1 if c!=0 else 0)"
+    @python3 -c "import json,sys; data=open('/tmp/catseye-safe-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; print(f'  Findings: {c} (expect 0)'); sys.exit(1 if c!=0 else 0)"
     @echo "  ✓ Safe samples clean"
+    @echo ""
+    @echo "=== E2E: Claws smell detection ==="
+    @just _do-scan "test/samples/smell_samples/" "--format json --claws" > /tmp/catseye-claws-out.json 2>/dev/null
+    @python3 -c "import json,sys; data=open('/tmp/catseye-claws-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; rules=set(f['rule'] for f in d['findings']); expected={'LongParameterList','GodObject','DRYViolation'}; missing=expected-rules; print(f'  Findings: {c} (expect >= 3)'); print(f'  Smell rules: {sorted(rules)}'); sys.exit(1 if c<3 or missing else 0)"
+    @echo "  ✓ Claws smell detection OK"
     @echo ""
     @echo "✓ All E2E tests passed"
 

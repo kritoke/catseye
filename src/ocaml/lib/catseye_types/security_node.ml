@@ -27,6 +27,7 @@ type t = {
   taint : bool;
   file : string;
   language : string;  (* "gleam", "crystal", etc. *)
+  metadata : (string * string) list;  (* extensible key-value pairs *)
 }
 
 let arg_type_of_string = function
@@ -73,6 +74,18 @@ let decode_arg (json : Yojson.Safe.t) : arg =
   | _ ->
     { arg_type = ArgUnknown; value = ""; field = "" }
 
+let decode_metadata (json : Yojson.Safe.t) : (string * string) list =
+  match json with
+  | `Assoc pairs ->
+    List.filter_map (fun (k, v) ->
+      match v with
+      | `String s -> Some (k, s)
+      | `Bool b -> Some (k, string_of_bool b)
+      | `Int i -> Some (k, string_of_int i)
+      | _ -> None
+    ) pairs
+  | _ -> []
+
 let decode (json : Yojson.Safe.t) : t =
   let get = Yojson.Safe.Util.to_string in
   let int_val = Yojson.Safe.Util.to_int in
@@ -81,6 +94,10 @@ let decode (json : Yojson.Safe.t) : t =
   match json with
   | `Assoc dict ->
     let args_json = List.assoc "args" dict in
+    let metadata = match List.assoc_opt "metadata" dict with
+      | Some m -> decode_metadata m
+      | None -> []
+    in
     { node_type = node_type_of_string (get (List.assoc "type" dict))
     ; name = get (List.assoc "name" dict)
     ; args = List.map decode_arg (to_list args_json)
@@ -89,9 +106,10 @@ let decode (json : Yojson.Safe.t) : t =
     ; file = get (List.assoc "file" dict)
     ; language = (match List.assoc_opt "language" dict with
                   | Some v -> get v | None -> "")
+    ; metadata
     }
   | _ ->
-    { node_type = Call; name = ""; args = []; line = 0; taint = false; file = ""; language = "" }
+    { node_type = Call; name = ""; args = []; line = 0; taint = false; file = ""; language = ""; metadata = [] }
 
 let decode_many (json : Yojson.Safe.t) : t list =
   Yojson.Safe.Util.to_list json |> List.map decode
@@ -104,8 +122,11 @@ let encode_arg (a : arg) : Yojson.Safe.t =
     ; ("field", `String a.field)
     ]
 
+let encode_metadata (md : (string * string) list) : Yojson.Safe.t =
+  `Assoc (List.map (fun (k, v) -> (k, `String v)) md)
+
 let encode (n : t) : Yojson.Safe.t =
-  `Assoc
+  let base =
     [ ("type", `String (string_of_node_type n.node_type))
     ; ("name", `String n.name)
     ; ("args", `List (List.map encode_arg n.args))
@@ -114,6 +135,20 @@ let encode (n : t) : Yojson.Safe.t =
     ; ("file", `String n.file)
     ; ("language", `String n.language)
     ]
+  in
+  if n.metadata = [] then `Assoc base
+  else `Assoc (base @ [("metadata", encode_metadata n.metadata)])
 
 let encode_many (nodes : t list) : Yojson.Safe.t =
   `List (List.map encode nodes)
+
+(** Get a metadata value from a node *)
+let get_metadata (node : t) (key : string) : string option =
+  List.find_opt (fun (k, _) -> k = key) node.metadata
+  |> Option.map snd
+
+(** Check if a node has a metadata key set to "true" *)
+let has_metadata_flag (node : t) (key : string) : bool =
+  match get_metadata node key with
+  | Some "true" -> true
+  | _ -> false

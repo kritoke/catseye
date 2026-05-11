@@ -1,4 +1,7 @@
 rule "InsecureDeserialization" severity="High" {
+    languages {
+        exclude "crystal"
+    }
     sinks {
         sink "JSON.parse"
         sink "YAML.parse"

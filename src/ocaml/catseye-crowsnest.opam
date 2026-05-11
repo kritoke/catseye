@@ -10,7 +10,7 @@ homepage: "https://github.com/kritoke/catseye"
 bug-reports: "https://github.com/kritoke/catseye/issues"
 depends: [
   "ocaml"
-  "dune" {>= "3.21"}
+  "dune" {>= "3.17"}
   "yojson"
   "ocaml_sqlite3"
   "unix"
@@ -31,4 +31,3 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/kritoke/catseye.git"
-x-maintenance-intent: ["(latest)"]

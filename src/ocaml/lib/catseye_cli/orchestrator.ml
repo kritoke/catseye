@@ -335,33 +335,43 @@ let run (config : t) : int =
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
   if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
 
-  (* Step 2: Extract (with cache) *)
+  (* Step 2: Extract (with cache, optional parallel) *)
   let (nodes, cache_hits) = time_phase "extraction" (fun () ->
     let all_nodes = ref [] in
     let cache_hits = ref 0 in
+    let uncached = ref [] in
+    (* Phase 1: Check cache for all files *)
     List.iter (fun src ->
-      let nodes =
-        if config.no_cache then
-          (* No cache — always extract *)
-          extract_with_log config src
-        else
-          (* Check cache first, extract if miss *)
-          match Catseye_engine.Cache.check src.path with
-          | Some cached ->
-            incr cache_hits;
-            Some cached
-          | None ->
-            (match extract_with_log config src with
-             | Some ns ->
-               Catseye_engine.Cache.store src.path ns;
-               Some ns
-             | None -> None)
-      in
-      match nodes with
-      | Some ns -> all_nodes := List.rev_append ns !all_nodes
-      | None -> ()
+      if config.no_cache then
+        uncached := src :: !uncached
+      else
+        match Catseye_engine.Cache.check src.path with
+        | Some cached ->
+          incr cache_hits;
+          List.iter (fun n -> all_nodes := n :: !all_nodes) cached
+        | None ->
+          uncached := src :: !uncached
     ) sources;
-    (!all_nodes, !cache_hits)
+    (* Phase 2: Extract uncached files — parallel if parallelism > 0 *)
+    let extract_one src =
+      match extract_with_log config src with
+      | Some ns ->
+        if not config.no_cache then
+          Catseye_engine.Cache.store src.path ns;
+        Some ns
+      | None -> None
+    in
+    if config.parallelism > 0 && List.length !uncached > 1 then begin
+      (* Parallel extraction using Domains *)
+      let results = Catseye_engine.Parallel.extract_parallel extract_one !uncached in
+      List.iter (fun ns -> all_nodes := List.rev_append ns !all_nodes) results
+    end else
+      List.iter (fun src ->
+        match extract_one src with
+        | Some ns -> all_nodes := List.rev_append ns !all_nodes
+        | None -> ()
+      ) !uncached;
+    (List.rev !all_nodes, !cache_hits)
   ) in
   if nodes = [] then begin
     Printf.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
@@ -411,6 +421,65 @@ let run (config : t) : int =
     tagged
   end else findings in
 
+  (* Step 4c: Crow's Nest dep reachability (when both --crows-nest and --predator-vision) *)
+  let crows_nest_results = match crows_nest_results with
+    | Some results when config.predator_vision && results <> [] ->
+      (* Build reachable file set from Predator Vision analysis *)
+      let reachable_files =
+        List.filter_map (fun (f : Finding.t) ->
+          match f.reachability with
+          | Some r -> (match r.status with
+            | Finding.Live | Finding.Dormant ->
+              Some f.file
+            | Finding.Safe -> None)
+          | None -> None
+        ) reachability
+      in
+      (* Also include all files with defs (they're potentially reachable) *)
+      let def_files = List.filter_map (fun (n : Security_node.t) ->
+        if n.node_type = Security_node.Def then Some n.file else None
+      ) nodes in
+      let all_reachable =
+        List.fold_left (fun s f ->
+          Catseye_crowsnest.Dep_reachability.StringSet.add f s
+        ) Catseye_crowsnest.Dep_reachability.StringSet.empty
+          (reachable_files @ def_files)
+      in
+      (* Scan source files for imports and compute reachability *)
+      let dep_names = List.map (fun (r : Catseye_crowsnest.Aggregator.dep_result) ->
+        r.name
+      ) results in
+      let file_lang_pairs = List.map (fun (s : source_file) ->
+        (s.path, s.lang)
+      ) sources in
+      let dep_imports = Catseye_crowsnest.Dep_reachability.scan_imports
+        file_lang_pairs dep_names in
+      let dep_reach = Catseye_crowsnest.Dep_reachability.compute_reachability
+        all_reachable dep_imports in
+      (* Enrich dep results with reachability info *)
+      let get_dep_name (r : Catseye_crowsnest.Aggregator.dep_result) = r.name in
+      let enriched = Catseye_crowsnest.Dep_reachability.enrich_with_reachability
+        results ~get_name:get_dep_name dep_reach
+      in
+      (* Store enriched results for formatters — reachability data available per dep *)
+      Some (List.map fst enriched)
+    | other -> other
+  in
+
+  (* Step 4d: Claws — code smell analysis *)
+  let all_findings = if config.claws then begin
+    let claws_findings = Catseye_claws.Smells.analyze nodes
+      config.claws_config in
+    if config.format = Terminal && claws_findings <> [] then begin
+      if config.persona then
+        Printf.printf "\n  🐾 Sniffing out code smells...\n\n"
+      else
+        Printf.printf "\n%s→ Code smell analysis:%s\n\n"
+          (styled cyan config "") (styled reset config "")
+    end;
+    reachability @ claws_findings
+  end else reachability in
+
   (* Step 5: Report *)
   match config.format with
   | Terminal ->
@@ -420,18 +489,18 @@ let run (config : t) : int =
        Crowsnest_format.print_crows_nest config results
      | _ -> ());
 
-    List.iter (print_finding config) reachability;
+    List.iter (print_finding config) all_findings;
     Printf.printf "──────────────────────────────────────────────────────────────\n";
-    if reachability <> [] then begin
+    if all_findings <> [] then begin
       if config.persona then begin
-        let (hiss, meow) = count_by_severity reachability in
+        let (hiss, meow) = count_by_severity all_findings in
         Printf.printf "  🐱 Found %d Hiss, %d Meow across %d files.\n"
           hiss meow (List.length sources);
         Printf.printf "  The Hunter has prey. Review the findings above.\n"
       end else
         Printf.printf "%sFound %d issue(s) across %d file(s).%s\n"
           (styled red config "")
-          (List.length reachability) (List.length sources) (styled reset config "");
+          (List.length all_findings) (List.length sources) (styled reset config "");
       1
     end else begin
       if config.persona then begin
@@ -449,11 +518,15 @@ let run (config : t) : int =
       | Some results -> Some (crows_nest_to_json config.target_dir results)
       | None -> None
     in
-    output_json config sources nodes reachability cache_hits
+    output_json config sources nodes all_findings cache_hits
       ?supply_chain ();
-    if reachability <> [] then 1 else 0
+    if all_findings <> [] then 1 else 0
   | Sarif ->
-    let content = Sarif.to_sarif reachability in
+    let supply_chain = match crows_nest_results with
+      | Some results -> Some (crows_nest_to_json config.target_dir results)
+      | None -> None
+    in
+    let content = Sarif.to_sarif all_findings ?supply_chain () in
     if config.output_path <> "" then begin
       let oc = open_out config.output_path in
       output_string oc content; output_string oc "\n";
@@ -461,9 +534,13 @@ let run (config : t) : int =
       Printf.printf "Results written to %s\n" config.output_path
     end else
       print_string content;
-    if reachability <> [] then 1 else 0
+    if all_findings <> [] then 1 else 0
   | Markdown ->
-    let content = Markdown.to_markdown reachability config.target_dir in
+    let supply_chain = match crows_nest_results with
+      | Some results -> Some (crows_nest_to_json config.target_dir results)
+      | None -> None
+    in
+    let content = Markdown.to_markdown all_findings config.target_dir ?supply_chain () in
     if config.output_path <> "" then begin
       let oc = open_out config.output_path in
       output_string oc content; output_string oc "\n";
@@ -471,4 +548,9 @@ let run (config : t) : int =
       Printf.printf "Results written to %s\n" config.output_path
     end else
       print_string content;
-    if reachability <> [] then 1 else 0
+    if all_findings <> [] then 1 else 0
+  | Dot ->
+    Dot.output_dot nodes all_findings
+      ~custom_patterns:config.extra_sources
+      config.output_path;
+    0

@@ -42,6 +42,18 @@ let parse_sources_node (node : Kdl.node) : source_def list =
   let field = get_prop node.props "field" in
   [{ name; field }]
 
+let parse_languages (children : Kdl.node list) : string list * string list =
+  let excludes, includes =
+    List.fold_left (fun (excl, incl) (child : Kdl.node) ->
+      let val_of = get_first_arg child.args in
+      match child.name with
+      | "exclude" -> (match val_of with Some s -> (s :: excl, incl) | None -> (excl, incl))
+      | "include" -> (match val_of with Some s -> (excl, s :: incl) | None -> (excl, incl))
+      | _ -> (excl, incl)
+    ) ([], []) children
+  in
+  (excludes, includes)
+
 let parse_conditions (children : Kdl.node list) : conditions =
   let known = ["skip_taint_check"; "skip_all_literals"; "check_args_contain"; "check_args_missing"] in
   List.fold_left (fun acc (child : Kdl.node) ->
@@ -96,6 +108,10 @@ let parse_rule_node (node : Kdl.node) : rule_def option =
         (sinks, new_sources @ sources, conds, msg)
       | "conditions" ->
         let c = parse_conditions child.children in
+        (sinks, sources, c, msg)
+      | "languages" ->
+        let excl, incl = parse_languages child.children in
+        let c = { conds with exclude_languages = excl; include_languages = incl } in
         (sinks, sources, c, msg)
       | "message" ->
         let msg_text = match get_first_arg child.args with

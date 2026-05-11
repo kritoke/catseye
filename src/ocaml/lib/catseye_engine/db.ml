@@ -95,7 +95,6 @@ let check_assignment_taint (node : Security_node.t) (acc : t) : string option =
   else
     List.find_opt (fun a ->
       a.Security_node.arg_type = Security_node.ArgVar
-      && (is_tainted_in_file acc a.Security_node.value node.Security_node.file
-          || is_tainted acc a.Security_node.value)
+      && is_tainted_in_file acc a.Security_node.value node.Security_node.file
     ) node.Security_node.args
     |> Option.map (fun a -> a.Security_node.value)

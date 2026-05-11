@@ -16,6 +16,8 @@ type conditions = {
   skip_all_literals : bool;
   check_args_contain : string list;  (* flag if any arg contains one of these *)
   check_args_missing : string list; (* flag if NO arg contains one of these *)
+  exclude_languages : string list;  (* skip rule for these languages *)
+  include_languages : string list;  (* only apply to these languages (empty = all) *)
   extensions : (string * string) list;
 }
 
@@ -35,5 +37,7 @@ let default_conditions () : conditions = {
   skip_all_literals = true;
   check_args_contain = [];
   check_args_missing = [];
+  exclude_languages = [];
+  include_languages = [];
   extensions = [];
 }

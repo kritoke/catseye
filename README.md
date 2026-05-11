@@ -51,6 +51,7 @@ Options:
   --no-persona           Disable Hunter persona (plain terminal output)
   --predator-vision      Enable reachability heatmap (attack surface analysis)
   --crows-nest           Enable supply chain audit (CVE + staleness)
+  --claws                Enable code smell & DRY detection
   --parallelism <n>      Parallel extraction workers (0 = auto)
   -h, --help             Show help
 ```
@@ -76,6 +77,12 @@ enabled = false           # Set true to enable by default
 
 [crows_nest]
 enabled = false           # Set true to enable by default
+
+[claws]
+enabled = false           # Set true to enable by default
+complexity_warning = 10   # Cyclomatic complexity threshold
+max_params = 5           # Parameter count threshold
+dry_window_size = 6       # DRY detection window size
 ```
 
 ## Hunter Persona
@@ -118,7 +125,7 @@ Disable with `--no-persona` for plain output. JSON/SARIF/Markdown are unaffected
 Reachability-first analysis. Detects HTTP handlers and CLI entry points, builds a call graph, and tags findings as **Live** (reachable from the internet), **Dormant** (not reachable), or **Safe** (sanitized).
 
 ```bash
-just scan-hunter path/to/project     # enables --predator-vision --crows-nest
+just scan-hunter path/to/project     # enables --predator-vision --crows-nest --claws
 ```
 
 Terminal output includes a per-file heatmap showing the ratio of live vs dormant sinks.
@@ -134,6 +141,39 @@ Supply chain audit for Crystal Shards and Gleam Hex packages:
 ```bash
 catseye-ocaml --rules rules/ --crows-nest path/to/project
 ```
+
+## Claws — Code Smell & DRY Detection
+
+Code health analysis that runs alongside security scanning. Detects:
+
+- **Cyclomatic complexity** — functions with too many decision points (M ≥ 10 warning, ≥ 20 critical)
+- **Long parameter lists** — functions with too many parameters (≥ 5 warning, ≥ 8 critical)
+- **Deep nesting** — excessive control flow nesting (≥ 4 warning, ≥ 6 critical)
+- **God objects** — files with too many definitions (≥ 20)
+- **DRY violations** — structural code duplication via windowed hashing (window size 6, ≥ 2 occurrences)
+- **Ameba integration** — optional Crystal linter delegation (`--claws` with `[claws] ameba_enabled = true` in config)
+
+```bash
+# Security + code smells
+catseye-ocaml --rules rules/ --claws path/to/project
+
+# Code smells only (with custom thresholds)
+catseye-ocaml --rules rules/ --claws --format json path/to/project
+```
+
+Configure via `.catseye.toml`:
+
+```toml
+[claws]
+enabled = true
+complexity_warning = 10
+max_params = 5
+dry_enabled = true
+dry_window_size = 6
+ameba_enabled = false
+```
+
+All detectors individually toggleable. Findings use the Hunter taxonomy (HISS/MEOW/PURR).
 
 ## Detection Rules
 
@@ -263,6 +303,13 @@ catseye/
 │   │   │   │   ├── staleness.ml       # GitHub/Hex staleness scoring
 │   │   │   │   ├── aggregator.ml      # CVE + staleness → Hiss/Meow/Purr
 │   │   │   │   └── cache.ml           # SQLite cache (24h TTL)
+│   │   │   ├── catseye_claws/          # Code smell & DRY detection
+│   │   │   │   ├── types.ml           # Claws config + thresholds
+│   │   │   │   ├── complexity.ml      # Cyclomatic complexity walker
+│   │   │   │   ├── anatomy.ml         # Params, nesting, god objects
+│   │   │   │   ├── dry.ml             # Structural duplication hashing
+│   │   │   │   ├── ameba_hook.ml      # Ameba linter integration
+│   │   │   │   └── smells.ml          # Unified smell pipeline
 │   │   │   ├── catseye_rules/          # KDL rule system
 │   │   │   │   ├── types.ml           # Rule type definitions
 │   │   │   │   ├── loader.ml          # KDL → rule_def parser

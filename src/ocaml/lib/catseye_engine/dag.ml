@@ -65,7 +65,7 @@ let build_dag (sink : Security_node.t) (db : Db.t)
   let rec trace var =
     trace_with_depth var 0 StringSet.empty
 
-  (** Internal trace with depth tracking and cycle prevention *)
+  (* Internal trace with depth tracking and cycle prevention *)
   and trace_with_depth var depth seen =
     (* Check depth limit and cycle detection *)
     if depth > max_trace_depth || StringSet.mem var seen then

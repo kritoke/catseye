@@ -69,7 +69,16 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     (nodes : Security_node.t list) : Finding.t list =
   let db = build_taint_db ~extra_sources nodes in
   let tainted = get_tainted_vars db in
-  let raw_findings = Catseye_rules.Interpreter.run_all rules nodes tainted in
+  (* Build file-scoped taint map to prevent cross-file taint bleed *)
+  let files =
+    List.fold_left (fun acc n ->
+      let f = n.Security_node.file in
+      if List.mem f acc then acc else f :: acc
+    ) [] nodes in
+  let by_file = List.map (fun f -> (f, get_tainted_vars_in_file db f)) files in
+  let ctx = Catseye_rules.Interpreter.make_taint_context
+    ~global:tainted ~by_file in
+  let raw_findings = Catseye_rules.Interpreter.run_all rules nodes ctx in
   (* Precompute sink lookup map for O(1) access per finding *)
   let sink_map = build_sink_lookup_map nodes in
   let results = ref [] in

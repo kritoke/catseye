@@ -248,7 +248,7 @@ let extract_nodes root path =
             else None)
         ) (find fn ~tag:"function_parameter") in
       Some { node_type = Def; name; args = params
-           ; line = line_of fn; taint = false; file = path; language = "gleam" }
+           ; line = line_of fn; taint = false; file = path; language = "gleam"; metadata = [] }
   ) (find root ~tag:"function") in
 
   (* Pass 2: let bindings — build taint table *)
@@ -280,7 +280,7 @@ let extract_nodes root path =
                acc || contains ~sub:v lt.text) tainted false in
         if taint then Hashtbl.replace tainted name true;
         let args = if rhs_arg <> "" then [{ arg_type = rhs_kind; value = rhs_arg; field = "" }] else [] in
-        Some { node_type = Assign; name; args; line = line_of lt; taint; file = path; language = "gleam" }
+        Some { node_type = Assign; name; args; line = line_of lt; taint; file = path; language = "gleam"; metadata = [] }
     ) (find root ~tag)
   ) ["let"; "let_assert"] in
 
@@ -296,7 +296,7 @@ let extract_nodes root path =
          (List.mem a.value taint_sources || Hashtbl.mem tainted a.value))
         || (a.arg_type = ArgCall && contains ~sub:"<interpolation>" a.value)
       ) args in
-      Some { node_type = Call; name; args; line = line_of call; taint; file = path; language = "gleam" }
+      Some { node_type = Call; name; args; line = line_of call; taint; file = path; language = "gleam"; metadata = [] }
   ) (find root ~tag:"function_call") in
 
   List.sort (fun a b -> compare a.line b.line) (defs @ assigns @ calls)
