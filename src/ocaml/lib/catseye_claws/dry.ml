@@ -73,7 +73,29 @@ let structural_hash (normalized : string) : string =
 
 (* ── Window generation ──────────────────────────────────────────────── *)
 
-(** Generate overlapping windows from a sorted node list. *)
+(** Check if all Call nodes in a window have the same name.
+    This detects repetitive boilerplate like DB read patterns
+    (rows.read, db.query) that are not meaningful duplication. *)
+let is_boilerplate_window (nodes : Security_node.t list) : bool =
+  let call_names = List.filter_map (fun (n : Security_node.t) ->
+    if n.Security_node.node_type = Security_node.Call then
+      Some n.Security_node.name
+    else None
+  ) nodes in
+  match call_names with
+  | [] | [_] -> false
+  | first :: rest ->
+    (* If all calls are the same, it's boilerplate *)
+    List.for_all (fun name -> name = first) rest
+    (* Also check if the boilerplate is a known Crystal DB/IO pattern *)
+    && (let lower = String.lowercase_ascii first in
+        List.exists (fun pat ->
+          let plen = String.length pat in
+          String.length lower >= plen && String.sub lower 0 plen = pat
+        ) ["rows."; "db."; "io."; "file."; "dir."; "env."])
+
+(** Generate overlapping windows from a sorted node list, filtering
+    out boilerplate windows (repetitive DB read patterns). *)
 let generate_windows (file : string) (nodes : Security_node.t list) (size : int)
     : window list =
   let arr = Array.of_list nodes in
@@ -83,14 +105,18 @@ let generate_windows (file : string) (nodes : Security_node.t list) (size : int)
     let windows = ref [] in
     for i = 0 to n - size do
       let window_nodes = Array.sub arr i size |> Array.to_list in
-      let norm = normalize_window window_nodes in
-      let hash = structural_hash norm in
-      windows := {
-        file;
-        start_line = (Array.get arr i).Security_node.line;
-        end_line = (Array.get arr (i + size - 1)).Security_node.line;
-        hash;
-      } :: !windows
+      (* Skip boilerplate windows: all calls have the same name (DB read patterns) *)
+      if is_boilerplate_window window_nodes then ()
+      else begin
+        let norm = normalize_window window_nodes in
+        let hash = structural_hash norm in
+        windows := {
+          file;
+          start_line = (Array.get arr i).Security_node.line;
+          end_line = (Array.get arr (i + size - 1)).Security_node.line;
+          hash;
+        } :: !windows
+      end
     done;
     List.rev !windows
   end

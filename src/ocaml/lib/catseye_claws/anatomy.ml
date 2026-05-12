@@ -34,6 +34,9 @@ let check_params (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   nodes
   |> List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
+  (* Skip initialize methods — Crystal DTOs/records with many fields
+     legitimately need many params. Users universally flag these as FP. *)
+  |> List.filter (fun def -> def.Security_node.name <> "initialize")
   |> List.filter_map (fun (def : Security_node.t) ->
     let count = List.length def.Security_node.args in
     if count >= config.max_params_critical then
@@ -156,6 +159,7 @@ let check_god_objects (nodes : Security_node.t list) (config : Types.claws_confi
     : Finding.t list =
   let defs = List.filter (fun (n : Security_node.t) ->
     n.Security_node.node_type = Security_node.Def
+    && n.Security_node.name <> "initialize"  (* Exclude constructors *)
   ) nodes in
   let by_file = Hashtbl.create 16 in
   List.iter (fun (d : Security_node.t) ->
