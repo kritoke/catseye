@@ -8,6 +8,11 @@ type node_type =
   | Literal
   | Import
   | Guard
+  | Class
+  | Module
+  | Enum
+  | Control
+  | Terminator
 
 type arg_type =
   | ArgVar
@@ -52,6 +57,11 @@ let node_type_of_string = function
   | "literal" -> Literal
   | "import" -> Import
   | "guard" -> Guard
+  | "class" -> Class
+  | "module" -> Module
+  | "enum" -> Enum
+  | "control" -> Control
+  | "terminator" -> Terminator
   | _ -> Call
 
 let string_of_node_type = function
@@ -62,6 +72,11 @@ let string_of_node_type = function
   | Literal -> "literal"
   | Import -> "import"
   | Guard -> "guard"
+  | Class -> "class"
+  | Module -> "module"
+  | Enum -> "enum"
+  | Control -> "control"
+  | Terminator -> "terminator"
 
 (* JSON decoding *)
 let decode_arg (json : Yojson.Safe.t) : arg =

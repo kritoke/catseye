@@ -263,6 +263,154 @@ class SecurityVisitor < Crystal::Visitor
     true # visit body
   end
 
+  # ── Class / Struct / Module / Enum boundaries ────────────────────────
+
+  def visit(node : Crystal::ClassDef) : Bool
+    @nodes << {
+      type:     "class",
+      name:     node.name.to_s,
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit body
+  end
+
+  def visit(node : Crystal::ModuleDef) : Bool
+    @nodes << {
+      type:     "module",
+      name:     node.name.to_s,
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit body
+  end
+
+  def visit(node : Crystal::EnumDef) : Bool
+    @nodes << {
+      type:     "enum",
+      name:     node.name.to_s,
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit body
+  end
+
+  # ── Control flow: if / unless / case ───────────────────────────────
+
+  def visit(node : Crystal::If) : Bool
+    @nodes << {
+      type:     "control",
+      name:     node.else ? "if_else" : "if",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit condition, then, else
+  end
+
+  def visit(node : Crystal::Unless) : Bool
+    @nodes << {
+      type:     "control",
+      name:     "unless",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true
+  end
+
+  def visit(node : Crystal::Case) : Bool
+    # Count when branches
+    when_count = node.whens.size
+    @nodes << {
+      type:     "control",
+      name:     "case",
+      args:     [{arg_type: "literal", value: when_count.to_s, field: ""}],
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit whens
+  end
+
+  def visit(node : Crystal::When) : Bool
+    @nodes << {
+      type:     "control",
+      name:     "when",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true
+  end
+
+  # ── Control flow terminators: return / raise / break / next ─────────
+
+  def visit(node : Crystal::Return) : Bool
+    @nodes << {
+      type:     "terminator",
+      name:     "return",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit the expression too
+  end
+
+  def visit(node : Crystal::Break) : Bool
+    @nodes << {
+      type:     "terminator",
+      name:     "break",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    false
+  end
+
+  def visit(node : Crystal::Next) : Bool
+    @nodes << {
+      type:     "terminator",
+      name:     "next",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    false
+  end
+
   # ── Assignments ────────────────────────────────────────────────────
 
   def visit(node : Crystal::Assign) : Bool

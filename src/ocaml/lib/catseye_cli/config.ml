@@ -190,6 +190,8 @@ let load_toml (path : string) (cfg : t) : t =
         message_chain_threshold = get_int table "claws.message_chain_threshold" 5;
         data_clumps_enabled = get_bool table "claws.data_clumps_enabled" true;
         data_clumps_threshold = get_int table "claws.data_clumps_threshold" 3;
+        complex_match_warning = get_int table "claws.complex_match_warning" 5;
+        complex_match_critical = get_int table "claws.complex_match_critical" 10;
       }
     }
   with _ -> cfg

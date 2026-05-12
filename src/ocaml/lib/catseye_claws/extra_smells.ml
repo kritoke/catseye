@@ -294,6 +294,357 @@ let check_data_clumps (nodes : Security_node.t list)
     ) pair_counts []
   end
 
+(* ── Flag Argument ───────────────────────────────────────────────────── *)
+
+(** Detect boolean-style parameters that control function behavior:
+    is_*, should_*, enable_*, disable_*, use_*, has_*, with_*, force_*,
+    skip_*, no_*, verbose, debug, dry_run.
+    These split the function's behavior and suggest decomposition. *)
+let flag_prefixes = [
+  "is_"; "should_"; "enable_"; "disable_"; "use_"; "include_";
+  "has_"; "allow_"; "force_"; "skip_"; "no_"; "with_";
+]
+let flag_names = ["verbose"; "debug"; "dry_run"; "strict"; "quiet"]
+
+let is_flag_arg (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  List.exists (fun prefix ->
+    let plen = String.length prefix in
+    String.length lower >= plen && String.sub lower 0 plen = prefix
+  ) flag_prefixes
+  || List.exists (fun n -> lower = n) flag_names
+
+let check_flag_arguments (nodes : Security_node.t list)
+    (_config : Types.claws_config) : Finding.t list =
+  List.filter_map (fun (n : Security_node.t) ->
+    if n.Security_node.node_type <> Security_node.Def then None
+    else
+      let flags = List.filter (fun a ->
+        a.Security_node.arg_type = Security_node.ArgVar
+        && is_flag_arg a.Security_node.value
+      ) n.Security_node.args in
+      match flags with
+      | [] -> None
+      | _ ->
+        let flag_names = String.concat ", " (
+          List.map (fun a -> a.Security_node.value) flags
+        ) in
+        Some {
+          Finding.rule = "FlagArgument";
+          severity = "Medium";
+          file = n.Security_node.file;
+          line = n.Security_node.line;
+          message = Printf.sprintf
+            "Function '%s' has flag parameter(s): %s. \
+             Consider splitting into separate methods."
+            n.Security_node.name flag_names;
+          flow = [ {
+            Finding.file = n.Security_node.file;
+            line = n.Security_node.line;
+            message = Printf.sprintf "Definition of '%s'" n.Security_node.name;
+          } ];
+          language = n.Security_node.language;
+          dependency = None;
+          reachability = None;
+        }
+  ) nodes
+
+(* ── Complex Match/Case ─────────────────────────────────────────────── *)
+
+(** Flag case expressions with too many when branches.
+    Uses the new Control nodes emitted by the extractor.
+    Threshold: 5+ when branches = Meow, 10+ = Hiss. *)
+let check_complex_match (nodes : Security_node.t list)
+    (config : Types.claws_config) : Finding.t list =
+  List.filter_map (fun (n : Security_node.t) ->
+    if n.Security_node.node_type <> Security_node.Control then None
+    else if n.Security_node.name <> "case" then None
+    else
+      (* The extractor stores the when count as a literal arg *)
+      let when_count = match n.Security_node.args with
+        | [{ Security_node.arg_type = ArgLiteral; value; _ }] -> (
+          try int_of_string value with _ -> 0
+        )
+        | _ -> 0
+      in
+      if when_count >= config.complex_match_critical then
+        Some {
+          Finding.rule = "ComplexMatch";
+          severity = "High";
+          file = n.Security_node.file;
+          line = n.Security_node.line;
+          message = Printf.sprintf
+            "Complex case expression with %d when branches (critical threshold: %d). \
+             Consider decomposing into smaller functions or a lookup table."
+            when_count config.complex_match_critical;
+          flow = [ {
+            Finding.file = n.Security_node.file;
+            line = n.Security_node.line;
+            message = Printf.sprintf "case with %d branches" when_count;
+          } ];
+          language = n.Security_node.language;
+          dependency = None;
+          reachability = None;
+        }
+      else if when_count >= config.complex_match_warning then
+        Some {
+          Finding.rule = "ComplexMatch";
+          severity = "Medium";
+          file = n.Security_node.file;
+          line = n.Security_node.line;
+          message = Printf.sprintf
+            "Complex case expression with %d when branches (warning threshold: %d). \
+             Consider decomposing into smaller functions or a lookup table."
+            when_count config.complex_match_warning;
+          flow = [ {
+            Finding.file = n.Security_node.file;
+            line = n.Security_node.line;
+            message = Printf.sprintf "case with %d branches" when_count;
+          } ];
+          language = n.Security_node.language;
+          dependency = None;
+          reachability = None;
+        }
+      else None
+  ) nodes
+
+(* ── Dead Code (after unconditional terminators) ────────────────────── *)
+
+(** Build a set of control flow lines (if/unless) — terminators on
+    these lines are conditional (e.g., "return if x") and NOT dead code. *)
+let build_control_lines (nodes : Security_node.t list) : (string, int list) Hashtbl.t =
+  let tbl : (string, int list) Hashtbl.t = Hashtbl.create 32 in
+  List.iter (fun (n : Security_node.t) ->
+    if n.Security_node.node_type = Security_node.Control then begin
+      let existing = try Hashtbl.find tbl n.Security_node.file with Not_found -> [] in
+      Hashtbl.replace tbl n.Security_node.file (n.Security_node.line :: existing)
+    end
+  ) nodes;
+  tbl
+
+(** Check if a line is a control flow line (conditional terminator) *)
+let is_conditional_terminator (control_lines : (string, int list) Hashtbl.t)
+    (file : string) (line : int) : bool =
+  match Hashtbl.find_opt control_lines file with
+  | Some lines -> List.mem line lines
+  | None -> false
+
+(** Detect code after unconditional return/raise in the same function scope.
+    A terminator is "unconditional" if it's NOT on a control flow line
+    (i.e., not "return if x" but just "return x").
+    Flags the first non-control, non-class node after an unconditional terminator. *)
+let check_dead_code (nodes : Security_node.t list)
+    (_config : Types.claws_config) : Finding.t list =
+  let control_lines = build_control_lines nodes in
+  (* Build function scopes *)
+  let scopes = build_scopes nodes in
+  List.filter_map (fun ({ def; body } : scope) ->
+    (* Scan body for unconditional terminators followed by code *)
+      (* Scan body for unconditional terminators followed by code.
+         Skip terminators in the last 3 nodes of the body — these are
+         common "return at end of function" patterns, not dead code.
+         Also require at least 2 nodes after terminator to reduce noise. *)
+      let rec scan (idx : int) = function
+        | [] -> None
+        | n :: rest ->
+          let remaining = List.length rest in
+          if remaining <= 2 then None  (* too close to end of function *)
+          else if n.Security_node.node_type = Security_node.Terminator
+             && not (is_conditional_terminator control_lines
+                       n.Security_node.file n.Security_node.line)
+          then begin
+            (* Find next meaningful node — skip control/terminator/class nodes *)
+            let dead = List.find_opt (fun (d : Security_node.t) ->
+              d.Security_node.node_type <> Security_node.Control
+              && d.Security_node.node_type <> Security_node.Terminator
+              && d.Security_node.node_type <> Security_node.Class
+              && d.Security_node.node_type <> Security_node.Module
+              && d.Security_node.node_type <> Security_node.Enum
+              && d.Security_node.line > n.Security_node.line
+            ) rest in
+            (match dead with
+             | Some d ->
+               Some (d.Security_node.file, d.Security_node.line,
+                     n.Security_node.name, n.Security_node.line,
+                     def.Security_node.name,
+                     d.Security_node.node_type, d.Security_node.name)
+             | None -> None)
+          end else scan (idx + 1) rest
+      in
+      match (scan 0) body with
+    | Some (file, line, term_name, term_line, def_name, dead_type, dead_name) ->
+      Some {
+        Finding.rule = "DeadCode";
+        severity = "High";
+        file;
+        line;
+        message = Printf.sprintf
+          "Unreachable %s '%s' after unconditional %s at line %d in '%s'. \
+           This code will never execute."
+          (Security_node.string_of_node_type dead_type) dead_name
+          term_name term_line def_name;
+        flow = [ {
+          Finding.file = file;
+          line = term_line;
+          message = Printf.sprintf "Unconditional %s" term_name;
+        } ];
+        language = "crystal";
+        dependency = None;
+        reachability = None;
+      }
+    | None -> None
+  ) scopes
+
+(* ── Data Class ─────────────────────────────────────────────────────── *)
+
+(** Detect classes/structs that only contain getters/properties and initialize.
+    These are pure data containers that should be Crystal structs or records.
+
+    Algorithm: for each Class node, count the Def nodes between this class
+    and the next class/module/enum (or end of file). If all defs are
+    'initialize' and there are getter/property calls, it's a Data Class. *)
+let check_data_classes (nodes : Security_node.t list)
+    (_config : Types.claws_config) : Finding.t list =
+  (* Build class boundaries: (file, start_line, end_line, class_name) *)
+  let class_boundaries = ref [] in
+  let by_file = Hashtbl.create 16 in
+  List.iter (fun (n : Security_node.t) ->
+    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
+    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  ) nodes;
+  Hashtbl.iter (fun _file file_nodes ->
+    let sorted = List.sort (fun a b ->
+      compare a.Security_node.line b.Security_node.line
+    ) file_nodes in
+    let class_nodes = List.filter (fun n ->
+      n.Security_node.node_type = Security_node.Class
+      || n.Security_node.node_type = Security_node.Module
+      || n.Security_node.node_type = Security_node.Enum
+    ) sorted in
+    List.iteri (fun i (cn : Security_node.t) ->
+      if cn.Security_node.node_type = Security_node.Class then begin
+        let end_line =
+          if i + 1 < List.length class_nodes then
+            (List.nth class_nodes (i + 1)).Security_node.line
+          else max_int
+        in
+        class_boundaries := (cn.Security_node.file, cn.Security_node.line,
+                             end_line, cn.Security_node.name) :: !class_boundaries
+      end
+    ) class_nodes
+  ) by_file;
+  (* For each class, analyze its contents *)
+  List.filter_map (fun (file, start_line, end_line, class_name) ->
+    let class_nodes = List.filter (fun (n : Security_node.t) ->
+      n.Security_node.file = file
+      && n.Security_node.line >= start_line
+      && n.Security_node.line < end_line
+    ) nodes in
+    let defs = List.filter (fun n ->
+      n.Security_node.node_type = Security_node.Def
+    ) class_nodes in
+    let getters = List.filter (fun n ->
+      n.Security_node.node_type = Security_node.Call
+      && List.mem n.Security_node.name ["getter"; "property"; "setter";
+         "class_getter"; "class_property"; "class_setter"]
+    ) class_nodes in
+    let non_init_defs = List.filter (fun (d : Security_node.t) ->
+      d.Security_node.name <> "initialize"
+    ) defs in
+    (* Data Class: has getters, no non-initialize methods *)
+    if List.length getters >= 2 && List.length non_init_defs = 0 then
+      Some {
+        Finding.rule = "DataClass";
+        severity = "Medium";
+        file;
+        line = start_line;
+        message = Printf.sprintf
+          "Class '%s' has %d properties but no behavior methods (only initialize). \
+           Consider using a Crystal struct or record instead."
+          class_name (List.length getters);
+        flow = [ {
+          Finding.file = file;
+          line = start_line;
+          message = Printf.sprintf "Definition of '%s'" class_name;
+        } ];
+        language = "crystal";
+        dependency = None;
+        reachability = None;
+      }
+    else None
+  ) !class_boundaries
+
+(* ── Feature Envy ────────────────────────────────────────────────────── *)
+
+(** Detect functions that spend most of their time accessing another object's
+    fields/methods rather than their own.
+
+    Algorithm: for each Def scope, count call targets by their first segment
+    (e.g., feed.url, feed.title -> "feed" gets 2 accesses). If one object
+    dominates (>60% of accesses, >= 5 accesses), flag as Feature Envy.
+    Skips: self-accesses (starting with @), stdlib calls, private helpers. *)
+let check_feature_envy (nodes : Security_node.t list)
+    (_config : Types.claws_config) : Finding.t list =
+  let scopes = build_scopes nodes in
+  List.filter_map (fun ({ def; body } : scope) ->
+    (* Count object accesses in this function *)
+    let obj_counts : (string, int) Hashtbl.t = Hashtbl.create 8 in
+    List.iter (fun (n : Security_node.t) ->
+      if n.Security_node.node_type = Security_node.Call then begin
+        let name = n.Security_node.name in
+        (* Split on first dot to get target object *)
+        try
+          let dot = String.index name '.' in
+          let obj = String.sub name 0 dot in
+          (* Skip self-accesses, stdlib, internal args, operators *)
+          if String.length obj > 0
+             && obj.[0] <> '@'  (* not instance var *)
+             && obj <> "raise"  (* not raise *)
+             && String.length obj >= 2  (* not single-char operators *)
+             && not (let c = obj.[0] in c = '_' || c >= 'A' && c <= 'Z')  (* not __arg or Module *)
+          then begin
+            let current = try Hashtbl.find obj_counts obj with Not_found -> 0 in
+            Hashtbl.replace obj_counts obj (current + 1)
+          end
+        with Not_found -> ()  (* no dot — skip *)
+      end
+    ) body;
+    (* Find dominant object *)
+    let total = Hashtbl.fold (fun _ c acc -> acc + c) obj_counts 0 in
+    if total >= 8 then begin
+      let best_obj = ref "" in
+      let best_count = ref 0 in
+      Hashtbl.iter (fun obj count ->
+        if count > !best_count then begin
+          best_obj := obj;
+          best_count := count
+        end
+      ) obj_counts;
+      let ratio = float_of_int !best_count /. float_of_int total in
+      if ratio >= 0.7 then
+        Some {
+          Finding.rule = "FeatureEnvy";
+          severity = "Medium";
+          file = def.Security_node.file;
+          line = def.Security_node.line;
+          message = Printf.sprintf
+            "Function '%s' accesses '%s' %d/%d times (%d%%). \
+             Consider moving this method to the '%s' class."
+            def.Security_node.name !best_obj !best_count total
+            (int_of_float (ratio *. 100.0)) !best_obj;
+          flow = [ {
+            Finding.file = def.Security_node.file;
+            line = def.Security_node.line;
+            message = Printf.sprintf "Definition of '%s'" def.Security_node.name;
+          } ];
+          language = def.Security_node.language;
+          dependency = None;
+          reachability = None;
+        }
+      else None
+    end else None
+  ) scopes
+
 (* ── Combined extra smells analysis ─────────────────────────────────── *)
 
 let analyze (nodes : Security_node.t list) (config : Types.claws_config)
@@ -302,3 +653,8 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
   @ check_complex_conditionals nodes config
   @ check_message_chains nodes config
   @ check_data_clumps nodes config
+  @ check_flag_arguments nodes config
+  @ check_complex_match nodes config
+  @ check_dead_code nodes config
+  @ check_data_classes nodes config
+  @ check_feature_envy nodes config

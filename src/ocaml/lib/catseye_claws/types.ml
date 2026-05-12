@@ -44,6 +44,8 @@ type claws_config = {
   message_chain_threshold : int; (** default: 5 segments *)
   data_clumps_enabled : bool;   (** default: true *)
   data_clumps_threshold : int;  (** default: 3 functions *)
+  complex_match_warning : int;  (** default: 5 when branches *)
+  complex_match_critical : int; (** default: 10 when branches *)
 }
 
 let default_config = {
@@ -68,4 +70,6 @@ let default_config = {
   message_chain_threshold = 5;
   data_clumps_enabled = true;
   data_clumps_threshold = 3;
+  complex_match_warning = 5;
+  complex_match_critical = 10;
 }

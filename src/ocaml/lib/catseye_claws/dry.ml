@@ -55,6 +55,16 @@ let normalize_node (n : Security_node.t) : string =
     "Import|_|0"
   | Security_node.Guard ->
     "Guard|_|0"
+  | Security_node.Class ->
+    "Class|_|0"
+  | Security_node.Module ->
+    "Module|_|0"
+  | Security_node.Enum ->
+    "Enum|_|0"
+  | Security_node.Control ->
+    "Control|_|0"
+  | Security_node.Terminator ->
+    "Terminator|_|0"
 
 (** Normalize a window of nodes to a canonical string. *)
 let normalize_window (nodes : Security_node.t list) : string =
@@ -134,6 +144,8 @@ let group_by_file (nodes : Security_node.t list) : (string * Security_node.t lis
        which are language constructs, not user code. *)
     let skip = match n.Security_node.node_type with
       | Security_node.Import | Security_node.Guard -> true
+      | Security_node.Class | Security_node.Module | Security_node.Enum -> true
+      | Security_node.Control | Security_node.Terminator -> true
       | Security_node.Call ->
         let name = n.Security_node.name in
         name = "property" || name = "getter" || name = "setter"
