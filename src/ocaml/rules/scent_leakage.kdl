@@ -1,0 +1,38 @@
+rule "ScentLeakage" severity="Critical" {
+    sinks {
+        // Crystal log sinks
+        sink "Logger.info"
+        sink "Logger.warn"
+        sink "Logger.error"
+        sink "Logger.debug"
+        sink "Logger.notice"
+        sink "Log.info"
+        sink "Log.warn"
+        sink "Log.error"
+        sink "Log.debug"
+        sink "Log.notice"
+        // Crystal output sinks
+        sink "puts"
+        sink "pp!"
+        sink "print"
+        sink "STDOUT.puts"
+        sink "STDOUT.write"
+        sink "STDERR.puts"
+        sink "STDERR.write"
+        sink "Log.write"
+        sink "Log.info"
+        sink "IO.write"
+    }
+    sources {
+        source "password"
+        source "token"
+        source "secret"
+        source "api_key"
+        source "credential"
+        source "email"
+        source "ssn"
+        source "credit_card"
+        source "session_id"
+    }
+    message "Scent Leakage: sensitive data may reach {sink} via scented variable(s): {tainted_vars}."
+}

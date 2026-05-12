@@ -28,15 +28,62 @@ let make_finding (def : Security_node.t) (rule : string) (severity : string)
   ; reachability = None
   }
 
+(** Method names that are inherently multi-parameter and should be exempt
+    from LongParameterList checks. These are patterns where many params
+    are structurally required by the domain. *)
+let is_exempt_method (name : string) : bool =
+  (* Constructors *)
+  name = "initialize" ||
+  name = "new" ||
+  name = "from_" ||
+  (* Binary format parsers — params map to format fields *)
+  String.length name >= 6 &&
+  (let prefix = String.sub name 0 6 in
+   prefix = "decode" || prefix = "parse_") ||
+  (* Private helpers — extracted for dedup, params are required *)
+  (String.length name >= 5 &&
+   let suffix = String.sub name (String.length name - 5) 5 in
+   suffix = "_core") ||
+  (* Factory/builder patterns *)
+  (String.length name >= 5 &&
+   let prefix = String.sub name 0 5 in
+   prefix = "build" || prefix = "creat") ||
+  (* Benchmark methods — self-contained harnesses *)
+  String.length name >= 9 &&
+  (let prefix = String.sub name 0 9 in
+   prefix = "benchmark") ||
+  (* Test methods *)
+  String.length name >= 4 &&
+  (let prefix = String.sub name 0 4 in
+   prefix = "test")
+
+(** File paths that should be exempt from certain checks. *)
+let is_benchmark_or_example (file : string) : bool =
+  let lower = String.lowercase_ascii file in
+  List.exists (fun pat ->
+    let plen = String.length pat in
+    String.length lower >= plen &&
+    String.sub lower (String.length lower - plen) plen = pat
+  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+
+let is_constants_file (file : string) : bool =
+  let lower = String.lowercase_ascii file in
+  List.exists (fun pat ->
+    let plen = String.length pat in
+    String.length lower >= plen &&
+    String.sub lower (String.length lower - plen) plen = pat
+  ) ["constants.cr"; "consts.cr"; "constants.gl"; "enums.cr"; "enums.gl"]
+
 (* ── C3a: Long parameter lists ──────────────────────────────────────── *)
 
 let check_params (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   nodes
   |> List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
-  (* Skip initialize methods — Crystal DTOs/records with many fields
-     legitimately need many params. Users universally flag these as FP. *)
-  |> List.filter (fun def -> def.Security_node.name <> "initialize")
+  (* Skip exempt methods *)
+  |> List.filter (fun def -> not (is_exempt_method def.Security_node.name))
+  (* Skip benchmarks/examples *)
+  |> List.filter (fun def -> not (is_benchmark_or_example def.Security_node.file))
   |> List.filter_map (fun (def : Security_node.t) ->
     let count = List.length def.Security_node.args in
     if count >= config.max_params_critical then
@@ -54,7 +101,8 @@ let check_params (nodes : Security_node.t list) (config : Types.claws_config)
 
 (** Patterns that create nesting scope.
     Without full AST, we approximate by counting these in function bodies.
-*)
+    Note: sequential if/unless at the same level should NOT count as nesting.
+    We overcount by nature — the thresholds compensate.*)
 let scope_creators =
   [ "if"; "unless"; "case"; "do"; "begin"; "try"; "loop"; "while"; "each" ]
 
@@ -140,19 +188,52 @@ let check_nesting (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   let scopes = build_scopes nodes in
   List.filter_map (fun ({ def; body } : scope) ->
-    let depth = approx_nesting_depth body in
-    if depth >= config.max_nesting_critical then
-      Some (make_finding def "DeepNesting" "High"
-        (Printf.sprintf "Function '%s' has nesting depth of %d (critical threshold: %d)"
-          def.Security_node.name depth config.max_nesting_critical))
-    else if depth >= config.max_nesting then
-      Some (make_finding def "DeepNesting" "Medium"
-        (Printf.sprintf "Function '%s' has nesting depth of %d (warning threshold: %d)"
-          def.Security_node.name depth config.max_nesting))
-    else None
+    (* Skip benchmarks/examples — nesting in harness code is acceptable *)
+    if is_benchmark_or_example def.Security_node.file then None
+    else begin
+      let depth = approx_nesting_depth body in
+      if depth >= config.max_nesting_critical then
+        Some (make_finding def "DeepNesting" "High"
+          (Printf.sprintf "Function '%s' has nesting depth of %d (critical threshold: %d)"
+            def.Security_node.name depth config.max_nesting_critical))
+      else if depth >= config.max_nesting then
+        Some (make_finding def "DeepNesting" "Medium"
+          (Printf.sprintf "Function '%s' has nesting depth of %d (warning threshold: %d)"
+            def.Security_node.name depth config.max_nesting))
+      else None
+    end
   ) scopes
 
 (* ── C3c: God objects ───────────────────────────────────────────────── *)
+
+(** File patterns that legitimately have many methods.
+    Format parsers, API modules, and coordinator classes need many methods
+    by their nature. *)
+let is_exempt_god_object (file : string) (method_names : string list) : bool =
+  (* Benchmarks/examples *)
+  is_benchmark_or_example file ||
+  (* Constants/enum files *)
+  is_constants_file file ||
+  (* Binary format parsers — many methods for different format aspects *)
+  let lower = String.lowercase_ascii file in
+  List.exists (fun pat ->
+    let plen = String.length pat in
+    String.length lower >= plen &&
+    String.sub lower (String.length lower - plen) plen = pat
+  ) ["parser.cr"; "extractor.cr"; "decoder.cr"; "serializer.cr";
+     "parser.gl"; "extractor.gl"; "decoder.gl"; "serializer.gl"] ||
+  (* If > 40% of methods start with decode_/parse_/to_/from_, it's a format module *)
+  let total = List.length method_names in
+  total > 0 &&
+  let format_methods = List.filter (fun name ->
+    String.length name >= 4 &&
+    (let prefix = String.sub name 0 4 in
+     prefix = "deco" || prefix = "pars" || prefix = "to_r" || prefix = "to_" || prefix = "from") ||
+    String.length name >= 5 &&
+    (let prefix = String.sub name 0 5 in
+     prefix = "write" || prefix = "encod")
+  ) method_names in
+  List.length format_methods * 100 / total >= 40
 
 (** Group Def nodes by file and flag files exceeding the threshold. *)
 let check_god_objects (nodes : Security_node.t list) (config : Types.claws_config)
@@ -168,7 +249,10 @@ let check_god_objects (nodes : Security_node.t list) (config : Types.claws_confi
   ) defs;
   Hashtbl.fold (fun file file_defs acc ->
     let count = List.length file_defs in
-    if count >= config.max_methods_per_file then begin
+    let method_names = List.map (fun (d : Security_node.t) -> d.Security_node.name) file_defs in
+    if count >= config.max_methods_per_file
+       && not (is_exempt_god_object file method_names)
+    then begin
       let first_def = List.hd (List.sort (fun (a : Security_node.t) (b : Security_node.t) ->
         compare a.Security_node.line b.Security_node.line
       ) file_defs) in

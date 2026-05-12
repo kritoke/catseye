@@ -46,6 +46,7 @@ type claws_config = {
   data_clumps_threshold : int;  (** default: 3 functions *)
   complex_match_warning : int;  (** default: 5 when branches *)
   complex_match_critical : int; (** default: 10 when branches *)
+  concurrency_enabled : bool;  (** default: true *)
 }
 
 let default_config = {
@@ -72,4 +73,5 @@ let default_config = {
   data_clumps_threshold = 3;
   complex_match_warning = 5;
   complex_match_critical = 10;
+  concurrency_enabled = true;
 }

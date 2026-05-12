@@ -43,6 +43,10 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
     if config.extra_smells_enabled then Extra_smells.analyze nodes config
     else []
   in
+  let concurrency_findings =
+    if config.concurrency_enabled then Concurrency.analyze nodes config
+    else []
+  in
   let ameba_findings = Ameba_hook.run config nodes in
-  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ ameba_findings)
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate

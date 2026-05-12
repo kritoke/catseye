@@ -100,4 +100,33 @@ let seed_from_taint_flags (nodes : Security_node.t list) (db : Db.t) : Db.t =
 
 let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let db' = seed_from_params nodes extra_sources db in
-  seed_from_taint_flags nodes db'
+  let db'' = seed_from_taint_flags nodes db' in
+  (* Seed from scent metadata: assignments carrying scent=true are also tainted *)
+  nodes
+  |> List.filter (fun n ->
+    n.Security_node.node_type = Security_node.Assign
+    && Security_node.has_metadata_flag n "scent"
+  )
+  |> List.filter (fun n ->
+    (* Don't double-seed: if already tainted, skip *)
+    not n.Security_node.taint
+  )
+  |> List.map (fun n ->
+    let from_var =
+      n.Security_node.args
+      |> List.find_opt (fun a -> a.Security_node.arg_type = Security_node.ArgVar)
+      |> Option.map (fun a -> a.Security_node.value)
+      |> Option.value ~default:""
+    in
+    { var_name = n.Security_node.name
+    ; file = n.Security_node.file
+    ; line = n.Security_node.line
+    ; description = n.Security_node.name ^ " carries sensitive data (scent source)"
+    ; source_var = from_var
+    ; field = None
+    ; status = Tainted { source = from_var
+                        ; field = None
+                        ; origin = Known_source ("scent:" ^ n.Security_node.name) }
+    }
+  )
+  |> List.fold_left (fun acc record -> Db.add_record acc record) db''

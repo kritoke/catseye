@@ -103,6 +103,28 @@ TAINT_SOURCES = Set{
   "input",
 }
 
+# Sensitive variable names — PII and secrets that should never reach logs/output.
+# These are "Scent Sources": the predator's trail left in the open.
+SCENT_SOURCES = Set{
+  # Authentication & authorization
+  "password", "passwd", "pass",
+  "api_key", "apikey", "api_secret", "secret_key",
+  "access_token", "refresh_token", "auth_token", "session_token",
+  "token", "secret", "credential", "credentials",
+  "private_key", "private_key_data",
+  # PII
+  "email", "email_address", "ssn", "social_security",
+  "phone", "phone_number", "mobile",
+  "credit_card", "card_number", "cvv", "cvc",
+  "date_of_birth", "dob", "birthday",
+  "address", "street_address", "zip_code", "postal_code",
+  "ip_address", "ip_addr",
+  # Session/cookie
+  "session_id", "cookie", "cookie_value",
+  # Database secrets
+  "database_url", "db_password", "connection_string",
+}
+
 SANITIZERS = Set{
   "URI.parse", "URI.encode", "URI.decode",
   "Path.posix", "Path.basename", "Path.dirname",
@@ -220,11 +242,14 @@ class SecurityVisitor < Crystal::Visitor
   @tainted_vars : Set(String)
   # Track variables assigned from safe query interpolations (only ? + literals)
   @safe_query_vars : Set(String)
+  # Track variables with sensitive names (scent sources) for scent leakage detection
+  @scented_vars : Set(String)
 
   def initialize(@file_path : String)
     @nodes = [] of SecNode
     @tainted_vars = Set(String).new
     @safe_query_vars = Set(String).new
+    @scented_vars = Set(String).new
   end
 
   def visit(node : Crystal::ASTNode) : Bool
@@ -250,10 +275,17 @@ class SecurityVisitor < Crystal::Visitor
   # ── Method definitions ─────────────────────────────────────────────
 
   def visit(node : Crystal::Def) : Bool
+    args = node.args.map { |a|
+      # Track parameters with sensitive names as scented
+      if SCENT_SOURCES.includes?(a.name)
+        @scented_vars << a.name
+      end
+      {arg_type: "var", value: a.name, field: ""}
+    }
     @nodes << {
       type:     "def",
       name:     node.name,
-      args:     node.args.map { |a| {arg_type: "var", value: a.name, field: ""} },
+      args:     args,
       line:     location_line(node),
       taint:    false,
       file:     @file_path,
@@ -427,6 +459,31 @@ class SecurityVisitor < Crystal::Visitor
       tainted = @tainted_vars.includes?(var_node.name)
     end
 
+    # Scent propagation: if RHS references a scented variable, mark target as scented
+    scented = false
+    if SCENT_SOURCES.includes?(target_name)
+      scented = true
+      @scented_vars << target_name
+    end
+    if !scented && (var_node = node.value.as?(Crystal::Var))
+      if @scented_vars.includes?(var_node.name)
+        scented = true
+        @scented_vars << target_name
+      end
+    end
+    # Also check if the assigned value is a Call on a scented var
+    if !scented && (call_node = node.value.as?(Crystal::Call))
+      if obj = call_node.obj
+        case obj
+        when Crystal::Var
+          if @scented_vars.includes?(obj.name)
+            scented = true
+            @scented_vars << target_name
+          end
+        end
+      end
+    end
+
     # Sanitizer calls cleanse taint: filename = Path.basename(input) → not tainted
     # Also remove from @tainted_vars if reassigned through a sanitizer
     if sanitizer_call?(node.value)
@@ -465,7 +522,7 @@ class SecurityVisitor < Crystal::Visitor
       taint:    tainted,
       file:     @file_path,
       language: "crystal",
-      metadata: nil,
+      metadata: scented ? {"scent" => "true"} : nil,
     }
     true
   end
@@ -550,6 +607,28 @@ class SecurityVisitor < Crystal::Visitor
 
     # Detect parameterized SQL queries
     metadata : Hash(String, String)? = nil
+
+    # Check if any arg is a scented variable
+    scented = false
+    node.args.each do |arg|
+      if var_node = arg.as?(Crystal::Var)
+        if @scented_vars.includes?(var_node.name)
+          scented = true
+          break
+        end
+      end
+      # Check interpolation for scented vars
+      if interp = arg.as?(Crystal::StringInterpolation)
+        has_scented = interp.expressions.any? do |expr|
+          (var_node = expr.as?(Crystal::Var)) && @scented_vars.includes?(var_node.name)
+        end
+        if has_scented
+          scented = true
+          break
+        end
+      end
+    end
+
     if db_call?(node) && node.args.size > 0
       if parameterized_query?(node.args.first)
         metadata = {"parameterized_query" => "true"}
@@ -569,6 +648,12 @@ class SecurityVisitor < Crystal::Visitor
       end
     end
 
+    # Merge scent into metadata if applicable
+    final_metadata = metadata
+    if scented
+      final_metadata = (metadata || {} of String => String).merge({"scent" => "true"})
+    end
+
     @nodes << {
       type:     "call",
       name:     call_name,
@@ -577,7 +662,7 @@ class SecurityVisitor < Crystal::Visitor
       taint:    tainted,
       file:     @file_path,
       language: "crystal",
-      metadata: metadata,
+      metadata: final_metadata,
     }
     true
   end

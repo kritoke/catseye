@@ -165,19 +165,25 @@ and evaluate_rule_conditions (node : Security_node.t) (rule : rule_def) (sink : 
 
 (* ── Taint Analysis ─────────────────────────────────────────────────── *)
 
-(** Check if a node is suspect for a given sink, using file-scoped taint. *)
+(** Check if a node is suspect for a given sink, using file-scoped taint.
+    Also considers scent metadata: nodes with scent=true are always suspect
+    for ScentLeakage rules regardless of regular taint. *)
 and is_suspect (node : Security_node.t) (ctx : taint_context)
     (sink : sink_def) : bool =
   let has_sanitized = has_sanitized_args node sink.sanitizers in
   if has_sanitized then false
   else
-    let tainted = tainted_for_file ctx node.Security_node.file in
-    (node.Security_node.taint
-     || List.exists (fun a ->
-          a.Security_node.arg_type = Security_node.ArgVar
-          && List.mem a.Security_node.value tainted
-        ) node.Security_node.args)
-    && not (all_args_literal node)
+    (* Scent metadata: if node carries scent=true, it's suspect for any sink *)
+    let has_scent = Security_node.has_metadata_flag node "scent" in
+    if has_scent then true
+    else
+      let tainted = tainted_for_file ctx node.Security_node.file in
+      (node.Security_node.taint
+       || List.exists (fun a ->
+            a.Security_node.arg_type = Security_node.ArgVar
+            && List.mem a.Security_node.value tainted
+          ) node.Security_node.args)
+      && not (all_args_literal node)
 
 (* ── Rule Checking ──────────────────────────────────────────────────── *)
 

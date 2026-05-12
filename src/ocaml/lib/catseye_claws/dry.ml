@@ -200,12 +200,26 @@ let make_dry_finding (windows : window list) : Finding.t =
 
 (* ── Detection ──────────────────────────────────────────────────────── *)
 
+(** File patterns that are exempt from DRY checks.
+    Constants tables, benchmarks, and examples are inherently repetitive
+    and flagging them adds noise, not signal. *)
+let is_dry_exempt_file (file : string) : bool =
+  let lower = String.lowercase_ascii file in
+  List.exists (fun pat ->
+    let plen = String.length pat in
+    String.length lower >= plen &&
+    String.sub lower (String.length lower - plen) plen = pat
+  ) [ "constants.cr"; "consts.cr"; "enums.cr"; "enums.gl"; "constants.gl"
+    ; "/bench/"; "/benchmark/"; "/example/"; "/examples/"
+    ; "/spec/"; "/test/"; "/tests/" ]
+
 (** Detect DRY violations across all files. *)
 let detect (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   if not config.dry_enabled then []
   else begin
     let by_file = group_by_file nodes in
+    let by_file = List.filter (fun (file, _) -> not (is_dry_exempt_file file)) by_file in
     (* Generate all windows *)
     let all_windows = List.concat_map (fun (_file, fnodes) ->
       generate_windows _file fnodes config.dry_window_size

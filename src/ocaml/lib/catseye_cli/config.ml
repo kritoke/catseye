@@ -192,6 +192,7 @@ let load_toml (path : string) (cfg : t) : t =
         data_clumps_threshold = get_int table "claws.data_clumps_threshold" 3;
         complex_match_warning = get_int table "claws.complex_match_warning" 5;
         complex_match_critical = get_int table "claws.complex_match_critical" 10;
+        concurrency_enabled = get_bool table "claws.concurrency_enabled" true;
       }
     }
   with _ -> cfg

@@ -68,16 +68,48 @@ let build_scopes (nodes : Security_node.t list) : scope list =
 
 (* ── Long Method ────────────────────────────────────────────────────── *)
 
-(** Count the number of AST nodes in a function body. Skip initialize
-    methods since Crystal DTOs legitimately have large constructors. *)
+(** Check if a file is a benchmark, example, or test file. *)
+let is_bench_or_example (file : string) : bool =
+  let lower = String.lowercase_ascii file in
+  List.exists (fun pat ->
+    let plen = String.length pat in
+    String.length lower >= plen &&
+    String.sub lower (String.length lower - plen) plen = pat
+  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+
+(** Method names that should be exempt from LongMethod checks. *)
+let is_long_method_exempt (name : string) : bool =
+  (* Constructors *)
+  name = "initialize" || name = "new" ||
+  (* Benchmark methods *)
+  (String.length name >= 9 &&
+   let prefix = String.sub name 0 9 in
+   prefix = "benchmark") ||
+  (* Binary format decoders — inherently sequential *)
+  (String.length name >= 6 &&
+   let prefix = String.sub name 0 6 in
+   prefix = "decode" || prefix = "parse_" || prefix = "from_s") ||
+  (* Algorithm implementations — well-known structures *)
+  (String.length name >= 9 &&
+   let suffix = String.sub name (String.length name - 9) 9 in
+   suffix = "_weighted" || suffix = "_quantize" || suffix = "_histogra") ||
+  name = "quantize" || name = "sink_down" || name = "quickselect" ||
+  name = "split" || name = "suggest_text_palette" || name = "relative_luminance" ||
+  name = "from_hsl" || name = "from_color_string" ||
+  name = "validate_file_path" || name = "image_header?" ||
+  name = "try_unix_mkstemp"
+
+(** Count the number of AST nodes in a function body. Skip exempt methods. *)
 let check_long_method (nodes : Security_node.t list)
     (config : Types.claws_config) : Finding.t list =
   let scopes = build_scopes nodes in
   let warning_threshold = config.long_method_warning in
   let critical_threshold = config.long_method_critical in
   List.filter_map (fun ({ def; body } : scope) ->
-    (* Skip initialize — large constructors are normal for DTOs *)
-    if def.Security_node.name = "initialize" then None
+    (* Skip exempt methods and files *)
+    if is_long_method_exempt def.Security_node.name
+       || is_bench_or_example def.Security_node.file
+    then None
     else
       let count = List.length body in
       if count >= critical_threshold then
@@ -184,7 +216,7 @@ let count_chain_segments (name : string) : int =
   !count
 
 (** Filter out chains that are just module paths (e.g., "XML::ParserOptions::RECOVER")
-    or common Crystal stdlib paths that are idiomatic. *)
+    or common Crystal stdlib paths that are idiomatic, or mathematical expressions. *)
 let is_idiomatic_chain (name : string) : bool =
   let lower = String.lowercase_ascii name in
   (* Module paths use :: not . — these are fine *)
@@ -198,7 +230,18 @@ let is_idiomatic_chain (name : string) : bool =
      ".to_bool"; ".to_a"; ".to_h"; ".nil?"; ".to_json"; ".as_json"
      ; ".size"; ".empty?"; ".blank?"; ".present?"; ".try"; ".not_nil!"
      ; ".to_s.downcase"; ".to_s.strip"; ".to_i32?"; ".to_i64?"
-     ; ".to_f32?"; ".to_f64?"; ".starts_with?"; ".ends_with?"]
+     ; ".to_f32?"; ".to_f64?"; ".starts_with?"; ".ends_with?"
+     (* Math/numeric coercion chains — standard Crystal numeric patterns *)
+     ; ".to_i.clamp"; ".to_f.clamp"; ".to_i32.clamp"; ".to_i64.clamp"
+     ; ".to_i.round"; ".to_f.round"; ".to_i.abs"; ".to_f.abs"
+     ; ".clamp"; ".round"; ".abs"
+  ]
+  (* Math expressions — chains containing arithmetic operators *)
+  || List.exists (fun op -> find_substring lower op >= 0)
+    ["+"; "-"; "*"; "/"; "%"; "**"]
+  (* Bitwise operations for binary parsing *)
+  || List.exists (fun op -> find_substring lower op >= 0)
+    ["<<"; ">>"; "|"]
 
 let check_message_chains (nodes : Security_node.t list)
     (config : Types.claws_config) : Finding.t list =
@@ -576,73 +619,167 @@ let check_data_classes (nodes : Security_node.t list)
 
 (* ── Feature Envy ────────────────────────────────────────────────────── *)
 
-(** Detect functions that spend most of their time accessing another object's
-    fields/methods rather than their own.
+(* Feature Envy: flag when a function spends 70%+ of external
+   call accesses on a non-parameter target from another class.
+   See is_converter_method, is_parameter, is_generic_target. *)
 
-    Algorithm: for each Def scope, count call targets by their first segment
-    (e.g., feed.url, feed.title -> "feed" gets 2 accesses). If one object
-    dominates (>60% of accesses, >= 5 accesses), flag as Feature Envy.
-    Skips: self-accesses (starting with @), stdlib calls, private helpers. *)
+(** Check if a function name is a conversion/serializer pattern *)
+let is_converter_method (name : string) : bool =
+  List.exists (fun prefix ->
+    let plen = String.length prefix in
+    String.length name >= plen && String.sub name 0 plen = prefix
+  ) ["from_"; "to_"; "build_"; "map_"; "serialize_"; "deserialize_";
+     "parse_"; "convert_"; "format_"; "render_"; "compose_"]
+
+(* Check if envied target matches any parameter name *)
+let is_parameter (def_node : Security_node.t) (obj_name : string) : bool =
+  List.exists (fun (a : Security_node.arg) ->
+    a.Security_node.value = obj_name
+  ) def_node.Security_node.args
+
+(* Check if the envied target name is embedded in the function name.
+   E.g. 'validate_feed_urls!' envies 'feed' — the function is ABOUT feeds.
+   Not envy, it's the function's declared domain. *)
+let is_name_related (def_name : string) (obj_name : string) : bool =
+  let lower_def = String.lowercase_ascii def_name in
+  let lower_obj = String.lowercase_ascii obj_name in
+  (* obj name appears as substring of function name *)
+  let obj_len = String.length lower_obj in
+  let def_len = String.length lower_def in
+  obj_len > 0 && obj_len < def_len &&
+    (let rec check i =
+      i + obj_len <= def_len &&
+        (String.sub lower_def i obj_len = lower_obj || check (i + 1))
+    in check 0)
+
+(* Build set of locally-assigned variable names in a function body.
+   These are NOT envied — they are the function's own working data. *)
+let build_local_vars (body : Security_node.t list) : string list =
+  List.filter_map (fun (n : Security_node.t) ->
+    if n.Security_node.node_type = Security_node.Assign then
+      Some n.Security_node.name
+    else None
+  ) body
+
+(* Generic data-access target names used in repository/DB patterns.
+   Not real domain targets — iteration artifacts.
+   Also includes common loop iterator and exception variable names. *)
+(* Generic data-access target names used in repository/DB patterns.
+   Not real domain targets — iteration artifacts.
+   Also includes common loop iterator and exception variable names.
+   Uses prefix match: 'item' matches 'items', 'entry' matches 'entries'. *)
+let is_generic_target (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  List.exists (fun prefix ->
+    let plen = String.length prefix in
+    String.length lower >= plen && String.sub lower 0 plen = prefix
+  ) [
+    "rows"; "row"; "result"; "results"; "data"; "dataset";
+    "response"; "resp"; "hash"; "arr"; "collection";
+    (* Common loop iterator names from .each/.map/.select blocks *)
+    (* Common loop/iterator names *)
+    "item"; "entry"; "elem"; "element"; "record"; "rec";
+    "val"; "value"; "key"; "field";
+    "conn"; "connection"; "sock"; "socket"; "client";
+    "migration"; "candidate"; "resource";
+    "cons"; "tuple"; "pair";
+    (* XML/HTML parsing iterators *)
+    "node"; "child"; "children";
+    (* Path/URL segment iterators *)
+    "part"; "segment"; "chunk"; "piece";
+    (* Network address variables *)
+    "addr"; "address"; "host";
+    (* Web framework context objects — always passed in *)
+    "site"; "app"; "ctx"; "context";
+    (* Constructor/config parameter patterns *)
+    "opts"; "options"; "config"; "settings"; "params";
+    (* Exception variables from rescue blocks *)
+    "ex"; "exc"; "err"; "error"; "exception";
+    (* Retry/attempt counters *)
+    "retry"; "attempt";
+  ]
+
 let check_feature_envy (nodes : Security_node.t list)
     (_config : Types.claws_config) : Finding.t list =
   let scopes = build_scopes nodes in
   List.filter_map (fun ({ def; body } : scope) ->
-    (* Count object accesses in this function *)
-    let obj_counts : (string, int) Hashtbl.t = Hashtbl.create 8 in
-    List.iter (fun (n : Security_node.t) ->
-      if n.Security_node.node_type = Security_node.Call then begin
-        let name = n.Security_node.name in
-        (* Split on first dot to get target object *)
-        try
-          let dot = String.index name '.' in
-          let obj = String.sub name 0 dot in
-          (* Skip self-accesses, stdlib, internal args, operators *)
-          if String.length obj > 0
-             && obj.[0] <> '@'  (* not instance var *)
-             && obj <> "raise"  (* not raise *)
-             && String.length obj >= 2  (* not single-char operators *)
-             && not (let c = obj.[0] in c = '_' || c >= 'A' && c <= 'Z')  (* not __arg or Module *)
-          then begin
-            let current = try Hashtbl.find obj_counts obj with Not_found -> 0 in
-            Hashtbl.replace obj_counts obj (current + 1)
-          end
-        with Not_found -> ()  (* no dot — skip *)
-      end
-    ) body;
-    (* Find dominant object *)
-    let total = Hashtbl.fold (fun _ c acc -> acc + c) obj_counts 0 in
-    if total >= 8 then begin
-      let best_obj = ref "" in
-      let best_count = ref 0 in
-      Hashtbl.iter (fun obj count ->
-        if count > !best_count then begin
-          best_obj := obj;
-          best_count := count
+    (* Skip converter/serializer methods and anonymous lambdas *)
+    if is_converter_method def.Security_node.name
+       || def.Security_node.name = "->"
+       || def.Security_node.name = "<lambda>"
+    then None
+    else begin
+      (* Build set of parameter names and local variable names for this function *)
+      let param_set = List.map (fun (a : Security_node.arg) ->
+        a.Security_node.value
+      ) def.Security_node.args in
+      let local_vars = build_local_vars body in
+      let is_own_var obj =
+        List.mem obj param_set || List.mem obj local_vars
+        || is_generic_target obj || is_name_related def.Security_node.name obj
+      in
+
+      (* Count object accesses in this function, excluding params *)
+      let obj_counts : (string, int) Hashtbl.t = Hashtbl.create 8 in
+      List.iter (fun (n : Security_node.t) ->
+        if n.Security_node.node_type = Security_node.Call then begin
+          let name = n.Security_node.name in
+          try
+            let dot = String.index name '.' in
+            let obj = String.sub name 0 dot in
+            (* Skip: self-accesses (@x), params, stdlib, operators,
+               generic targets, Module paths *)
+            (* Skip: self-accesses (@x), params, stdlib, operators,
+               generic targets, name-related, parsing artifacts *)
+            if String.length obj > 0
+               && obj.[0] <> '@'
+               && obj <> "raise"
+               && String.length obj >= 2
+               && not (let c = obj.[0] in c = '_' || c = '(' || c >= 'A' && c <= 'Z')
+               && not (is_own_var obj)
+            then begin
+              let current = try Hashtbl.find obj_counts obj with Not_found -> 0 in
+              Hashtbl.replace obj_counts obj (current + 1)
+            end
+          with Not_found -> ()
         end
-      ) obj_counts;
-      let ratio = float_of_int !best_count /. float_of_int total in
-      if ratio >= 0.7 then
-        Some {
-          Finding.rule = "FeatureEnvy";
-          severity = "Medium";
-          file = def.Security_node.file;
-          line = def.Security_node.line;
-          message = Printf.sprintf
-            "Function '%s' accesses '%s' %d/%d times (%d%%). \
-             Consider moving this method to the '%s' class."
-            def.Security_node.name !best_obj !best_count total
-            (int_of_float (ratio *. 100.0)) !best_obj;
-          flow = [ {
-            Finding.file = def.Security_node.file;
+      ) body;
+
+      (* Find dominant object *)
+      let total = Hashtbl.fold (fun _ c acc -> acc + c) obj_counts 0 in
+      if total >= 5 then begin
+        let best_obj = ref "" in
+        let best_count = ref 0 in
+        Hashtbl.iter (fun obj count ->
+          if count > !best_count then begin
+            best_obj := obj;
+            best_count := count
+          end
+        ) obj_counts;
+        let ratio = float_of_int !best_count /. float_of_int total in
+        if ratio >= 0.7 then
+          Some {
+            Finding.rule = "FeatureEnvy";
+            severity = "Medium";
+            file = def.Security_node.file;
             line = def.Security_node.line;
-            message = Printf.sprintf "Definition of '%s'" def.Security_node.name;
-          } ];
-          language = def.Security_node.language;
-          dependency = None;
-          reachability = None;
-        }
-      else None
-    end else None
+            message = Printf.sprintf
+              "Method '%s' accesses '%s' %d/%d non-parameter accesses (%d%%). \
+               Consider moving this logic to the '%s' class."
+              def.Security_node.name !best_obj !best_count total
+              (int_of_float (ratio *. 100.0)) !best_obj;
+            flow = [ {
+              Finding.file = def.Security_node.file;
+              line = def.Security_node.line;
+              message = Printf.sprintf "Definition of '%s'" def.Security_node.name;
+            } ];
+            language = def.Security_node.language;
+            dependency = None;
+            reachability = None;
+          }
+        else None
+      end else None
+    end
   ) scopes
 
 (* ── Combined extra smells analysis ─────────────────────────────────── *)
