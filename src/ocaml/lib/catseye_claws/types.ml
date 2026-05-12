@@ -17,6 +17,7 @@ type claws_config = {
   anatomy_enabled : bool;       (** default: true *)
   dry_enabled : bool;           (** default: true *)
   ameba_enabled : bool;         (** default: false *)
+  extra_smells_enabled : bool;  (** default: true *)
 
   (* Complexity thresholds *)
   complexity_warning : int;     (** default: 10 *)
@@ -25,16 +26,24 @@ type claws_config = {
   (* Anatomy thresholds *)
   max_params : int;             (** default: 5 *)
   max_params_critical : int;    (** default: 8 *)
-  max_nesting : int;            (** default: 4 *)
-  max_nesting_critical : int;   (** default: 6 *)
+  max_nesting : int;            (** default: 5 *)
+  max_nesting_critical : int;   (** default: 7 *)
   max_methods_per_file : int;   (** default: 20 *)
 
   (* DRY *)
-  dry_window_size : int;        (** default: 6 *)
-  dry_min_occurrences : int;    (** default: 2 *)
+  dry_window_size : int;        (** default: 8 *)
+  dry_min_occurrences : int;    (** default: 4 *)
 
   (* Ameba *)
   ameba_path : string;          (** default: "ameba" *)
+
+  (* Extra smells *)
+  long_method_warning : int;    (** default: 30 nodes *)
+  long_method_critical : int;   (** default: 50 nodes *)
+  complex_conditional_threshold : int;  (** default: 3 operators *)
+  message_chain_threshold : int; (** default: 5 segments *)
+  data_clumps_enabled : bool;   (** default: true *)
+  data_clumps_threshold : int;  (** default: 3 functions *)
 }
 
 let default_config = {
@@ -42,6 +51,7 @@ let default_config = {
   anatomy_enabled = true;
   dry_enabled = true;
   ameba_enabled = false;
+  extra_smells_enabled = true;
   complexity_warning = 10;
   complexity_critical = 20;
   max_params = 5;
@@ -52,4 +62,10 @@ let default_config = {
   dry_window_size = 8;
   dry_min_occurrences = 4;
   ameba_path = "ameba";
+  long_method_warning = 30;
+  long_method_critical = 50;
+  complex_conditional_threshold = 3;
+  message_chain_threshold = 5;
+  data_clumps_enabled = true;
+  data_clumps_threshold = 3;
 }

@@ -173,16 +173,23 @@ let load_toml (path : string) (cfg : t) : t =
         anatomy_enabled = get_bool table "claws.anatomy_enabled" true;
         dry_enabled = get_bool table "claws.dry_enabled" true;
         ameba_enabled = get_bool table "claws.ameba_enabled" false;
+        extra_smells_enabled = get_bool table "claws.extra_smells_enabled" true;
         complexity_warning = get_int table "claws.complexity_warning" 10;
         complexity_critical = get_int table "claws.complexity_critical" 20;
         max_params = get_int table "claws.max_params" 5;
         max_params_critical = get_int table "claws.max_params_critical" 8;
-        max_nesting = get_int table "claws.max_nesting" 4;
-        max_nesting_critical = get_int table "claws.max_nesting_critical" 6;
+        max_nesting = get_int table "claws.max_nesting" 5;
+        max_nesting_critical = get_int table "claws.max_nesting_critical" 7;
         max_methods_per_file = get_int table "claws.max_methods_per_file" 20;
-        dry_window_size = get_int table "claws.dry_window_size" 6;
-        dry_min_occurrences = get_int table "claws.dry_min_occurrences" 2;
+        dry_window_size = get_int table "claws.dry_window_size" 8;
+        dry_min_occurrences = get_int table "claws.dry_min_occurrences" 4;
         ameba_path = get_string table "claws.ameba_path" "ameba";
+        long_method_warning = get_int table "claws.long_method_warning" 30;
+        long_method_critical = get_int table "claws.long_method_critical" 50;
+        complex_conditional_threshold = get_int table "claws.complex_conditional_threshold" 3;
+        message_chain_threshold = get_int table "claws.message_chain_threshold" 5;
+        data_clumps_enabled = get_bool table "claws.data_clumps_enabled" true;
+        data_clumps_threshold = get_int table "claws.data_clumps_threshold" 3;
       }
     }
   with _ -> cfg
