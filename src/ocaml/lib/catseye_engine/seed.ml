@@ -7,11 +7,38 @@ open Db
 let is_source ?(extra = []) name = Constants.is_source ~extra name
 let is_sanitizer ?(extra = []) name = Constants.is_sanitizer ~extra name
 
-(* Seed from function parameters named like taint sources *)
+(* Seed from function parameters named like taint sources.
+   Only seed params in functions where the extractor detected at least
+   one tainted assignment — this avoids seeding in helper functions
+   where params have source-like names (e.g. `path`) but receive safe data. *)
 let seed_from_params (nodes : Security_node.t list) (extra_sources : string list)
     (db : Db.t) : Db.t =
+  (* Build set of (file, def_line) for functions with tainted assigns *)
+  let has_tainted_assign = Hashtbl.create 32 in
+  List.iter (fun n ->
+    if n.Security_node.node_type = Security_node.Assign && n.Security_node.taint then
+      (* Find the enclosing def by looking for the nearest Def before this line *)
+      let def_node =
+        List.filter (fun d ->
+          d.Security_node.node_type = Security_node.Def
+          && d.Security_node.file = n.Security_node.file
+          && d.Security_node.line < n.Security_node.line
+        ) nodes
+        |> List.sort (fun a b -> compare b.Security_node.line a.Security_node.line)
+        |> List.find_opt (fun _ -> true)
+      in
+      match def_node with
+      | Some d ->
+        Hashtbl.replace has_tainted_assign
+          (d.Security_node.file, d.Security_node.line) true
+      | None -> ()
+  ) nodes;
   nodes
   |> List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
+  |> List.filter (fun def ->
+    (* Only seed params in functions where extractor found tainted assigns *)
+    Hashtbl.mem has_tainted_assign (def.Security_node.file, def.Security_node.line)
+  )
   |> List.concat_map (fun def ->
     def.Security_node.args
     |> List.filter (fun a -> is_source ~extra:extra_sources a.Security_node.value)

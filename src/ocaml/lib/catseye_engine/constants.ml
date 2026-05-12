@@ -28,6 +28,12 @@ let known_sanitizers = [
   "favicon_hash";
   (* Functions that return sanitized/validated paths *)
   "get_or_fetch";
+  (* Safe path/tempfile generation — output is not user-controlled *)
+  "Random::Secure";
+  "Tempfile";
+  "Dir.mktmpdir";
+  "File.tempname";
+  "mkstemp";
   (* Validation functions — validate_path!, validate_and_resolve_path!, etc. *)
   "validate_";
 ]

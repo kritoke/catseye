@@ -116,6 +116,11 @@ SANITIZERS = Set{
   "favicon_hash",
   # Guard patterns — validation that makes values safe
   "matches?", "starts_with?",
+  # Safe path/tempfile generation — output is not user-controlled
+  "Random::Secure",
+  "Tempfile",
+  "Dir.mktmpdir",
+  "File.tempname",
 }
 
 private def sanitize_call?(node : Crystal::ASTNode) : Bool
@@ -325,16 +330,19 @@ class SecurityVisitor < Crystal::Visitor
 
     # Check if any argument is tainted
     node.args.each do |arg|
-      if tainted?(arg)
-        tainted = true
-        break
-      end
-      # Check if arg is a variable we've marked as tainted
+      # For variable args, use @tainted_vars tracking only — do NOT
+      # re-check against TAINT_SOURCES. An assign like
+      #   path = Random::Secure.hex(4)
+      # correctly marks path as clean, but tainted?(var_node) would
+      # re-flag it because "path" is in TAINT_SOURCES by name.
       if var_node = arg.as?(Crystal::Var)
         if @tainted_vars.includes?(var_node.name)
           tainted = true
           break
         end
+      elsif tainted?(arg)
+        tainted = true
+        break
       end
       # Check if arg is a string interpolation with tainted vars
       if interp = arg.as?(Crystal::StringInterpolation)

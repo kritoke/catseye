@@ -108,6 +108,17 @@ let tainted_for_file (ctx : taint_context) (file : string) : string list =
 
 (* ── Rule Condition Evaluation ──────────────────────────────────────── *)
 
+(** Check if a file contains timeout setter calls (read_timeout=, connect_timeout=)
+    Used to suppress MissingTimeout FPs when timeout is set in the caller scope. *)
+let file_has_timeout_setters (file : string) (nodes : Security_node.t list) : bool =
+  List.exists (fun n ->
+    n.Security_node.file = file
+    && n.Security_node.node_type = Security_node.Call
+    && (is_substring ~pattern:"read_timeout" ~in_:n.Security_node.name
+        || is_substring ~pattern:"connect_timeout" ~in_:n.Security_node.name
+        || is_substring ~pattern:"write_timeout" ~in_:n.Security_node.name)
+  ) nodes
+
 (** Check if a file is a non-HTTP entry point (scripts, config, tasks) *)
 let is_non_http_context (file : string) : bool =
   let lowercase = String.lowercase_ascii file in
@@ -127,12 +138,16 @@ and args_missing_all (args : Security_node.arg list) (patterns : string list) : 
 
 (** Check if a node matches a rule based on its conditions *)
 and evaluate_rule_conditions (node : Security_node.t) (rule : rule_def) (sink : sink_def)
-    (ctx : taint_context) : bool =
+    (ctx : taint_context) (nodes : Security_node.t list) : bool =
   (* Metadata-based suppression: parameterized queries are safe from SQL injection *)
   if rule.id = "SQLInjection" && Security_node.has_metadata_flag node "parameterized_query" then
     false
   (* Metadata-based suppression: HTTP clients with timeout config are safe *)
   else if rule.id = "MissingTimeout" && Security_node.has_metadata_flag node "has_timeout_config" then
+    false
+  (* MissingTimeout: suppress if timeout is set anywhere in the same file —
+     the client may be returned from a helper and configured by the caller *)
+  else if rule.id = "MissingTimeout" && file_has_timeout_setters node.Security_node.file nodes then
     false
   (* Path traversal: suppress for non-HTTP contexts (scripts, config) *)
   else if rule.id = "PathTraversal" && is_non_http_context node.Security_node.file then
@@ -188,7 +203,7 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
     nodes
     |> List.filter (fun n -> language_allows rule n)
     |> List.filter (fun n -> node_matches_sink n sink)
-    |> List.filter (fun n -> evaluate_rule_conditions n rule sink ctx)
+    |> List.filter (fun n -> evaluate_rule_conditions n rule sink ctx nodes)
     |> List.map (fun n ->
       let vars = var_names_from_args n.Security_node.args in
       let msg = substitute_template rule.message_template ~sink:n.Security_node.name ~vars in
