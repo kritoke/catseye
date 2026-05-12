@@ -49,7 +49,7 @@ let default_config = {
   max_nesting = 4;
   max_nesting_critical = 6;
   max_methods_per_file = 20;
-  dry_window_size = 6;
-  dry_min_occurrences = 2;
+  dry_window_size = 8;
+  dry_min_occurrences = 4;
   ameba_path = "ameba";
 }

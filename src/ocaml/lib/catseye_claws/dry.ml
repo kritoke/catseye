@@ -29,6 +29,9 @@ type window = {
 
     Call names are preserved (API patterns matter for duplication).
     Variable names are stripped (catches copy-paste-with-rename).
+    Instance-var assigns (@x = x) are normalized to a special marker
+    that is excluded from DRY windows — they're Crystal constructor boilerplate,
+    not meaningful duplication.
 *)
 let normalize_node (n : Security_node.t) : string =
   let arg_count = List.length n.args in
@@ -36,7 +39,12 @@ let normalize_node (n : Security_node.t) : string =
   | Security_node.Call ->
     Printf.sprintf "Call|%s|%d" n.Security_node.name arg_count
   | Security_node.Assign ->
-    Printf.sprintf "Assign|_|%d" arg_count
+    (* Instance var assigns (@x = x) are constructor boilerplate *)
+    if String.length n.Security_node.name > 0
+       && n.Security_node.name.[0] = '@' then
+      "Assign|@inst|1"
+    else
+      Printf.sprintf "Assign|_|%d" arg_count
   | Security_node.Def ->
     Printf.sprintf "Def|_|%d" arg_count
   | Security_node.Var ->
@@ -89,12 +97,29 @@ let generate_windows (file : string) (nodes : Security_node.t list) (size : int)
 
 (* ── Grouping ───────────────────────────────────────────────────────── *)
 
-(** Group nodes by file. *)
+(** Group nodes by file, filtering out Import/Guard nodes that are
+    not meaningful for DRY detection (require statements, guards). *)
 let group_by_file (nodes : Security_node.t list) : (string * Security_node.t list) list =
   let tbl = Hashtbl.create 16 in
   List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find tbl n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace tbl n.Security_node.file (n :: existing)
+    (* Skip Import and Guard nodes — require statements and guards
+       are not meaningful code duplication targets. Also skip Crystal
+       macro-generated accessors (property, getter, setter, include)
+       which are language constructs, not user code. *)
+    let skip = match n.Security_node.node_type with
+      | Security_node.Import | Security_node.Guard -> true
+      | Security_node.Call ->
+        let name = n.Security_node.name in
+        name = "property" || name = "getter" || name = "setter"
+        || name = "class_property" || name = "class_getter" || name = "class_setter"
+        || name = "include"
+      | _ -> false
+    in
+    if skip then ()
+    else begin
+      let existing = try Hashtbl.find tbl n.Security_node.file with Not_found -> [] in
+      Hashtbl.replace tbl n.Security_node.file (n :: existing)
+    end
   ) nodes;
   Hashtbl.fold (fun file file_nodes acc ->
     let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
@@ -153,10 +178,17 @@ let detect (nodes : Security_node.t list) (config : Types.claws_config)
       let existing = try Hashtbl.find buckets w.hash with Not_found -> [] in
       Hashtbl.replace buckets w.hash (w :: existing)
     ) all_windows;
-    (* Filter to violations: >= min_occurrences unique locations *)
+    (* Filter to violations: >= min_occurrences unique locations
+       across at least 2 different files (same-file repetition is weaker signal). *)
     Hashtbl.fold (fun _hash (windows : window list) acc ->
       let unique = unique_by_location windows in
-      if List.length unique >= config.dry_min_occurrences then
+      let unique_files =
+        List.fold_left (fun s (w : window) ->
+          if List.mem w.file s then s else w.file :: s
+        ) [] unique
+      in
+      if List.length unique >= config.dry_min_occurrences
+         && List.length unique_files >= 2 then
         make_dry_finding unique :: acc
       else acc
     ) buckets []
