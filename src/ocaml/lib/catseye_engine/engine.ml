@@ -13,14 +13,19 @@ let version = Catseye_types.Version.version
 (** Named constants *)
 let dag_visited_size = 16
 
-(** Build the full taint database: seed → propagate → returns → interproc → propagate again *)
+(** Build the full taint database: seed -> propagate -> returns -> interproc -> propagate -> guards *)
 let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   let seeded = seed_sources ~extra_sources nodes Db.empty in
   let propagated = propagate nodes seeded in
   let with_returns = track_return_taint nodes propagated in
   let with_interproc = propagate_interprocedural nodes with_returns in
   (* Second pass propagation after inter-procedural *)
-  propagate nodes with_interproc
+  let with_prop2 = propagate nodes with_interproc in
+  (* Apply guards: remove taint from vars validated by guard nodes *)
+  List.filter (fun n -> n.Security_node.node_type = Security_node.Guard) nodes
+  |> List.fold_left (fun db guard ->
+    Db.apply_guard db guard.Security_node.name guard.Security_node.file guard.Security_node.line
+  ) with_prop2
 
 (** Build a lookup map from (file, line) to Call node for O(1) sink lookup *)
 let build_sink_lookup_map (nodes : Security_node.t list) 

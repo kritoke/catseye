@@ -142,5 +142,38 @@
           fi
           '' + privateShellHook;
       };
+
+      # ── Static binary via pkgsMusl (full cross-compilation) ─────────
+      # Build with: nix build .#catseye-static
+      # First build takes ~30min (compiles entire musl OCaml toolchain).
+      # Subsequent builds are fast (cached).
+      packages.${system}.catseye-static =
+        let
+          muslPkgs = pkgs.pkgsMusl;
+          mop = muslPkgs.ocamlPackages;
+        in muslPkgs.stdenv.mkDerivation {
+          pname = "catseye";
+          version = "0.3.0";
+          src = ./.;
+
+          nativeBuildInputs = with pkgs; [ which pkg-config sqlite.dev ];
+          buildInputs = with mop; [
+            ocaml dune_3 findlib
+            yojson cmdliner bos rresult logs fmt
+            toml kdl ocamlgraph ocaml_sqlite3
+          ];
+
+          buildPhase = ''
+            cd src/ocaml
+            dune build --profile release
+            cd ../..
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            install -m 755 src/ocaml/_build/default/bin/main.exe $out/bin/catseye
+            file $out/bin/catseye
+          '';
+        };
     };
 }

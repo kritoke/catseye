@@ -45,6 +45,8 @@ let normalize_node (n : Security_node.t) : string =
     "Literal|_|0"
   | Security_node.Import ->
     "Import|_|0"
+  | Security_node.Guard ->
+    "Guard|_|0"
 
 (** Normalize a window of nodes to a canonical string. *)
 let normalize_window (nodes : Security_node.t list) : string =

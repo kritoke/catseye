@@ -356,16 +356,48 @@ class SecurityVisitor < Crystal::Visitor
       end
     end
 
-    # Detect guard patterns: hash.matches?(...) or path.starts_with?(...)
-    # When a validation method is called on a variable, mark it as guarded/safe
-    if node.name == "matches?" || node.name == "starts_with?" || node.name == "in?"
+    # Detect guard patterns: validation that makes tainted values safe.
+    # Emit a Guard node so the OCaml engine can suppress downstream findings.
+    guard_var : String? = nil
+    guard_kind : String? = nil
+
+    # Pattern 1: path.starts_with?("/safe/") — prefix validation
+    # Pattern 2: value.matches?(/regex/) — regex validation
+    # Pattern 3: allowed.in?(list) — allowlist check
+    # Pattern 4: raise/return unless condition — handled via control flow
+    if node.name == "starts_with?" || node.name == "matches?" || node.name == "in?"
       if obj = node.obj
         case obj
         when Crystal::Var
+          guard_var = obj.name
+          guard_kind = node.name
           @tainted_vars.delete(obj.name)
           @safe_query_vars << obj.name
         end
       end
+    end
+
+    # Pattern 5: path = validate_path(path) — sanitizer reassignment
+    # Pattern 6: path = File.expand_path(path) — canonicalization
+    # (already handled by sanitizer detection in assign visitor)
+
+    # Pattern 7: raise ... unless path.starts_with?(...)  — guard in condition
+    # The unless block's condition is a Call to starts_with? on a Var.
+    # We detect this by checking if this call is inside an Unless/If condition.
+    # This is handled implicitly — the starts_with? detection above catches it.
+
+    # Emit the Guard node before the Call node
+    if guard_var && guard_kind
+      @nodes << {
+        type:     "guard",
+        name:     guard_var,
+        args:     [{arg_type: "literal", value: guard_kind, field: ""}],
+        line:     location_line(node),
+        taint:    false,
+        file:     @file_path,
+        language: "crystal",
+        metadata: nil,
+      }
     end
 
     # Detect parameterized SQL queries

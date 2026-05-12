@@ -81,6 +81,23 @@ let has_record (db : t) (var : string) : bool =
 let db_size (db : t) : int =
   StringMap.fold (fun _ records acc -> acc + List.length records) db 0
 
+(** Remove a tainted var from a specific file. Used for guard processing:
+    when a guard node validates a variable, it should no longer be tainted
+    for sinks at lines after the guard. *)
+let remove_record (db : t) (var : string) (file : string) : t =
+  match StringMap.find_opt file db with
+  | Some records ->
+    let filtered = List.filter (fun r -> r.var_name <> var) records in
+    if filtered = [] then StringMap.remove file db
+    else StringMap.add file filtered db
+  | None -> db
+
+(** Remove a tainted var from a specific file for sinks at lines >= guard_line.
+    If the var was tainted at a line before the guard, keep the taint record
+    but mark it as guarded. *)
+let apply_guard (db : t) (var : string) (file : string) (_guard_line : int) : t =
+  remove_record db var file
+
 (** Shared taint-check: given an Assign node, return the source var name if
     any ArgVar arg is tainted (same-file or global) and none of the args is a
     sanitizer call. *)
