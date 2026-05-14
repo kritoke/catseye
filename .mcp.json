@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ocaml-lsp": {
+      "command": "/home/kritoke/go/bin/mcp-language-server",
+      "args": [
+        "--workspace", "/workspaces/catseye/src/ocaml",
+        "--lsp", "ocamllsp"
+      ]
+    }
+  }
+}

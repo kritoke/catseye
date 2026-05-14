@@ -118,7 +118,7 @@
           ocamlPkgs.findlib
 
           # OCaml libraries
-        ] ++ ocamlLibs ++ ocamlTools ++ treeSitterLibs ++ [ just ];
+        ] ++ ocamlLibs ++ ocamlTools ++ treeSitterLibs ++ [ just go ];
 
         shellHook = ''
           echo "╔══════════════════════════════════════╗"
