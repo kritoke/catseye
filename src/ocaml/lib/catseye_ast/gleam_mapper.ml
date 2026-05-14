@@ -224,7 +224,7 @@ let parse_file ~(path : string) : (t, parse_error) result =
   | None ->
       Error (make_error ~file:path ~message:"TREE_SITTER_GLEAM_GRAMMAR not set")
   | Some grammar ->
-      let cmd = Printf.sprintf "(cd '%s' && tree-sitter parse --lib-path 'gleam/native_gleam.so' --lang-name gleam -x '%s') 2>/dev/null" grammar path in
+      let cmd = Printf.sprintf "(cd '%s' && tree-sitter parse --lib-path 'gleam_parser.so' --lang-name gleam -x '%s') 2>/dev/null" grammar path in
       (try
         let ic = Unix.open_process_in cmd in
         let xml_str = Buffer.create 4096 in

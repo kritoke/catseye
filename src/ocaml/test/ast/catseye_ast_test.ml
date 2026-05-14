@@ -8,7 +8,7 @@ module Gleam_rules = Ai_linter.Gleam_rules
 let () =
   (* Set environment variables *)
   Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
-  Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye/third_party/tree-sitter";
+  Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye";
   
   let sample = "/workspaces/catseye/test/samples/ai_antipatterns.gleam" in
   Printf.printf "=== Testing Gleam CatseyeAST parsing ===\n";
