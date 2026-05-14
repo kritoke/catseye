@@ -29,6 +29,7 @@ type t = {
   language : string;
   dependency : string option;
   reachability : reachability option;
+  suggestion : string option;
 }
 
 (* JSON encoding *)
@@ -83,7 +84,11 @@ let encode (f : t) : Yojson.Safe.t =
     | Some r -> ("reachability", encode_reachability r) :: with_dep
     | None -> with_dep
   in
-  `Assoc with_reach
+  let with_suggestion = match f.suggestion with
+    | Some s -> ("suggestion", `String s) :: with_reach
+    | None -> with_reach
+  in
+  `Assoc with_suggestion
 
 let encode_many (findings : t list) : Yojson.Safe.t =
   `List (List.map encode findings)
@@ -162,11 +167,13 @@ let decode (json : Yojson.Safe.t) : t =
     ; language = ""
     ; dependency = dep
     ; reachability = reach
+    ; suggestion = (match List.assoc_opt "suggestion" dict with
+        | Some (`String s) -> Some s | _ -> None)
     }
   | _ ->
     { rule = ""; severity = ""; file = ""; line = 0
     ; message = ""; flow = []; language = ""; dependency = None
-    ; reachability = None }
+    ; reachability = None; suggestion = None }
 
 let decode_many (json : Yojson.Safe.t) : t list =
   Yojson.Safe.Util.to_list json |> List.map decode

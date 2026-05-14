@@ -150,6 +150,6 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
       } ];
       language = def.Security_node.language;
       dependency = None;
-      reachability = None;
+      reachability = None; suggestion = None;
     }
   ) scopes

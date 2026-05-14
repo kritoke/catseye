@@ -26,6 +26,7 @@ let make_finding (def : Security_node.t) (rule : string) (severity : string)
   ; language = def.Security_node.language
   ; dependency = None
   ; reachability = None
+  ; suggestion = None
   }
 
 (** Method names that are inherently multi-parameter and should be exempt
@@ -270,6 +271,7 @@ let check_god_objects (nodes : Security_node.t list) (config : Types.claws_confi
       ; language = first_def.Security_node.language
       ; dependency = None
       ; reachability = None
+      ; suggestion = None
       } :: acc
     end else acc
   ) by_file []

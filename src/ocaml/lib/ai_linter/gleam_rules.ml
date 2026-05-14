@@ -7,21 +7,7 @@
 
 open Catseye_ast.Types
 
-type severity = Hint | Warning | Error
-
-type finding = {
-  file : string;
-  line : int;
-  rule_id : string;
-  severity : string;
-  message : string;
-  suggestion : string option;
-}
-
-let sev_to_string = function
-  | Hint -> "hint"
-  | Warning -> "warning"
-  | Error -> "error"
+module T = Types
 
 (* ── Expression tree helpers ────────────────────────────────────────── *)
 
@@ -79,10 +65,8 @@ let rec has_app_named (expr : expr) (module_name : string option) (fn_name : str
 let rec collect_field_access_suffix (suffix : string) (expr : expr) : (string * int) list =
   let check fn_expr line =
     match fn_expr.expr_value with
-    | EFieldAccess (_, field) when
-        String.length field >= String.length suffix
-        && String.sub field (String.length field - String.length suffix) (String.length suffix) = suffix
-        -> Some (field, line)
+    | EFieldAccess (_, field) when String.ends_with ~suffix field
+      -> Some (field, line)
     | _ -> None
   in
   match expr.expr_value with
@@ -231,28 +215,78 @@ let detect_todo (m : t) =
     | _ -> None
   ) m.mod_items
 
+(* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
+
+(** Rule: Hardcoded Secrets *)
+let detect_hardcoded_secrets (m : t) =
+  let secret_prefixes = [
+    "sk_"; "sk_live_"; "sk_test_";
+    "ghp_"; "gho_"; "ghu_"; "ghs_";
+    "AKIA"; "ASIA";
+    "AIza";
+    "xoxb-"; "xoxp-"; "xoxa-";
+    "eyJ";
+  ] in
+  let is_likely_secret (s : string) =
+    String.length s >= 20 &&
+    List.exists (fun prefix ->
+      String.length prefix <= String.length s &&
+      String.sub s 0 (String.length prefix) = prefix
+    ) secret_prefixes
+  in
+  let rec collect_string_literals (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ELiteral (LString s) when is_likely_secret s ->
+        [(s, e.expr_location.start.line)]
+    | ELiteral _ -> []
+    | EApp (fn, args) ->
+        collect_string_literals fn @ List.concat_map collect_string_literals args
+    | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
+        collect_string_literals e1 @ collect_string_literals e2
+    | EIf (_, then_, else_) ->
+        collect_string_literals then_ @
+        (match else_ with Some e -> collect_string_literals e | None -> [])
+    | EBlock es -> List.concat_map collect_string_literals es
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        (match collect_string_literals body with
+         | (s, line) :: _ ->
+             let masked = String.sub s 0 (min 8 (String.length s)) ^ "..." in
+             Some (Printf.sprintf
+               "Potential hardcoded secret in '%s': %s — use environment variables or config"
+               name masked, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (** All rules *)
 let all () = [
-  ("list-wrap-unnecessary", Warning, detect_list_wrap);
-  ("deprecated-result-check", Hint, detect_result_check);
-  ("panic-call", Error, detect_panic);
-  ("hallucinated-or-default", Error, detect_hallucinated_or_default);
-  ("hallucinated-to-list", Error, detect_hallucinated_to_list);
-  ("typescript-interface", Error, detect_typescript_interface);
-  ("rust-fn", Error, detect_rust_fn);
-  ("var-keyword", Error, detect_var_keyword);
-  ("todo-in-code", Warning, detect_todo);
+  ("list-wrap-unnecessary", T.Warning, detect_list_wrap);
+  ("deprecated-result-check", T.Hint, detect_result_check);
+  ("panic-call", T.Error, detect_panic);
+  ("hallucinated-or-default", T.Error, detect_hallucinated_or_default);
+  ("hallucinated-to-list", T.Error, detect_hallucinated_to_list);
+  ("typescript-interface", T.Error, detect_typescript_interface);
+  ("rust-fn", T.Error, detect_rust_fn);
+  ("var-keyword", T.Error, detect_var_keyword);
+  ("todo-in-code", T.Warning, detect_todo);
+
+  (* The Mute Trap *)
+  ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
 ]
 
 (** Analyze module and return findings *)
-let analyze_module (m : t) : finding list =
+let analyze_module (m : t) : Types.finding list =
   List.concat_map (fun (rule_id, sev, detector) ->
     List.map (fun (msg, line) ->
-      { file = m.mod_path;
-        line;
-        rule_id;
-        severity = sev_to_string sev;
-        message = msg;
-        suggestion = None; }
+      { Types.file = m.mod_path;
+        Types.line = line;
+        Types.rule_id = rule_id;
+        Types.severity = sev;
+        Types.message = msg;
+        Types.suggestion = None; }
     ) (detector m)
   ) (all ())

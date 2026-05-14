@@ -50,12 +50,12 @@ let () =
       if findings = [] then
         Printf.printf "  (no violations found)\n"
       else
-        List.iter (fun (f : Ai_linter.Gleam_rules.finding) ->
+        List.iter (fun f ->
           Printf.printf "  [%s] %s:%d - %s\n"
-            f.Ai_linter.Gleam_rules.rule_id
-            f.Ai_linter.Gleam_rules.file
-            f.Ai_linter.Gleam_rules.line
-            f.Ai_linter.Gleam_rules.message
+            f.Ai_linter.Types.rule_id
+            f.Ai_linter.Types.file
+            f.Ai_linter.Types.line
+            f.Ai_linter.Types.message
         ) findings;
 
       (* Test AST structural rules *)

@@ -512,14 +512,17 @@ let run (config : t) : int =
         match Catseye_ast.Parse.parse_file ~path:src.path with
         | Error err -> [Catseye_types.Finding.{ rule = "parse-error"; severity = "error"; file = err.file;
             line = Option.value err.line ~default:0; message = err.message;
-            flow = []; language = ""; dependency = None; reachability = None; }]
+            flow = []; language = ""; dependency = None; reachability = None; suggestion = None; }]
         | Ok mod_ ->
           (match mod_.mod_lang with
-           | Gleam -> 
-            let convert_finding (f : Ai_linter.Gleam_rules.finding) =
-              { Catseye_types.Finding.rule = f.rule_id; severity = f.severity; file = f.file;
+           | Gleam ->
+            let convert_finding (f : Ai_linter.Types.finding) =
+              { Catseye_types.Finding.rule = f.rule_id;
+                severity = Ai_linter.Types.severity_to_string f.severity;
+                file = f.file;
                 line = f.line; message = f.message;
-                flow = []; language = "gleam"; dependency = None; reachability = None; }
+                flow = []; language = "gleam"; dependency = None; reachability = None;
+                suggestion = f.suggestion; }
             in
             List.map convert_finding (Ai_linter.Gleam_rules.analyze_module mod_)
            | Crystal -> [])

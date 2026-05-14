@@ -128,7 +128,7 @@ let check_long_method (nodes : Security_node.t list)
           } ];
           language = def.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else if count >= warning_threshold then
         Some {
@@ -146,7 +146,7 @@ let check_long_method (nodes : Security_node.t list)
           } ];
           language = def.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else None
   ) scopes
@@ -198,7 +198,7 @@ let check_complex_conditionals (nodes : Security_node.t list)
           } ];
           language = n.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else None
   ) nodes
@@ -267,7 +267,7 @@ let check_message_chains (nodes : Security_node.t list)
           } ];
           language = n.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else None
   ) nodes
@@ -331,7 +331,7 @@ let check_data_clumps (nodes : Security_node.t list)
           flow = [];
           language = "";
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         } :: acc
       end else acc
     ) pair_counts []
@@ -388,7 +388,7 @@ let check_flag_arguments (nodes : Security_node.t list)
           } ];
           language = n.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
   ) nodes
 
@@ -427,7 +427,7 @@ let check_complex_match (nodes : Security_node.t list)
           } ];
           language = n.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else if when_count >= config.complex_match_warning then
         Some {
@@ -446,7 +446,7 @@ let check_complex_match (nodes : Security_node.t list)
           } ];
           language = n.Security_node.language;
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       else None
   ) nodes
@@ -533,7 +533,7 @@ let check_dead_code (nodes : Security_node.t list)
         } ];
         language = "crystal";
         dependency = None;
-        reachability = None;
+        reachability = None; suggestion = None;
       }
     | None -> None
   ) scopes
@@ -612,7 +612,7 @@ let check_data_classes (nodes : Security_node.t list)
         } ];
         language = "crystal";
         dependency = None;
-        reachability = None;
+        reachability = None; suggestion = None;
       }
     else None
   ) !class_boundaries
@@ -775,7 +775,7 @@ let check_feature_envy (nodes : Security_node.t list)
             } ];
             language = def.Security_node.language;
             dependency = None;
-            reachability = None;
+            reachability = None; suggestion = None;
           }
         else None
       end else None

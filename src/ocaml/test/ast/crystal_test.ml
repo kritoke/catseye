@@ -23,5 +23,5 @@ let () =
     Printf.printf "\nFindings:\n";
     let findings = Ai_linter.Crystal_rules.analyze_module mod_ in
     List.iter (fun f ->
-      Printf.printf "  [%s] line %d - %s\n" f.Ai_linter.Crystal_rules.rule_id f.Ai_linter.Crystal_rules.line f.Ai_linter.Crystal_rules.message
+      Printf.printf "  [%s] line %d - %s\n" f.Ai_linter.Types.rule_id f.Ai_linter.Types.line f.Ai_linter.Types.message
     ) findings

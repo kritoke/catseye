@@ -222,6 +222,7 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
       ; language = n.Security_node.language
       ; dependency = None
       ; reachability = None
+      ; suggestion = None
       }
     )
   ) rule.sinks

@@ -14,3 +14,13 @@ let severity_to_level = function
   | Hint -> 1
   | Warning -> 2
   | Error -> 3
+
+(** A lint finding - unified across all rule modules *)
+type finding = {
+  file : string;
+  line : int;
+  rule_id : string;
+  severity : severity;
+  message : string;
+  suggestion : string option;
+}

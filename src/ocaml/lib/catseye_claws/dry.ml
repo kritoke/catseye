@@ -196,6 +196,7 @@ let make_dry_finding (windows : window list) : Finding.t =
   ; language = ""
   ; dependency = None
   ; reachability = None
+  ; suggestion = None
   }
 
 (* ── Detection ──────────────────────────────────────────────────────── *)

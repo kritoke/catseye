@@ -27,7 +27,8 @@ let error_to_finding (err : parse_error) : ai_finding =
     flow = [];
     language = "";
     dependency = None;
-    reachability = None; }
+    reachability = None;
+    suggestion = None; }
 
 (** Convert ai_linter violation to finding *)
 let violation_to_finding (v : Ast_rules.violation) : ai_finding =
@@ -42,31 +43,34 @@ let violation_to_finding (v : Ast_rules.violation) : ai_finding =
     flow = [];
     language = "";
     dependency = None;
-    reachability = None; }
+    reachability = None;
+    suggestion = None; }
 
 (** Convert Gleam finding to ai_finding *)
-let gleam_finding_to_finding (f : Gleam_rules.finding) : ai_finding =
+let gleam_finding_to_finding (f : Types.finding) : ai_finding =
   { rule = f.rule_id;
-    severity = f.severity;
+    severity = Types.severity_to_string f.severity;
     file = f.file;
     line = f.line;
     message = f.message;
     flow = [];
     language = "gleam";
     dependency = None;
-    reachability = None; }
+    reachability = None;
+    suggestion = f.suggestion; }
 
 (** Convert Crystal finding to ai_finding *)
-let crystal_finding_to_finding (f : Crystal_rules.finding) : ai_finding =
+let crystal_finding_to_finding (f : Types.finding) : ai_finding =
   { rule = f.rule_id;
-    severity = f.severity;
+    severity = Types.severity_to_string f.severity;
     file = f.file;
     line = f.line;
     message = f.message;
     flow = [];
     language = "crystal";
     dependency = None;
-    reachability = None; }
+    reachability = None;
+    suggestion = f.suggestion; }
 
 (** Parse and analyze a file *)
 let analyze_file ~(path : string) : ai_finding list =

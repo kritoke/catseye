@@ -139,7 +139,7 @@ let to_findings (issues : ameba_issue list) : Finding.t list =
       } ];
       language = "crystal";
       dependency = None;
-      reachability = None;
+      reachability = None; suggestion = None;
     }
   ) issues
 

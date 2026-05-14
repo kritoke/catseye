@@ -203,7 +203,7 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
         } ];
         language = "crystal";
         dependency = None;
-        reachability = None;
+        reachability = None; suggestion = None;
       }
     ) muted in
 
@@ -221,7 +221,7 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
         } ];
         language = "crystal";
         dependency = None;
-        reachability = None;
+        reachability = None; suggestion = None;
       }
     ) dead in
 
@@ -241,7 +241,7 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
           } ];
           language = "crystal";
           dependency = None;
-          reachability = None;
+          reachability = None; suggestion = None;
         }
       ] else []
     in
