@@ -180,8 +180,15 @@ and is_suspect (node : Security_node.t) (ctx : taint_context)
       let tainted = tainted_for_file ctx node.Security_node.file in
       (node.Security_node.taint
        || List.exists (fun a ->
-            a.Security_node.arg_type = Security_node.ArgVar
-            && List.mem a.Security_node.value tainted
+            (a.Security_node.arg_type = Security_node.ArgVar
+             || a.Security_node.arg_type = Security_node.ArgCall)
+            && List.exists (fun tainted_var ->
+              (* Exact match or prefix: "uri" matches "uri.request_target" *)
+              a.Security_node.value = tainted_var
+              || (String.length a.Security_node.value > String.length tainted_var
+                  && String.sub a.Security_node.value 0 (String.length tainted_var) = tainted_var
+                  && a.Security_node.value.[String.length tainted_var] = '.')
+            ) tainted
           ) node.Security_node.args)
       && not (all_args_literal node)
 

@@ -11,6 +11,35 @@ rule "SSRF" severity="High" {
         sink "HTTP::Client.patch"
         sink "HTTP::Client.delete"
         sink "HTTP::Client.exec"
+        sink "client.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "client.post" {
+            sanitizer "URI.parse"
+        }
+        sink "client.put"
+        sink "client.delete"
+        sink "client.exec"
+        sink "http.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "http.post" {
+            sanitizer "URI.parse"
+        }
+        sink "http_client.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "conn.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "connection.get" {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
         sink "hackney.get"
         sink "hackney.post"
         sink "req.get"

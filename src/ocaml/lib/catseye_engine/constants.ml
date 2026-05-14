@@ -12,7 +12,7 @@ let known_sources = [
 ]
 
 let known_sanitizers = [
-  "URI.parse"; "URI.encode"; "URI.decode"; "Path.posix"; "Path.basename";
+  "URI.encode"; "URI.decode"; "Path.posix"; "Path.basename";
   "Path.dirname"; "String.strip"; "String.trim"; "String.slice"; "Int.parse";
   "Float.parse"; "validator."; "sanitize."; "escape."; "encode."; "cgi.escape";
   "html.escape";

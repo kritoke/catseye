@@ -32,6 +32,22 @@ let seed_from_params (nodes : Security_node.t list) (extra_sources : string list
         Hashtbl.replace has_tainted_assign
           (d.Security_node.file, d.Security_node.line) true
       | None -> ()
+    (* Also consider calls with taint=true — they indicate user data flow *)
+    else if n.Security_node.node_type = Security_node.Call && n.Security_node.taint then
+      let def_node =
+        List.filter (fun d ->
+          d.Security_node.node_type = Security_node.Def
+          && d.Security_node.file = n.Security_node.file
+          && d.Security_node.line < n.Security_node.line
+        ) nodes
+        |> List.sort (fun a b -> compare b.Security_node.line a.Security_node.line)
+        |> List.find_opt (fun _ -> true)
+      in
+      match def_node with
+      | Some d ->
+        Hashtbl.replace has_tainted_assign
+          (d.Security_node.file, d.Security_node.line) true
+      | None -> ()
   ) nodes;
   nodes
   |> List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
