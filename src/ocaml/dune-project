@@ -58,3 +58,15 @@
   ocaml
   dune
   yojson))
+
+(package
+ (name catseye-ai-linter)
+ (synopsis "AI anti-pattern linter using AST analysis")
+ (description
+  "Catseye AI Linter - detects AI hallucinated functions, deprecated patterns, and code quality issues using AST pattern matching.")
+ (allow_empty)
+ (depends
+  ocaml
+  dune
+  catseye-ast
+  str))

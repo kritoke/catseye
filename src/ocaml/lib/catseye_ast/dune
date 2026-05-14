@@ -1,5 +1,5 @@
 ; src/ocaml/lib/catseye_ast/dune
 (library
  (name catseye_ast)
- (public_name catseye.catseye_ast)
+ (public_name catseye.ast)
  (modules types error parse gleam_mapper crystal_mapper))
