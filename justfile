@@ -112,7 +112,7 @@ test: test-ocaml
     @echo ""
     @echo "=== E2E: Claws smell detection ==="
     @just _do-scan "test/samples/smell_samples/" "--format json --claws" > /tmp/catseye-claws-out.json 2>/dev/null
-    @python3 -c "import json,sys; data=open('/tmp/catseye-claws-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; rules=set(f['rule'] for f in d['findings']); expected={'LongParameterList','GodObject','DRYViolation'}; missing=expected-rules; print(f'  Findings: {c} (expect >= 3)'); print(f'  Smell rules: {sorted(rules)}'); sys.exit(1 if c<3 or missing else 0)"
+    @python3 -c "import json,sys; data=open('/tmp/catseye-claws-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; rules=set(f['rule'] for f in d['findings']); expected={'LongParameterList','GodObject','DeepNesting'}; missing=expected-rules; print(f'  Findings: {c} (expect >= 3)'); print(f'  Smell rules: {sorted(rules)}'); sys.exit(1 if c<3 or missing else 0)"
     @echo "  ✓ Claws smell detection OK"
     @echo ""
     @echo "✓ All E2E tests passed"
