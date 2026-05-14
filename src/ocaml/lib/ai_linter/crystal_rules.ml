@@ -492,6 +492,67 @@ let detect_duplicate_validation (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 8: The Looper (Iteration Mistakes) ────────────────────── *)
+
+(** Rule: Magic String Comparison
+    Detects hardcoded string literals used in equality comparisons.
+    AI often uses stringly-typed checks instead of enums or constants.
+    Skips strings < 3 chars (like "", " ", "0") and common safe patterns. *)
+let detect_magic_string (m : t) =
+  let is_magic (s : string) =
+    String.length s >= 3 &&
+    not (String.length s >= 4 && String.sub s 0 4 = "http") &&
+    not (String.length s >= 6 && String.sub s 0 6 = "sqlite") &&
+    not (String.length s >= 10 && String.sub s 0 10 = "postgresql")
+  in
+  let rec collect_equality_strings (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EApp (fn, args) when get_full_name fn = "==" ->
+        (* Check if either arg is a string literal *)
+        List.filter_map (fun a ->
+          match a.expr_value with
+          | ELiteral (LString s) when is_magic s -> Some (s, a.expr_location.start.line)
+          | _ -> None
+        ) args
+    | EBlock es -> List.concat_map collect_equality_strings es
+    | ELet (_, e1, e2) -> collect_equality_strings e1 @ collect_equality_strings e2
+    | EIf (_, then_, else_) ->
+        collect_equality_strings then_ @
+        (match else_ with Some e -> collect_equality_strings e | None -> [])
+    | _ -> []
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (s, line) ->
+          findings := (Printf.sprintf
+            "Magic string \"%s\" used in comparison — consider using a constant or enum" s, line) :: !findings
+        ) (collect_equality_strings body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Debug Require
+    Detects require statements for debug/development gems that shouldn't
+    be in production code. *)
+let detect_debug_require (m : t) =
+  let debug_requires = [
+    "debug"; "pry"; "byebug"; "binding_of_caller"; "irb";
+    "debugger"; "pry-byebug"; "pry-doc"; "pry-stack_explorer";
+  ] in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IImport (name, _) ->
+        if List.mem name debug_requires then
+          findings := (Printf.sprintf
+            "require \"%s\" is a debug dependency — remove for production" name,
+            item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -521,6 +582,10 @@ let all () = [
   (* The Confused *)
   ("blanket-rescue", T.Warning, detect_blanket_rescue);
   ("duplicate-validation", T.Hint, detect_duplicate_validation);
+
+  (* The Looper *)
+  ("magic-string", T.Hint, detect_magic_string);
+  ("debug-require", T.Warning, detect_debug_require);
 ]
 
 (** Analyze module and return findings *)

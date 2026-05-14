@@ -302,6 +302,71 @@ let detect_ignored_result (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Unused Import
+    Detects imports whose module name is never referenced in the rest
+    of the file. AI often adds unnecessary imports. *)
+let detect_unused_import (m : t) =
+  let imports = List.filter_map (fun item ->
+    match item.item_value with
+    | IImport (mod_name, _) -> Some (mod_name, item.item_location.start.line)
+    | _ -> None
+  ) m.mod_items in
+  let used_names = List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.filter_map (fun (name, _) ->
+          match String.index_opt name '.' with
+          | Some idx -> Some (String.sub name 0 idx)
+          | None -> Some name
+        ) (collect_apps body)
+    | _ -> []
+  ) m.mod_items in
+  let is_used mod_name =
+    List.exists (fun n ->
+      n = mod_name || String.length n > String.length mod_name + 1 &&
+      String.sub n 0 (String.length mod_name + 1) = mod_name ^ "."
+    ) used_names
+  in
+  List.filter_map (fun (mod_name, line) ->
+    if is_used mod_name then None
+    else Some (Printf.sprintf "Module '%s' is imported but never used" mod_name, line)
+  ) imports
+
+(** Rule: Discard Result
+    Detects patterns where a Result-returning function's value is
+    explicitly discarded with `let _ = ...`. *)
+let detect_discard_result (m : t) =
+  let rec collect_discarded_result_apps (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ELet (PDiscard, e1, _) ->
+        (* The binding is discarded — check if the value is a Result-returning call *)
+        (match e1.expr_value with
+         | EApp (fn, _) ->
+             let name = expr_name fn in
+             (match Type_inference.lookup_gleam name with
+              | Some { Type_inference.kind = Result; _ } ->
+                  [(name, e1.expr_location.start.line)]
+              | _ -> [])
+         | _ -> [])
+    | EBlock es -> List.concat_map collect_discarded_result_apps es
+    | EIf (_, then_, else_) ->
+        collect_discarded_result_apps then_ @
+        (match else_ with Some e -> collect_discarded_result_apps e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> collect_discarded_result_apps e) branches
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match collect_discarded_result_apps body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf
+               "Result from %s is discarded with let _ = — use case to handle errors" name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -364,6 +429,8 @@ let all () = [
   ("let-assert", T.Error, detect_let_assert);
   ("non-exhaustive-case", T.Warning, detect_non_exhaustive_case);
   ("ignored-result", T.Warning, detect_ignored_result);
+  ("unused-import", T.Hint, detect_unused_import);
+  ("discard-result", T.Warning, detect_discard_result);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
