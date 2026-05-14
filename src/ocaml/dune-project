@@ -47,3 +47,14 @@
   yojson
   ocaml_sqlite3
   unix))
+
+(package
+ (name catseye-ast)
+ (synopsis "Unified AST schema for Gleam and Crystal")
+ (description
+  "Catseye's unified AST library - provides CatseyeAST.t schema bridging tree-sitter (Gleam) and native parser (Crystal).")
+ (allow_empty)
+ (depends
+  ocaml
+  dune
+  yojson))
