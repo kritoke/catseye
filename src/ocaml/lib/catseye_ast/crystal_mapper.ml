@@ -207,7 +207,11 @@ let build_items (nodes : security_node list) : item list =
 let parse_file ~(path : string) : (t, parse_error) result =
   let extractor_cmd =
     try Sys.getenv "CATSEYE_CRYSTAL_EXTRACTOR"
-    with Not_found -> "crystal run src/extractor/extractor.cr --"
+    with Not_found ->
+      (* Try the pre-built binary first, fall back to crystal run *)
+      let bin_path = Filename.concat (Sys.getcwd ()) "bin/catseye-crystal-extractor" in
+      if Sys.file_exists bin_path then bin_path
+      else "crystal run src/extractor/extractor.cr --"
   in
   let cmd = Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
   let ic = Unix.open_process_in cmd in
