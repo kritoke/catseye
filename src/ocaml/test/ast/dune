@@ -1,0 +1,7 @@
+(executable
+ (name catseye_ast_test)
+ (modules catseye_ast_test)
+ (libraries catseye.ast catseye.cli catseye.ai_linter)
+ (public_name catseye_ast_test)
+ (package catseye)
+ (enabled_if (= %{context_name} default)))
