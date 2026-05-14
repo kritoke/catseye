@@ -11,11 +11,17 @@ let lang_of_extension path =
   else if Filename.check_suffix path ".cr" then Some Crystal
   else None
 
+(** Parse a Gleam file using tree-sitter *)
+let parse_gleam = Gleam_mapper.parse_file
+
+(** Parse a Crystal file using extractor *)
+let parse_crystal = Crystal_mapper.parse_file
+
 (** Parse a file, inferring language from extension *)
 let parse_file ~(path : string) : (t, parse_error) result =
   match lang_of_extension path with
   | None -> Error (make_error ~file:path ~message:"Unknown file type")
   | Some lang ->
       match lang with
-      | Gleam -> Error (make_error ~file:path ~message:"Gleam parsing not yet implemented")
-      | Crystal -> Error (make_error ~file:path ~message:"Crystal parsing not yet implemented")
+      | Gleam -> parse_gleam ~path
+      | Crystal -> parse_crystal ~path
