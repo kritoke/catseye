@@ -1,15 +1,23 @@
 # Catseye
 
-**Static security analysis for Crystal and Gleam applications.**
+**Static security analysis for Crystal and Gleam.**
 
 > ⚠️ **Highly experimental.** Expect breakage, false positives, and frequent API changes until the project stabilizes. Not ready for production use.
 
-Catseye finds vulnerabilities like SSRF, command injection, path traversal, and more by combining AST-based extraction with taint tracking and pattern-matching rules. It also detects code smells (complexity, god objects, DRY violations) and performs supply chain audits via OSV.dev.
+## Requirements
+
+- **OCaml** 5.x + **Dune** 3.x
+- **Crystal** 1.x (for the extractor)
+- **tree-sitter** + tree-sitter-gleam grammar (for Gleam parsing)
+- **just** (task runner)
+- OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
+
+The easiest way to get all of these is `nix develop` (see [flake.nix](flake.nix) for the full dev shell). But you can install them however you want.
 
 ## Quick Start
 
 ```bash
-# Enter dev shell (requires nix)
+# With Nix (handles all dependencies)
 nix develop
 
 # Build
@@ -18,145 +26,140 @@ just build
 # Scan a project
 just scan path/to/project/src
 
-# Scan with all analysis passes
-just scan-hunter path/to/project/src
+# Scan with all checks
+just scan-full path/to/project/src
 
 # JSON output
 just scan-json path/to/project/src
+
+# Run tests
+just test
 ```
 
-## Usage
+## CLI Reference
 
 ```
 catseye [options] <directory>
 
-Options:
-  -h, --help             Show help
-  -v, --version          Show version
-  -f, --format <fmt>     Output: terminal (default), json, sarif, markdown, dot
-  -o, --output <path>    Write results to file
-  -r, --rules <path>     Rules directory (default: rules/)
-  --lang <lang>          Language filter: all (default), crystal, gleam
-  --no-color             Disable colored output
-  --no-cache             Disable extraction cache
-  --clear-cache          Clear cache and run full scan
-  --cache-dir <path>     Cache directory (default: .catseye)
-  --predator-vision      Enable reachability heatmap
-  --crows-nest           Enable supply chain audit (CVE + staleness)
-  --claws                Enable code smell & DRY detection
-  --ai-lint              Enable AI antipattern detection (Gleam & Crystal)
-  -p, --parallelism <n>  Parallel workers (0 = auto)
+  -f, --format <fmt>       terminal (default), json, sarif, markdown, dot
+  -o, --output <path>      write results to file
+  -r, --rules <path>       rules directory (default: rules/)
+  --lang <lang>            all (default), crystal, gleam
+  --no-color               disable colored output
+  --no-cache               disable extraction cache
+  --clear-cache            clear cache and run full scan
+  --cache-dir <path>       cache directory (default: .catseye)
+  --predator-vision        enable reachability analysis (live/dormant/safe)
+  --crows-nest             enable supply chain audit (CVE + staleness)
+  --claws                  enable code smell detection
+  --ai-lint                enable AI antipattern detection
+  -p, --parallelism <n>    parallel workers (0 = auto)
+  -v, --version            show version
+  -h, --help               show help
 ```
 
-## Detection Rules
+## What It Detects
 
-### Security (Taint-based)
+### Security Rules (taint-based)
 
-| Rule | Severity | Description |
-|------|----------|-------------|
+| Rule | Severity | What it catches |
+|------|----------|-----------------|
 | **SSRF** | Critical | HTTP client calls with user-controlled URLs |
 | **CommandInjection** | Critical | `system`/`exec`/`Process.run` with tainted input |
 | **PathTraversal** | High | File I/O with user-controlled paths |
 | **SQLInjection** | Critical | SQL queries with tainted arguments |
 | **OpenRedirect** | Medium | Redirect handlers with unvalidated URLs |
-| **HardcodedSecrets** | Medium | Hardcoded API keys, tokens, passwords |
-| **MissingTimeout** | Medium | HTTP clients without connect/read timeouts |
-| **WeakCryptography** | Medium | MD5/SHA1 usage |
-| **ReDoS** | Medium | Regex patterns with catastrophic backtracking |
 | **EnvInjection** | High | Environment variable manipulation |
 | **LDAPInjection** | High | LDAP queries with user input |
-| **Deserialization** | High | Unsafe deserialization of untrusted input |
 | **ScentLeakage** | High | Sensitive data leaked to logs/output |
+| **ReDoS** | Medium | Regex patterns with catastrophic backtracking |
+| **WeakCryptography** | Medium | MD5/SHA1 usage |
+| **MissingTimeout** | Medium | HTTP clients without timeouts |
+| **HardcodedSecrets** | Medium | Hardcoded API keys, tokens, passwords |
+
+Rules are KDL files in `src/ocaml/rules/` — add your own by creating a `.kdl` file.
 
 ### AI Antipattern Detection (`--ai-lint`)
 
-Detects AI-generated code patterns that are syntactically valid but semantically wrong:
+Catches patterns common in AI-generated code: hallucinated method calls, hardcoded secrets, non-idiomatic constructs.
 
-| Rule | Severity | Languages | Description |
-|------|----------|-----------|-------------|
-| `hallucinated-stdlib` | Error | Crystal | Calls to methods that don't exist (37-entry database) |
-| `hardcoded-secrets` | Error | Both | API key patterns (Stripe, GitHub, AWS, JWT, Slack) |
-| `hardcoded-urls` | Warning | Crystal | Hardcoded http:// and IP addresses |
-| `deprecated-syntax` | Warning | Crystal | `puts`, `p`, `pp` in production code |
-| `primitive-obsession` | Hint | Crystal | Functions with 3+ parameters |
-| `redundant-conversion` | Hint | Crystal | Unnecessary type conversions |
-| `panic-call` | Error | Gleam | `panic` used instead of `Result` |
-| `list-wrap-unnecessary` | Warning | Gleam | `List.wrap` on collections |
-| `deprecated-result-check` | Hint | Gleam | `Result.is_ok/is_err` — use pattern matching |
+| Rule | Languages | What it catches |
+|------|-----------|-----------------|
+| `hallucinated-stdlib` | Crystal | Calls to methods that don't exist (37-entry database) |
+| `hardcoded-secrets` | Both | API key patterns (Stripe, GitHub, AWS, JWT, Slack) |
+| `hardcoded-urls` | Crystal | Hardcoded http:// and IP addresses |
+| `deprecated-syntax` | Crystal | `puts`, `p`, `pp` in production code |
+| `primitive-obsession` | Crystal | Functions with 3+ parameters |
+| `redundant-conversion` | Crystal | Unnecessary type conversions |
+| `panic-call` | Gleam | `panic` used instead of `Result` |
+| `list-wrap-unnecessary` | Gleam | `List.wrap` on collections |
 
 ### Code Smells (`--claws`)
 
-| Detector | Description |
-|----------|-------------|
-| Cyclomatic complexity | Functions with M ≥ 10 |
-| Long parameter list | Functions with ≥ 5 params |
-| Deep nesting | ≥ 4 levels of control flow |
-| God objects | Files with ≥ 20 definitions |
-| DRY violations | Structural code duplication (window hashing) |
+| Detector | Threshold |
+|----------|-----------|
+| Cyclomatic complexity | M ≥ 10 |
+| Long parameter list | ≥ 5 params |
+| Deep nesting | ≥ 4 levels |
+| God objects | ≥ 20 definitions per file |
 
 ### Supply Chain Audit (`--crows-nest`)
 
-- **CVE scanning** via OSV.dev API
-- **Staleness detection** — last release, commit activity, retirement status
-- **Offline cache** in SQLite with 24h TTL
+CVE scanning via [OSV.dev](https://osv.dev) and staleness detection for Crystal Shards and Gleam Hex packages. Results cached in SQLite (24h TTL).
 
-## Config File
-
-Place a `.catseye.toml` in your project root:
-
-```toml
-[scan]
-exclude = ["node_modules", ".git", "vendor", "spec"]
-
-[analysis]
-extra_sources = ["user_input", "raw_params"]
-extra_sanitizers = ["sanitize_path", "escape_shell"]
-parallelism = 4
-
-[predator_vision]
-enabled = false
-
-[crows_nest]
-enabled = false
-
-[claws]
-enabled = false
-complexity_warning = 10
-max_params = 5
-dry_window_size = 6
-```
-
-## Architecture
+## Example Output
 
 ```
-Crystal (.cr) ──→ Crystal Extractor ──→ Security Node JSON
-                                                  │
-Gleam (.gleam) ─→ OCaml + tree-sitter ──→ Security Node JSON ──→ Taint Engine ──→ Findings
-                                                                                     │
-                                                          Terminal / JSON / SARIF / Markdown / DOT
+  Catseye v0.4.0
+  Target:   ./src
+  Files:    66 Crystal, 0 Gleam
+
+  → Running analysis engine (5507 nodes)...
+
+  🔴 Error  SSRF  src/controllers/proxy_controller.cr:32
+       Potential SSRF via HTTP::Client.get with tainted argument(s): url.
+      ← Source: params (proxy_controller.cr:28)
+
+  🔴 Error  PathTraversal  src/controllers/asset_controller.cr:17
+       Potential path traversal via File.read with variable argument(s): path.
+      ← Source: params (asset_controller.cr:15)
+
+  Found 2 Error(s), 0 Warning(s) across 66 files.
+  Review the findings above.
 ```
 
-| Component | Language | Role |
-|-----------|----------|------|
-| CLI + Engine | OCaml 5 | File discovery, taint analysis, rule matching, output |
-| Crystal Extractor | Crystal | Parses `.cr` via `Crystal::Parser`, emits JSON |
-| Gleam Extractor | OCaml + tree-sitter | Parses `.gleam` via tree-sitter XML |
-| Rules | KDL | Declarative sink/source/sanitizer definitions |
-| AI Linter | OCaml | AST-based antipattern detection (hallucinated stdlib, etc.) |
-| Claws | OCaml | Code smell & DRY detection |
+## How It Works
 
-## Taint Analysis Pipeline
+```
+Source files
+    │
+    ├─ Crystal (.cr) ──→ Crystal extractor (AST → JSON)
+    │
+    └─ Gleam (.gleam) ─→ tree-sitter (AST → XML → JSON)
+                            │
+                            ▼
+                    Security Node JSON
+                            │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+         Taint Engine    AI Linter      Code Smells
+         (KDL rules)    (AST rules)    (complexity, etc.)
+              │              │              │
+              └──────────────┼──────────────┘
+                             ▼
+                     Terminal / JSON / SARIF / Markdown / DOT
+```
 
-**seed → propagate → returns → interproc → propagate → guards → rules**
+**Taint pipeline:** seed → propagate → returns → interproc → guards → rules
 
-1. **Seed** — Function params named like taint sources (`url`, `request`, `params`) are marked tainted
-2. **Propagate** — Fixed-point loop; assignments from tainted vars propagate taint, including through call chains (`x = URI.parse(url)`)
-3. **Returns** — Functions with tainted bodies are marked as returning tainted data
-4. **Inter-procedural** — Return-value and call-arg taint across function boundaries
-5. **Guards** — `unless path.starts_with?("/safe/")` suppresses taint after the guard line
+1. **Seed** — Params named like taint sources (`url`, `request`, `params`) are marked tainted
+2. **Propagate** — Fixed-point; taint flows through assignments and call chains
+3. **Returns** — Functions with tainted bodies return tainted data
+4. **Inter-procedural** — Taint crosses function boundaries
+5. **Guards** — `unless path.starts_with?("/safe/")` suppresses taint
 6. **Rules** — KDL rules match sinks against tainted variables
 
-### Adding a New Rule
+### Adding a Security Rule
 
 Create `src/ocaml/rules/my_rule.kdl`:
 
@@ -175,37 +178,40 @@ rule "MyRule" severity="Medium" {
 }
 ```
 
-## Real-World Results
+Rebuild with `just build` and test.
 
-| Project | Files | Findings | Details |
-|---------|-------|----------|---------|
-| quickheadlines | 66 Crystal | 2 | SSRF (proxy), PathTraversal (assets) |
-| fetcher.cr | 53 Crystal | 4 | SSRF in YouTube/software fetchers |
-| sassd.cr | 5 Crystal | 2 | CommandInjection, PathTraversal in compiler |
-| carafe.cr | 40 Crystal | 2 | ScentLeakage to logs |
-| vug.cr | 26 Crystal | 1 | SSRF in fetcher |
-| PrismatIQ | 37 Crystal | 0 | Clean |
-| test/samples | 23 files | 23 | All rule types covered |
-| test/samples/safe* | 3 files | 0 | Zero false positives |
+## Configuration
 
-## Performance
+Optional `.catseye.toml` in your project root:
 
-| Metric | Time |
-|--------|------|
-| 66-file Crystal scan (cold) | ~0.12s extraction + ~0.06s analysis |
-| 66-file Crystal scan (cached) | ~0.02s extraction + ~0.06s analysis |
-| AI lint only | ~0.06s total (66 files) |
+```toml
+[scan]
+exclude = ["node_modules", ".git", "vendor", "spec"]
 
-## Development
+[analysis]
+extra_sources = ["user_input", "raw_params"]
+extra_sanitizers = ["sanitize_path", "escape_shell"]
+parallelism = 4
 
-```bash
-nix develop              # Enter dev shell
-just build               # Build
-just test                # Run tests + E2E
-just scan dir/           # Scan a directory
-just fmt                 # Format code
-just clean               # Clean artifacts
-just list                # List all recipes
+[claws]
+complexity_warning = 10
+max_params = 5
+```
+
+## Justfile Recipes
+
+```
+just build               Build the engine
+just test                Unit tests + E2E
+just scan <dir>          Scan with terminal output
+just scan-full <dir>     Scan with all checks enabled
+just scan-json <dir>     Scan with JSON output
+just scan-ai <dir>       AI antipattern detection only
+just scan-reports <dir>  Generate JSON + SARIF + Markdown reports
+just fmt                 Format OCaml code
+just lint                Check formatting
+just clean               Clean build artifacts
+just extract <file>      Run Crystal extractor on a single file (debug)
 ```
 
 ## Project Structure
@@ -213,25 +219,31 @@ just list                # List all recipes
 ```
 catseye/
 ├── src/
-│   ├── ocaml/                    # OCaml engine
-│   │   ├── bin/main.ml           # CLI entry point
+│   ├── ocaml/
+│   │   ├── bin/main.ml                 # CLI entry point
 │   │   ├── lib/
-│   │   │   ├── catseye_engine/    # Taint engine (seed, propagate, interproc)
-│   │   │   ├── catseye_ast/       # Unified AST (CatseyeAST.t)
-│   │   │   ├── ai_linter/        # AI antipattern rules
-│   │   │   ├── catseye_claws/     # Code smell detection
-│   │   │   ├── catseye_crowsnest/ # Supply chain audit
-│   │   │   ├── catseye_rules/     # KDL rule interpreter
-│   │   │   ├── catseye_cli/       # CLI, orchestrator, output formats
-│   │   │   └── catseye_types/     # Shared types (Finding, Security_node)
-│   │   └── rules/                # KDL rule files (13 rules)
-│   └── extractor/
-│       └── extractor.cr          # Crystal AST extractor
-├── test/samples/                 # Test corpus (vulnerable + safe)
-├── .github/workflows/            # CI + self-scan
-├── flake.nix                     # Nix dev shell
-└── justfile                      # Build tasks
+│   │   │   ├── catseye_engine/          # Taint analysis
+│   │   │   ├── catseye_ast/             # Unified AST + mappers
+│   │   │   ├── ai_linter/              # AI antipattern rules
+│   │   │   ├── catseye_claws/           # Code smell detection
+│   │   │   ├── catseye_crowsnest/       # Supply chain audit
+│   │   │   ├── catseye_rules/           # KDL rule interpreter
+│   │   │   ├── catseye_cli/             # CLI, orchestrator, output formats
+│   │   │   └── catseye_types/           # Shared types
+│   │   └── rules/                       # 12 KDL rule files
+│   └── extractor/extractor.cr           # Crystal AST extractor
+├── test/samples/                        # Test corpus
+├── .github/workflows/                   # CI
+├── flake.nix                            # Nix dev shell
+└── justfile                             # Build tasks
 ```
+
+## Performance
+
+| Scan | Extraction | Analysis |
+|------|-----------|----------|
+| 66-file Crystal (cold) | ~0.12s | ~0.06s |
+| 66-file Crystal (cached) | ~0.02s | ~0.06s |
 
 ## License
 

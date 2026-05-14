@@ -78,6 +78,7 @@ let parse_args () : t =
       Printf.printf "  --claws              Enable code smell & DRY detection\n";
       Printf.printf "  --ai-lint            Enable AI antipattern detection (Gleam & Crystal)\n";
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
+      Printf.printf "  -v, --version        Show version\n";
       Printf.printf "  -h, --help           Show this help\n";
       exit 0
     | opt :: _ when String.starts_with ~prefix:"-" opt ->
