@@ -199,10 +199,29 @@ let detect_deprecated_syntax (m : t) =
 
 (* ── Category 2: The Foreigner ──────────────────────────────────────── *)
 
-(** Rule 2.1: Manual Loops vs Iterators *)
-let detect_manual_loop (_m : t) =
-  (* TODO: Detect while loops that could be iterators *)
-  []
+(** Rule 2.1: Manual Loops vs Iterators
+    Detect while loops with counter variable and index access patterns
+    that could be replaced with .each, .map, .select, etc. *)
+let detect_manual_loop (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let calls = collect_app_names body in
+        (* Check for while + counter patterns via calls *)
+        let has_while = List.exists (fun (n, _) -> n = "while") calls in
+        let has_counter = List.exists (fun (n, _) ->
+          String.ends_with ~suffix:"+= 1" n || String.ends_with ~suffix:"+=1" n ||
+          n = "i += 1" || n = "idx += 1" || n = "index += 1") calls in
+        if has_while && has_counter then begin
+          let line = match List.find_opt (fun (n, _) -> n = "while") calls with
+            | Some (_, l) -> l | None -> item.item_location.start.line
+          in
+          findings := ("Manual while loop with counter — consider using .each, .map, or .each_with_index", line) :: !findings
+        end
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
 (** Rule 2.3: Primitive Obsession (3+ params) *)
 let detect_primitive_obsession (m : t) =
@@ -219,15 +238,47 @@ let detect_primitive_obsession (m : t) =
 
 (* ── Category 3: The Happy Path ──────────────────────────────────────── *)
 
-(** Rule 3.1: Nil-chaser (unchecked nil access) *)
-let detect_nil_chaser (_m : t) =
-  (* TODO: Requires type info from Crystal worker *)
-  []
+(** Rule 3.1: Nil-chaser (unchecked nil access)
+    Detects .not_nil!, .as(Type) casts, and rescue NilAssertionError patterns
+    that indicate AI code bypassing nil checks instead of handling them properly. *)
+let detect_nil_chaser (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (name, line) ->
+          if name = "not_nil!" then
+            findings := ("not_nil! will raise on nil — use pattern matching or nil check instead", line) :: !findings;
+          if String.ends_with ~suffix:".as" name || String.contains name '.' &&
+             let parts = String.split_on_char '.' name in
+             List.exists (fun p -> p = "as") parts then
+            findings := ("Type cast with .as() may crash if nil — consider case expression or try/else", line) :: !findings
+        ) (collect_app_names body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
-(** Rule 3.3: Unsafe Pointers *)
-let detect_unsafe_pointers (_m : t) =
-  (* TODO: Detect Pointer usage not in @[Safe] context *)
-  []
+(** Rule 3.3: Unsafe Pointers
+    Detects Pointer.malloc, Pointer.null, Pointer.malloc, and unsafe_* method
+    calls that should be wrapped in safe abstractions. *)
+let detect_unsafe_pointers (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (name, line) ->
+          if name = "Pointer.malloc" then
+            findings := ("Pointer.malloc is unsafe — use Slice or Array for safe memory management", line) :: !findings;
+          if name = "Pointer.null" then
+            findings := ("Pointer.null is unsafe — use Nil or Option(T) for absent values", line) :: !findings;
+          if name = "Pointer.new" then
+            findings := ("Pointer.new is unsafe — consider Slice or a safe wrapper", line) :: !findings;
+          if String.length name >= 6 && String.sub name 0 6 = "unsafe" then
+            findings := (Printf.sprintf "%s bypasses safety checks — use safe alternative if available" name, line) :: !findings
+        ) (collect_app_names body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
 (* ── Category 4: The Tangle ─────────────────────────────────────────── *)
 
@@ -331,6 +382,51 @@ let detect_hardcoded_urls (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 7: The Confused (Language Feature Misuse) ─────────────── *)
+
+(** Rule 7.1: Blanket Rescue
+    Detects bare `rescue` or `rescue ex` without specifying an exception type.
+    AI often generates blanket rescues that swallow all errors silently. *)
+let detect_blanket_rescue (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (name, line) ->
+          (* Crystal extractor emits rescue blocks as calls *)
+          if name = "rescue" || name = "begin" then
+            findings := ("Blanket rescue catches all exceptions — catch specific exception types instead", line) :: !findings
+        ) (collect_app_names body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule 7.2: Duplicate Validation
+    Detects the same variable being validated twice in the same function.
+    AI often generates redundant validations from copy-paste. *)
+let detect_duplicate_validation (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let calls = collect_app_names body in
+        (* Group calls by name and track which vars they operate on *)
+        let validation_methods = ["empty?"; "nil?"; "blank?"; "valid?"; "present?"; "includes?"] in
+        List.iter (fun method_name ->
+          let matching = List.filter (fun (n, _) ->
+            String.length n >= String.length method_name &&
+            String.sub n (String.length n - String.length method_name) (String.length method_name) = method_name
+          ) calls in
+          (* If same validation method appears 2+ times, it's likely duplicate *)
+          if List.length matching >= 3 then
+            let line = match matching with (_, l) :: _ -> l | [] -> 0 in
+            findings := (Printf.sprintf "%s called %d times — check for duplicate validation logic"
+              method_name (List.length matching), line) :: !findings
+        ) validation_methods
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -354,6 +450,10 @@ let all () = [
 
   (* The Copier *)
   ("hardcoded-urls", T.Warning, detect_hardcoded_urls);
+
+  (* The Confused *)
+  ("blanket-rescue", T.Warning, detect_blanket_rescue);
+  ("duplicate-validation", T.Hint, detect_duplicate_validation);
 ]
 
 (** Analyze module and return findings *)

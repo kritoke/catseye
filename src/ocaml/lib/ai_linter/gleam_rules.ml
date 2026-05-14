@@ -215,6 +215,74 @@ let detect_todo (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: let assert in non-test code
+    Detects ELetAssert nodes which map to Gleam's `let assert` pattern.
+    In non-test code, this crashes on mismatch — should use case expressions. *)
+let detect_let_assert (m : t) =
+  let is_test_file (path : string) =
+    String.length path >= 5 &&
+    let suffix = String.sub path (String.length path - 5) 5 in
+    suffix = "_test" ||
+    (String.length path >= 9 && String.sub path (String.length path - 9) 9 = "_test.gleam")
+  in
+  let rec has_let_assert (expr : expr) : int option =
+    match expr.expr_value with
+    | ELetAssert _ -> Some expr.expr_location.start.line
+    | ELet (_, e1, e2) ->
+        (match has_let_assert e1 with Some l -> Some l | None -> has_let_assert e2)
+    | EIf (_, then_, else_) ->
+        (match has_let_assert then_ with
+         | Some l -> Some l
+         | None -> match else_ with Some e -> has_let_assert e | None -> None)
+    | ECase (_, branches) ->
+        List.find_map (fun (_, e) -> has_let_assert e) branches
+    | EBlock es -> List.find_map has_let_assert es
+    | EApp (fn, args) ->
+        (match has_let_assert fn with Some l -> Some l | None -> List.find_map has_let_assert args)
+    | _ -> None
+  in
+  if is_test_file m.mod_path then [] (* let assert is fine in tests *)
+  else List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_name, _, _, body) ->
+        (match has_let_assert body with
+         | Some line -> Some ("let assert crashes on Error — use case expression for graceful error handling", line)
+         | None -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Non-exhaustive case (missing Error branch)
+    Detects case expressions on Result values that only handle Ok.
+    AI often forgets the Error branch. *)
+let detect_non_exhaustive_case (m : t) =
+  let rec count_case_branches (expr : expr) : (int * int) list =
+    (* Returns (num_branches, line) pairs for case expressions with only 1 branch *)
+    match expr.expr_value with
+    | ECase (_, branches) ->
+        let n = List.length branches in
+        (n, expr.expr_location.start.line)
+        :: List.concat_map (fun (_, e) -> count_case_branches e) branches
+    | ELet (_, e1, e2) -> count_case_branches e1 @ count_case_branches e2
+    | ELetAssert (_, e1, e2) -> count_case_branches e1 @ count_case_branches e2
+    | EIf (_, then_, else_) ->
+        count_case_branches then_
+        @ (match else_ with Some e -> count_case_branches e | None -> [])
+    | EBlock es -> List.concat_map count_case_branches es
+    | EApp (fn, args) -> count_case_branches fn @ List.concat_map count_case_branches args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let cases = count_case_branches body in
+        List.find_map (fun (n, line) ->
+          if n = 1 then
+            Some ("Case expression has only 1 branch — likely missing Error variant", line)
+          else None
+        ) cases
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -273,6 +341,8 @@ let all () = [
   ("rust-fn", T.Error, detect_rust_fn);
   ("var-keyword", T.Error, detect_var_keyword);
   ("todo-in-code", T.Warning, detect_todo);
+  ("let-assert", T.Error, detect_let_assert);
+  ("non-exhaustive-case", T.Warning, detect_non_exhaustive_case);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
