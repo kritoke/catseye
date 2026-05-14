@@ -1,7 +1,7 @@
 (* lib/catseye_cli/orchestrator.ml *)
 
-open Config
 open Catseye_types
+open Config
 open Discovery
 
 let version = Catseye_engine.Engine.version
@@ -498,7 +498,42 @@ let run (config : t) : int =
     | other -> other
   in
 
-  (* Step 4d: Claws — code smell analysis *)
+  (* Step 4d: AI Linter — Gleam & Crystal antipattern detection *)
+  let ai_findings = if config.ai_lint then begin
+    if config.format = Terminal then begin
+      if config.persona then
+        Printf.printf "\n  🤖 Tuning in to AI patterns...\n\n"
+      else
+        Printf.printf "\n%s→ AI antipattern detection:%s\n\n"
+          (styled cyan config "") (styled reset config "")
+    end;
+    let ai_lint_findings = List.concat_map (fun src ->
+      (try
+        match Catseye_ast.Parse.parse_file ~path:src.path with
+        | Error err -> [Catseye_types.Finding.{ rule = "parse-error"; severity = "error"; file = err.file;
+            line = Option.value err.line ~default:0; message = err.message;
+            flow = []; language = ""; dependency = None; reachability = None; }]
+        | Ok mod_ ->
+          (match mod_.mod_lang with
+           | Gleam -> 
+            let convert_finding (f : Ai_linter.Gleam_rules.finding) =
+              { Catseye_types.Finding.rule = f.rule_id; severity = f.severity; file = f.file;
+                line = f.line; message = f.message;
+                flow = []; language = "gleam"; dependency = None; reachability = None; }
+            in
+            List.map convert_finding (Ai_linter.Gleam_rules.analyze_module mod_)
+           | Crystal -> [])
+      with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
+    ) sources in
+    if config.format = Terminal && ai_lint_findings <> [] then begin
+      List.iter (fun (f : Catseye_types.Finding.t) ->
+        Printf.printf "  [ai:%s] %s:%d - %s\n" f.rule f.file f.line f.message
+      ) ai_lint_findings
+    end;
+    ai_lint_findings
+  end else [] in
+
+  (* Step 4e: Claws — code smell analysis *)
   let all_findings = if config.claws then begin
     let claws_findings = Catseye_claws.Smells.analyze nodes
       config.claws_config in
@@ -509,8 +544,8 @@ let run (config : t) : int =
         Printf.printf "\n%s→ Code smell analysis:%s\n\n"
           (styled cyan config "") (styled reset config "")
     end;
-    reachability @ claws_findings
-  end else reachability in
+    reachability @ claws_findings @ ai_findings
+  end else reachability @ ai_findings in
 
   (* Step 5: Report *)
   Catseye_engine.Cache.close cache;

@@ -60,5 +60,4 @@ flake.private.nix
 # Todo infrastructure
 .tickets/
 # Planning docs (local only, not tracked)
-planning/
 *.so

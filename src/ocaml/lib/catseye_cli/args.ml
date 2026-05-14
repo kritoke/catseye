@@ -55,6 +55,8 @@ let parse_args () : t =
       go { acc with crows_nest = true } rest
     | ("--claws" | "-cl") :: rest ->
       go { acc with claws = true } rest
+    | ("--ai-lint" | "-ai") :: rest ->
+      go { acc with ai_lint = true } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
     | ("--help" | "-h") :: _ ->
@@ -74,6 +76,7 @@ let parse_args () : t =
       Printf.printf "  --predator-vision    Enable reachability heatmap\n";
       Printf.printf "  --crows-nest         Enable supply chain audit\n";
       Printf.printf "  --claws              Enable code smell & DRY detection\n";
+      Printf.printf "  --ai-lint            Enable AI antipattern detection (Gleam & Crystal)\n";
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
       Printf.printf "  -h, --help           Show this help\n";
       exit 0

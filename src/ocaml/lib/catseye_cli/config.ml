@@ -33,6 +33,7 @@ type t = {
   predator_vision : bool;
   crows_nest : bool;
   claws : bool;
+  ai_lint : bool;  (* Enable AI linter rules *)
   claws_config : Catseye_claws.Types.claws_config;
 }
 
@@ -57,6 +58,7 @@ let default = {
   predator_vision = false;
   crows_nest = false;
   claws = false;
+  ai_lint = false;
   claws_config = Catseye_claws.Types.default_config;
 }
 

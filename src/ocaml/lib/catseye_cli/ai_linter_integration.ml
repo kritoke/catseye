@@ -7,63 +7,74 @@
 open Catseye_ast.Types
 open Catseye_ast.Error
 open Catseye_ast.Parse
+open Catseye_types.Finding
 
 module Ast_rules = Ai_linter.Ast_rules
 module Gleam_rules = Ai_linter.Gleam_rules
 module Crystal_rules = Ai_linter.Crystal_rules
 module Types = Ai_linter.Types
 
-(** AI finding output format *)
-type ai_finding = {
-  file : string;
-  line : int;
-  rule : string;
-  severity : string;
-  message : string;
-}
+(** AI finding type (alias for Finding.t) *)
+type ai_finding = Catseye_types.Finding.t
 
 (** Convert parse error to finding *)
-let error_to_finding (err : parse_error) =
-  { file = err.file;
-    line = Option.value err.line ~default:0;
-    rule = "parse-error";
+let error_to_finding (err : parse_error) : ai_finding =
+  { rule = "parse-error";
     severity = "error";
-    message = err.message; }
+    file = err.file;
+    line = Option.value err.line ~default:0;
+    message = err.message;
+    flow = [];
+    language = "";
+    dependency = None;
+    reachability = None; }
 
 (** Convert ai_linter violation to finding *)
-let violation_to_finding (v : Ast_rules.violation) =
-  { file = "";
-    line = v.location.start.line;
-    rule = v.rule_id;
+let violation_to_finding (v : Ast_rules.violation) : ai_finding =
+  { rule = v.rule_id;
     severity = (match v.severity with
       | Types.Hint -> "hint"
       | Types.Warning -> "warning"
       | Types.Error -> "error");
-    message = v.message; }
+    file = "";
+    line = v.location.start.line;
+    message = v.message;
+    flow = [];
+    language = "";
+    dependency = None;
+    reachability = None; }
 
-(** Convert ai_linter finding to finding *)
-let finding_to_finding (f : Gleam_rules.finding) =
-  { file = f.file;
-    line = f.line;
-    rule = f.rule_id;
+(** Convert Gleam finding to ai_finding *)
+let gleam_finding_to_finding (f : Gleam_rules.finding) : ai_finding =
+  { rule = f.rule_id;
     severity = f.severity;
-    message = f.message; }
+    file = f.file;
+    line = f.line;
+    message = f.message;
+    flow = [];
+    language = "gleam";
+    dependency = None;
+    reachability = None; }
 
 (** Convert Crystal finding to ai_finding *)
-let crystal_finding_to_finding (f : Crystal_rules.finding) =
-  { file = f.file;
-    line = f.line;
-    rule = f.rule_id;
+let crystal_finding_to_finding (f : Crystal_rules.finding) : ai_finding =
+  { rule = f.rule_id;
     severity = f.severity;
-    message = f.message; }
+    file = f.file;
+    line = f.line;
+    message = f.message;
+    flow = [];
+    language = "crystal";
+    dependency = None;
+    reachability = None; }
 
 (** Parse and analyze a file *)
-let analyze_file ~(path : string) =
+let analyze_file ~(path : string) : ai_finding list =
   match parse_file ~path with
   | Error err -> [error_to_finding err]
   | Ok mod_ ->
       let lang_findings = match mod_.mod_lang with
-        | Gleam -> List.map finding_to_finding (Gleam_rules.analyze_module mod_)
+        | Gleam -> List.map gleam_finding_to_finding (Gleam_rules.analyze_module mod_)
         | Crystal -> List.map crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
       in
       let ast_findings = List.map (fun v ->
