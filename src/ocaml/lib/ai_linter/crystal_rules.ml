@@ -1,11 +1,9 @@
 (* src/ocaml/lib/ai_linter/crystal_rules.ml
    Crystal-specific AST rules
-   
-   Per the "Ban the Regex" principle, these rules operate on
-   CatseyeAST.t using pattern matching instead of regex.
-   
-   See planning/40-ai-patterns-hunting-plan.md for the complete
-   list of AI anti-patterns to detect.
+
+   All rules operate on CatseyeAST.t using typed pattern matching.
+   Function bodies now contain proper EApp/EFieldAccess expression trees
+   instead of flat IUnknown items.
 *)
 
 open Catseye_ast.Types
@@ -26,20 +24,41 @@ let sev_to_string = function
   | Warning -> "warning"
   | Error -> "error"
 
-(** Collect all calls from expressions *)
-let rec collect_calls (expr : expr) =
-  match expr.expr_value with
+(** Get the final method name from a dotted expression.
+    EFieldAccess(EVar "String", "new") -> Some "new"
+    EVar "puts" -> None *)
+let get_method_name (e : expr) : string option =
+  match e.expr_value with
+  | EFieldAccess (_, meth) -> Some meth
+  | EVar _ -> None
+  | _ -> None
+
+(** Get the receiver name chain from a dotted expression.
+    EFieldAccess(EFieldAccess(EVar "URI", "parse"), "host") -> ["URI"; "parse"; "host"] *)
+let rec get_name_chain (e : expr) : string list =
+  match e.expr_value with
+  | EFieldAccess (recv, field) -> get_name_chain recv @ [field]
+  | EVar name -> [name]
+  | _ -> []
+
+(** Get the full dotted name string from an expression *)
+let get_full_name (e : expr) : string =
+  String.concat "." (get_name_chain e)
+
+(** Collect all function calls (EApp) from an expression tree *)
+let rec collect_app_names (e : expr) : (string * int) list =
+  match e.expr_value with
   | EApp (fn, args) ->
-      let fn_name = match fn.expr_value with EVar n -> Some n | _ -> None in
-      (fn_name, args) :: List.concat_map collect_calls args
+      let name = get_full_name fn in
+      (name, e.expr_location.start.line) :: List.concat_map collect_app_names args
+  | EBlock es -> List.concat_map collect_app_names es
+  | ELet (_, e1, e2) -> collect_app_names e1 @ collect_app_names e2
   | EIf (cond, then_, else_) ->
-      collect_calls cond @ collect_calls then_ @
-      (match else_ with Some e -> collect_calls e | None -> [])
+      collect_app_names cond @ collect_app_names then_ @
+      (match else_ with Some e -> collect_app_names e | None -> [])
   | ECase (scrut, branches) ->
-      collect_calls scrut @ List.concat (List.map (fun (_, e) -> collect_calls e) branches)
-  | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
-      collect_calls e1 @ collect_calls e2
-  | EBlock es -> List.concat_map collect_calls es
+      collect_app_names scrut @ List.concat (List.map (fun (_, e) -> collect_app_names e) branches)
+  | EFieldAccess (recv, _) -> collect_app_names recv
   | _ -> []
 
 (* ── Category 1: Ghost Scent ────────────────────────────────────────── *)
@@ -50,30 +69,15 @@ let detect_hallucinated_stdlib (m : t) =
   List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-        (* Check calls in body *)
-        let rec check_calls e =
-          match e.expr_value with
-          | EApp (fn, _) ->
-              (match fn.expr_value with
-               | EVar name ->
-                   if name = "to_map" then findings := ("to_map does not exist - use .to_h or .map", e.expr_location.start.line) :: !findings;
-                   if name = "String.join" then findings := ("String.join doesn't exist - use Array.join", e.expr_location.start.line) :: !findings
-               | _ -> ())
-          | EBlock es -> List.iter check_calls es
-          | _ -> ()
-        in
-        check_calls body
-    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
-        let call_name = String.sub s 5 (String.length s - 5) in
-        (* Check for .to_map suffix (e.g., items.to_map) *)
-        (match String.rindex_opt call_name '.' with
-         | Some idx when idx < String.length call_name - 6 ->
-             let suffix = String.sub call_name (idx + 1) (String.length call_name - idx - 1) in
-             if suffix = "to_map" then
-               findings := ("to_map does not exist - use .to_h or .map", item.item_location.start.line) :: !findings
-         | _ -> ());
-        if call_name = "String.join" then 
-          findings := ("String.join doesn't exist - use Array.join", item.item_location.start.line) :: !findings
+        List.iter (fun (name, line) ->
+          (* Check for .to_map suffix *)
+          if String.length name >= 6 &&
+             String.sub name (String.length name - 6) 6 = "to_map" then
+            findings := ("to_map does not exist - use .to_h or .map", line) :: !findings;
+          (* Check for String.join *)
+          if name = "String.join" then
+            findings := ("String.join doesn't exist - use Array.join", line) :: !findings
+        ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
   !findings
@@ -84,26 +88,16 @@ let detect_deprecated_syntax (m : t) =
   List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-        let rec check_expr e =
-          match e.expr_value with
-          | EApp (fn, _) ->
-              (match fn.expr_value with
-               | EVar "puts" -> findings := ("puts used for debugging", e.expr_location.start.line) :: !findings
-               | EVar "p" | EVar "pp" -> findings := ("debug output statement", e.expr_location.start.line) :: !findings
-               | _ -> ())
-          | EIf (_, then_, else_) -> check_expr then_; Option.iter check_expr else_
-          | ECase (_, branches) -> List.iter (fun (_, e) -> check_expr e) branches
-          | ELet (_, _, body) | ELetAssert (_, _, body) -> check_expr body
-          | EBlock es -> List.iter check_expr es
-          | _ -> ()
-        in
-        check_expr body
-    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
-        let call_name = String.sub s 5 (String.length s - 5) in
-        if call_name = "puts" then findings := ("puts used for debugging", item.item_location.start.line) :: !findings;
-        if call_name = "p" then findings := ("p used for debugging", item.item_location.start.line) :: !findings;
-        if call_name = "pp" then findings := ("pp used for debugging", item.item_location.start.line) :: !findings;
-        if call_name = "String.new" then findings := ("String.new often redundant", item.item_location.start.line) :: !findings
+        List.iter (fun (name, line) ->
+          if name = "puts" then
+            findings := ("puts used for debugging", line) :: !findings;
+          if name = "p" then
+            findings := ("p used for debugging", line) :: !findings;
+          if name = "pp" then
+            findings := ("pp used for debugging", line) :: !findings;
+          if name = "String.new" then
+            findings := ("String.new often redundant", line) :: !findings
+        ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
   !findings
@@ -115,7 +109,7 @@ let detect_manual_loop (_m : t) =
   (* TODO: Detect while loops that could be iterators *)
   []
 
-(** Rule 2.3: Primitive Obsession (3+ String params) *)
+(** Rule 2.3: Primitive Obsession (3+ params) *)
 let detect_primitive_obsession (m : t) =
   let findings = ref [] in
   List.iter (fun item ->
@@ -148,19 +142,10 @@ let detect_redundant_conversion (m : t) =
   List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-        let rec check_expr e =
-          match e.expr_value with
-          | EApp (fn, _) ->
-              (match fn.expr_value with
-               | EVar "String.new" -> findings := ("String.new redundant - use literal", e.expr_location.start.line) :: !findings
-               | _ -> ())
-          | EBlock es -> List.iter check_expr es
-          | _ -> ()
-        in
-        check_expr body
-    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
-        let call_name = String.sub s 5 (String.length s - 5) in
-        if call_name = "String.new" then findings := ("String.new redundant - use literal", item.item_location.start.line) :: !findings
+        List.iter (fun (name, line) ->
+          if name = "String.new" then
+            findings := ("String.new redundant - use literal", line) :: !findings
+        ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
   !findings
@@ -171,15 +156,15 @@ let all () = [
   (* Ghost Scent *)
   ("hallucinated-stdlib", Error, detect_hallucinated_stdlib);
   ("deprecated-syntax", Warning, detect_deprecated_syntax);
-  
+
   (* The Foreigner *)
   ("manual-loop", Hint, detect_manual_loop);
   ("primitive-obsession", Hint, detect_primitive_obsession);
-  
+
   (* The Happy Path *)
   ("nil-chaser", Warning, detect_nil_chaser);
   ("unsafe-pointer", Error, detect_unsafe_pointers);
-  
+
   (* The Tangle *)
   ("redundant-conversion", Hint, detect_redundant_conversion);
 ]

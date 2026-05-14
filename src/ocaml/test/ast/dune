@@ -1,7 +1,5 @@
-(executable
- (name catseye_ast_test)
- (modules catseye_ast_test)
+(tests
+ (names catseye_ast_test crystal_test)
+ (modules catseye_ast_test crystal_test)
  (libraries catseye.ast catseye.ai_linter)
- (public_name catseye_ast_test)
- (package catseye)
- (enabled_if (= %{context_name} default)))
+ (package catseye))
