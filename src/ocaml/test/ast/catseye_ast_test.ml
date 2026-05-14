@@ -1,22 +1,18 @@
-(* Test binary for catseye_ast parsing *)
-(* Tests Crystal extractor integration and AI linter rules *)
+(* Test binary for Gleam parsing and AI linter *)
 
 open Catseye_ast.Types
 open Catseye_ast.Parse
-
 module Ast_rules = Ai_linter.Ast_rules
-module Crystal_rules = Ai_linter.Crystal_rules
+module Gleam_rules = Ai_linter.Gleam_rules
 
 let () =
-  (* Test Crystal AI anti-patterns *)
-  let sample = "/workspaces/catseye/test/samples/ai_antipatterns.cr" in
-  let extractor = "crystal run /workspaces/catseye/src/extractor/extractor.cr --" in
-  Printf.printf "=== Testing CatseyeAST parsing ===\n";
-  Printf.printf "File: %s\n" sample;
-  Printf.printf "Extractor: %s\n" extractor;
+  (* Set environment variables *)
+  Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+  Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye/third_party/tree-sitter";
   
-  (* Set the extractor env var *)
-  Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" extractor;
+  let sample = "/workspaces/catseye/test/samples/ai_antipatterns.gleam" in
+  Printf.printf "=== Testing Gleam CatseyeAST parsing ===\n";
+  Printf.printf "File: %s\n" sample;
   
   match parse_file ~path:sample with
   | Error err ->
@@ -33,19 +29,17 @@ let () =
             Printf.printf "  Line %d: function %s(%d params)\n" line name (List.length params)
         | IImport (name, _) ->
             Printf.printf "  Line %d: import %s\n" line name
-        | IClass (name, _) ->
-            Printf.printf "  Line %d: class %s\n" line name
-        | IModule (name, _) ->
-            Printf.printf "  Line %d: module %s\n" line name
+        | ITypeDef (name, _, _) ->
+            Printf.printf "  Line %d: type %s\n" line name
         | IUnknown s ->
             Printf.printf "  Line %d: unknown (%s)\n" line s
         | _ ->
             Printf.printf "  Line %d: other\n" line
       ) mod_.mod_items;
       
-      (* Test Crystal AI linter *)
-      Printf.printf "\n=== AI Linter Findings ===\n";
-      let findings = Crystal_rules.analyze_module mod_ in
+      (* Test Gleam AI linter *)
+      Printf.printf "\n=== Gleam AI Linter Findings ===\n";
+      let findings = Gleam_rules.analyze_module mod_ in
       if findings = [] then
         Printf.printf "  (no violations found)\n"
       else

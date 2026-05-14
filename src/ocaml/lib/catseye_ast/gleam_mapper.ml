@@ -181,16 +181,40 @@ and expr_of_xml (n : xml) =
 
 and item_of_xml (n : xml) =
   let loc = range_of_xml n in
-  let value = match attr n "type" with
+  let value = match n.tag with
     | "function" ->
-        let name = match find n ~tag:"name" with [nm] -> text nm | _ -> "unknown" in
-        IFunction (name, [], None, expr_of_xml n)
-    | "import" -> IImport (text n, None)
+        let name = (try List.find (fun c -> c.tag = "identifier" && attr c "field" = "name") n.children |> text with Not_found -> "unknown") in
+        let params = List.map (fun p -> PVar (text p)) (find n ~tag:"function_parameter") in
+        let body = expr_of_xml n in
+        IFunction (name, params, None, body)
+    | "import" -> 
+        let name = match find n ~tag:"module" with [m] -> text m | _ -> "" in
+        IImport (name, None)
     | "type" -> ITypeDef (text n, [], [])
     | "module" -> IModule (text n, [])
-    | _ -> IUnknown (attr n "type")
+    | _ -> IUnknown ("tag:" ^ n.tag)
   in
   { item_value = value; item_location = loc }
+and collect_function_calls (n : xml) : item list =
+  let get_call_name (fc : xml) =
+    match find fc ~tag:"field_access" with
+    | [fa] -> (match find fa ~tag:"label" with [l] -> text l | _ -> "")
+    | _ -> ""
+  in
+  let calls = List.map (fun c -> 
+    let loc = range_of_xml c in
+    let name = get_call_name c in
+    { item_value = IUnknown ("call:" ^ name); item_location = loc }
+  ) (find n ~tag:"function_call") in
+  let panics = List.map (fun c ->
+    let loc = range_of_xml c in
+    { item_value = IUnknown "call:panic"; item_location = loc }
+  ) (find n ~tag:"panic") in
+  let interfaces = List.map (fun c ->
+    let loc = range_of_xml c in
+    { item_value = IUnknown "tag:interface"; item_location = loc }
+  ) (find n ~tag:"ERROR") in
+  calls @ panics @ interfaces
 
 (* ── Parse via tree-sitter CLI ─────────────────────────────────────── *)
 
@@ -200,15 +224,29 @@ let parse_file ~(path : string) : (t, parse_error) result =
   | None ->
       Error (make_error ~file:path ~message:"TREE_SITTER_GLEAM_GRAMMAR not set")
   | Some grammar ->
-      let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" grammar path in
-      let ic = Unix.open_process_in cmd in
-      let xml_str = Buffer.create 4096 in
-      (try while true do Buffer.add_channel xml_str ic 4096 done with End_of_file -> ());
-      let status = Unix.close_process_in ic in
-      match status with
-      | Unix.WEXITED 0 ->
-          let xml = parse_xml (Buffer.contents xml_str) in
-          let items = List.filter (fun c -> List.mem c.tag ["function"; "import"; "type"]) xml.children in
-          Ok { mod_lang = Gleam; mod_path = path; mod_items = List.map item_of_xml items; parse_errors = [] }
-      | _ ->
-          Error (make_error ~file:path ~message:"tree-sitter parse failed")
+      let cmd = Printf.sprintf "(cd '%s' && tree-sitter parse --lib-path 'gleam/native_gleam.so' --lang-name gleam -x '%s') 2>/dev/null" grammar path in
+      (try
+        let ic = Unix.open_process_in cmd in
+        let xml_str = Buffer.create 4096 in
+        (try while true do Buffer.add_channel xml_str ic 4096 done with End_of_file -> ());
+        let status = Unix.close_process_in ic in
+        match status with
+        | Unix.WEXITED 0 | Unix.WEXITED 1 ->
+            let xml_content = Buffer.contents xml_str in
+            if String.length xml_content > 100 && String.sub xml_content 0 5 = "<?xml" then
+              let xml = parse_xml xml_content in
+              let root = if xml.tag = "sources" && List.length xml.children > 0 then List.hd xml.children else xml in
+              let source_file = if root.tag = "source" && List.length root.children > 0 then List.hd root.children else root in
+              let items = List.filter (fun c -> List.mem c.tag ["function"; "import"; "type"; "module"]) source_file.children in
+              let items_with_calls = List.concat_map (fun c -> 
+                let base = item_of_xml c in
+                if c.tag = "function" then base :: collect_function_calls c else [base]
+              ) items in
+              Ok { mod_lang = Gleam; mod_path = path; mod_items = items_with_calls; parse_errors = [] }
+            else
+              Error (make_error ~file:path ~message:("Invalid XML output: " ^ String.sub xml_content 0 (min 100 (String.length xml_content))))
+        | _ ->
+            let xml_str = Buffer.contents xml_str in
+            Error (make_error ~file:path ~message:("tree-sitter parse failed: " ^ xml_str))
+      with e ->
+        Error (make_error ~file:path ~message:(Printexc.to_string e)))
