@@ -85,12 +85,19 @@ TREE_SITTER_GLEAM_GRAMMAR=third_party/tree-sitter dune exec test/ast/catseye_ast
 ## Archive (`planning/archive/`)
 
 Superseded or exploration-phase documents:
-
-- `concurrency/` — Moonpool/Miou/Riot exploration (deferred)
-- `DNF.md` — Deferred Nice-to-Haves
+- `DNF.md` — Deferred Nice-to-Haves (original)
 - `TDD.md` — Test-driven development notes
 - `architecture.md` — Original architecture
 - `roadmap.md` — Historical roadmap
 - `oxcaml-exploration.md` — OCaml rewrite exploration
 - `001-*.md` through `013-*.md` — Implementation snapshots
 - `ocaml-rewrite/` — OCaml rewrite exploration notes
+
+## DNF (`planning/dnf/`)
+
+**Deferred Nice-to-Haves** — intentional deferrals with rationale and revisit triggers:
+- `41-riot-supervisor-exploration.md` — Riot/Supervisor exploration
+- `42-miou-vs-moonpool.md` — Miou vs Moonpool comparison
+- `43-moonpool-integration-plan.md` — Moonpool integration plan
+
+See `planning/archive/DNF.md` for the main DNF tracking document.

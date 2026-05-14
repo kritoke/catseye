@@ -201,3 +201,44 @@ Code quality improvements identified during OCaml code review.
 ---
 
 *Last updated: 2026-05-10*
+---
+
+## Deferred: Concurrency Library Integration (2026-05-14)
+
+Exploration of OCaml 5 concurrency libraries for improved parallel processing.
+
+### Moonpool Integration
+
+**Files**: `planning/dnf/43-moonpool-integration-plan.md`
+
+**Why deferred**: Moonpool offers better CPU utilization (~90% vs ~60%) and task-local storage, but:
+- Current `parallel.ml` using Domains works correctly
+- Risk of introducing bugs in working parallel code path
+- Phase 1 (parallel.ml → Moonpool) is low-risk, but Phase 2+ requires benchmarking
+
+**Revisit trigger**: 
+- Performance profiling shows CPU utilization <70% on multi-core machines
+- Parallel extraction becomes a bottleneck
+- Benchmark confirms measurable improvement needed
+
+**How**: See `planning/dnf/43-moonpool-integration-plan.md` for detailed migration plan.
+
+### Miou vs Moonpool
+
+**File**: `planning/dnf/42-miou-vs-moonpool.md`
+
+**Why deferred**: Both are excellent libraries. Decision requires benchmarking on real workloads.
+
+**Revisit trigger**: After deciding on Moonpool integration.
+
+### Riot/Supervisor Exploration
+
+**File**: `planning/dnf/41-riot-supervisor-exploration.md`
+
+**Why deferred**: Exploration phase completed, no immediate need for supervisor-style process management.
+
+**Revisit trigger**: If multi-process architecture is needed in future.
+
+---
+
+*Last updated: 2026-05-14*
