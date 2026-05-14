@@ -79,6 +79,29 @@ let detect_result_check (m : t) =
 
 (** Rule: panic! call detected *)
 let detect_panic (m : t) =
+  let findings = ref [] in
+  let rec check_expr e =
+    match e.expr_value with
+    | EVar "panic" -> findings := ("panic! call found - use Result or Option", e.expr_location.start.line) :: !findings
+    | EApp (fn, _) ->
+        (match fn.expr_value with
+         | EVar "panic" -> findings := ("panic! call found", e.expr_location.start.line) :: !findings
+         | _ -> ())
+    | EIf (_, then_, else_) -> check_expr then_; Option.iter check_expr else_
+    | ECase (_, branches) -> List.iter (fun (_, e) -> check_expr e) branches
+    | ELet (_, _, body) | ELetAssert (_, _, body) -> check_expr body
+    | EBlock es -> List.iter check_expr es
+    | _ -> ()
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> check_expr body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Hallucinated _or_default functions *)
+let detect_hallucinated_or_default (m : t) =
   let calls = List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) -> collect_calls body
@@ -86,15 +109,67 @@ let detect_panic (m : t) =
   ) m.mod_items in
   List.filter_map (fun (name, _) ->
     match name with
-    | Some "panic" -> Some ("panic! call found - use Result or Option", 0)
+    | Some name when String.length name >= 11 && String.sub name (String.length name - 11) 11 = "_or_default" ->
+        Some ("Function " ^ name ^ " may not exist in Gleam stdlib", 0)
     | _ -> None
   ) calls
+
+(** Rule: Hallucinated to_list *)
+let detect_hallucinated_to_list (m : t) =
+  let calls = List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> collect_calls body
+    | _ -> []
+  ) m.mod_items in
+  List.filter_map (fun (name, _) ->
+    match name with
+    | Some name when String.length name >= 8 && String.sub name (String.length name - 8) 8 = "_to_list" ->
+        Some (name ^ " may not exist on this type", 0)
+    | _ -> None
+  ) calls
+
+(** Rule: TypeScript interface keyword *)
+let detect_typescript_interface (m : t) =
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IUnknown s when String.length s >= 9 && String.sub s 0 9 = "interface" ->
+        Some ("'interface' is TypeScript, not Gleam - use 'type'", item.item_location.start.line)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Rust fn keyword for function defs *)
+let detect_rust_fn (m : t) =
+  let calls = List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> collect_calls body
+    | _ -> []
+  ) m.mod_items in
+  List.filter_map (fun (name, args) ->
+    match name, args with
+    | Some "fn", _ when List.length args > 0 ->
+        Some ("'fn' as function call looks like Rust - Gleam uses 'fn' only for lambdas", 0)
+    | _ -> None
+  ) calls
+
+(** Rule: var keyword (Gleam uses let) *)
+let detect_var_keyword (m : t) =
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IUnknown s when String.length s >= 3 && String.sub s 0 3 = "var" ->
+        Some ("'var' is not valid in Gleam - use 'let'", item.item_location.start.line)
+    | _ -> None
+  ) m.mod_items
 
 (** All rules *)
 let all () = [
   ("list-wrap-unnecessary", Warning, detect_list_wrap);
   ("deprecated-result-check", Hint, detect_result_check);
   ("panic-call", Error, detect_panic);
+  ("hallucinated-or-default", Error, detect_hallucinated_or_default);
+  ("hallucinated-to-list", Error, detect_hallucinated_to_list);
+  ("typescript-interface", Error, detect_typescript_interface);
+  ("rust-fn", Error, detect_rust_fn);
+  ("var-keyword", Error, detect_var_keyword);
 ]
 
 (** Analyze module and return findings *)
