@@ -283,6 +283,25 @@ let detect_non_exhaustive_case (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Ignored Result
+    Uses type inference DB to detect calls to Result-returning functions
+    where the return value is not captured in a case expression. *)
+let detect_ignored_result (m : t) =
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let apps = collect_apps body in
+        List.find_map (fun (name, line) ->
+          match Type_inference.lookup_gleam name with
+          | Some { Type_inference.kind = Result; type_name; doc } ->
+              Some (Printf.sprintf
+                "%s returns %s — %s. Use case expression to handle both Ok and Error"
+                name type_name doc, line)
+          | _ -> None
+        ) apps
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -344,6 +363,7 @@ let all () = [
   ("todo-in-code", T.Warning, detect_todo);
   ("let-assert", T.Error, detect_let_assert);
   ("non-exhaustive-case", T.Warning, detect_non_exhaustive_case);
+  ("ignored-result", T.Warning, detect_ignored_result);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

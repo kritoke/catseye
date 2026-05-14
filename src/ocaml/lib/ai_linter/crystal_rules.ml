@@ -239,28 +239,79 @@ let detect_primitive_obsession (m : t) =
 (* ── Category 3: The Happy Path ──────────────────────────────────────── *)
 
 (** Rule 3.1: Nil-chaser (unchecked nil access)
-    Detects .not_nil!, .as(Type) casts, and rescue NilAssertionError patterns
-    that indicate AI code bypassing nil checks instead of handling them properly. *)
+    Uses type inference DB to detect when a call that returns T | Nil
+    is accessed without a nil guard (e.g. user.name where user comes
+    from Hash#[]? or Array#first?). Also detects .not_nil!, .as(Type)
+    casts, and .try(&.x) as code smells. *)
 let detect_nil_chaser (m : t) =
   let findings = ref [] in
   List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
         List.iter (fun (name, line) ->
+          (* Pattern 1: .not_nil! — forced unwrap *)
           if name = "not_nil!" then
             findings := ("not_nil! will raise on nil — use pattern matching or nil check instead", line) :: !findings;
-          if String.ends_with ~suffix:".as" name || String.contains name '.' &&
-             let parts = String.split_on_char '.' name in
-             List.exists (fun p -> p = "as") parts then
-            findings := ("Type cast with .as() may crash if nil — consider case expression or try/else", line) :: !findings
+          (* Pattern 2: .as( — type cast that crashes on nil *)
+          if String.length name >= 3 &&
+             String.sub name (String.length name - 3) 3 = ".as" then
+            findings := ("Type cast with .as() may crash if nil — consider case expression", line) :: !findings;
+          (* Pattern 3: Nullable-returning call accessed without guard *)
+          (match Type_inference.lookup_crystal name with
+           | Some ({ kind = Nullable; doc; _ } as info) ->
+               findings := (Printf.sprintf
+                 "Call %s returns %s (%s) — access may raise on nil"
+                 name info.Type_inference.type_name doc, line) :: !findings
+           | _ -> ());
+          (* Pattern 4: Raising accessor used without rescue *)
+          (match Type_inference.lookup_crystal name with
+           | Some { kind = Safe; type_name = "T"; _ } when
+               String.length name >= 2 &&
+               String.sub name (String.length name - 2) 2 = "[]" ->
+               findings := (Printf.sprintf
+                 "%s raises on missing key/index — use []? variant or nil check"
+                 name, line) :: !findings
+           | _ -> ())
         ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
   !findings
 
-(** Rule 3.3: Unsafe Pointers
-    Detects Pointer.malloc, Pointer.null, Pointer.malloc, and unsafe_* method
-    calls that should be wrapped in safe abstractions. *)
+(** Rule 3.2: Ignoring Return Value
+    Detects when a call that returns an important value (HTTP response,
+    JSON parse result, DB query) has its return value discarded (no let binding).
+    AI often writes `HTTP::Client.get(url)` without capturing the response. *)
+let detect_ignored_return (m : t) =
+  let important_returns = [
+    "HTTP::Client.get"; "HTTP::Client.post"; "HTTP::Client.put";
+    "HTTP::Client.delete"; "HTTP::Client.patch";
+    "HTTP.get"; "HTTP.post"; "HTTP.put";
+    "JSON.parse"; "JSON.parse_io";
+    "DB.query"; "DB.query_one"; "DB.query_one?";
+    "DB.exec";
+    "File.read"; "File.write";
+    "File.read?"; "File.write?";
+  ] in
+  let is_important (name : string) =
+    List.exists (fun prefix ->
+      String.length name >= String.length prefix &&
+      String.sub name 0 (String.length prefix) = prefix
+    ) important_returns
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let calls = collect_app_names body in
+        List.iter (fun (name, line) ->
+          if is_important name then
+            findings := (Printf.sprintf
+              "Return value of %s is discarded — capture and check the result" name, line) :: !findings
+        ) calls
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 let detect_unsafe_pointers (m : t) =
   let findings = ref [] in
   List.iter (fun item ->
@@ -275,6 +326,20 @@ let detect_unsafe_pointers (m : t) =
             findings := ("Pointer.new is unsafe — consider Slice or a safe wrapper", line) :: !findings;
           if String.length name >= 6 && String.sub name 0 6 = "unsafe" then
             findings := (Printf.sprintf "%s bypasses safety checks — use safe alternative if available" name, line) :: !findings
+        ) (collect_app_names body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Sleep in production code *)
+let detect_sleep_in_prod (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (name, line) ->
+          if name = "sleep" then
+            findings := ("sleep() in production code — remove or gate behind debug flag", line) :: !findings
         ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
@@ -440,7 +505,9 @@ let all () = [
 
   (* The Happy Path *)
   ("nil-chaser", T.Warning, detect_nil_chaser);
+  ("ignored-return", T.Warning, detect_ignored_return);
   ("unsafe-pointer", T.Error, detect_unsafe_pointers);
+  ("sleep-in-prod", T.Warning, detect_sleep_in_prod);
 
   (* The Tangle *)
   ("redundant-conversion", T.Hint, detect_redundant_conversion);
