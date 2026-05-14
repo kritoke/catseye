@@ -46,22 +46,37 @@ let rec collect_calls (expr : expr) =
 
 (** Rule 1.1: Non-existent Standard Library Methods *)
 let detect_hallucinated_stdlib (m : t) =
-  let calls = List.concat_map (fun item ->
+  let findings = ref [] in
+  List.iter (fun item ->
     match item.item_value with
-    | IFunction (_, _, _, body) -> collect_calls body
-    | _ -> []
-  ) m.mod_items in
-  List.filter_map (fun (name, _) ->
-    match name with
-    (* Crystal has no .to_map - it's .to_h for Hash *)
-    | Some "to_map" -> Some ("to_map does not exist in Crystal - use .to_h for Hash or .map on Array", 0)
-    (* String.join doesn't exist - Array.join does *)
-    | Some "String.join" -> Some ("String.join doesn't exist - use Array.join(array, separator)", 0)
-    (* object_id is deprecated *)
-    | Some name when String.length name >= 10 && String.sub name 0 10 = "object_id" ->
-        Some ("object_id is deprecated in Crystal", 0)
-    | _ -> None
-  ) calls
+    | IFunction (_, _, _, body) ->
+        (* Check calls in body *)
+        let rec check_calls e =
+          match e.expr_value with
+          | EApp (fn, _) ->
+              (match fn.expr_value with
+               | EVar name ->
+                   if name = "to_map" then findings := ("to_map does not exist - use .to_h or .map", e.expr_location.start.line) :: !findings;
+                   if name = "String.join" then findings := ("String.join doesn't exist - use Array.join", e.expr_location.start.line) :: !findings
+               | _ -> ())
+          | EBlock es -> List.iter check_calls es
+          | _ -> ()
+        in
+        check_calls body
+    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
+        let call_name = String.sub s 5 (String.length s - 5) in
+        (* Check for .to_map suffix (e.g., items.to_map) *)
+        (match String.rindex_opt call_name '.' with
+         | Some idx when idx < String.length call_name - 6 ->
+             let suffix = String.sub call_name (idx + 1) (String.length call_name - idx - 1) in
+             if suffix = "to_map" then
+               findings := ("to_map does not exist - use .to_h or .map", item.item_location.start.line) :: !findings
+         | _ -> ());
+        if call_name = "String.join" then 
+          findings := ("String.join doesn't exist - use Array.join", item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
 (** Rule 1.2: Legacy/Deprecated Syntax *)
 let detect_deprecated_syntax (m : t) =
@@ -69,7 +84,6 @@ let detect_deprecated_syntax (m : t) =
   List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-        (* Check for puts/p used in production code *)
         let rec check_expr e =
           match e.expr_value with
           | EApp (fn, _) ->
@@ -84,6 +98,12 @@ let detect_deprecated_syntax (m : t) =
           | _ -> ()
         in
         check_expr body
+    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
+        let call_name = String.sub s 5 (String.length s - 5) in
+        if call_name = "puts" then findings := ("puts used for debugging", item.item_location.start.line) :: !findings;
+        if call_name = "p" then findings := ("p used for debugging", item.item_location.start.line) :: !findings;
+        if call_name = "pp" then findings := ("pp used for debugging", item.item_location.start.line) :: !findings;
+        if call_name = "String.new" then findings := ("String.new often redundant", item.item_location.start.line) :: !findings
     | _ -> ()
   ) m.mod_items;
   !findings
