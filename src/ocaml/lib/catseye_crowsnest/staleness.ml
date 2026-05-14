@@ -18,7 +18,7 @@ type hex_package_info = {
 type staleness = {
   score : int;
   signals : string list;
-  level : [ `Purr | `Meow | `Hiss ];
+  level : [ `Clean | `Warning | `Critical ];
 }
 
 type months = float
@@ -198,8 +198,8 @@ let compute_staleness ?repo ?hex ?(threshold_months = 12.0) () : staleness =
    | None -> ());
 
   let level = match !score with
-    | n when n >= 6 -> `Hiss
-    | n when n >= 3 -> `Meow
-    | _ -> `Purr
+    | n when n >= 6 -> `Critical
+    | n when n >= 3 -> `Warning
+    | _ -> `Clean
   in
   { score = !score; signals = List.rev !signals; level }

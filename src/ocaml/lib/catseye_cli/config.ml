@@ -29,7 +29,6 @@ type t = {
   crystal_workers : int;
   no_cache : bool;
   clear_cache : bool;
-  persona : bool;
   predator_vision : bool;
   crows_nest : bool;
   claws : bool;
@@ -54,7 +53,6 @@ let default = {
   crystal_workers = 2;
   no_cache = false;
   clear_cache = false;
-  persona = true;
   predator_vision = false;
   crows_nest = false;
   claws = false;
@@ -166,7 +164,6 @@ let load_toml (path : string) (cfg : t) : t =
     ; parallelism = get_int table "analysis.parallelism" cfg.parallelism
     ; crystal_extractor = get_string table "scan.crystal_extractor" cfg.crystal_extractor
     ; rules_dir = get_string table "scan.rules_dir" cfg.rules_dir
-    ; persona = get_bool table "persona.enabled" cfg.persona
     ; predator_vision = get_bool table "predator_vision.enabled" cfg.predator_vision
     ; crows_nest = get_bool table "crows_nest.enabled" cfg.crows_nest
     ; claws = get_bool table "claws.enabled" cfg.claws

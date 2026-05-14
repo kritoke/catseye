@@ -53,21 +53,17 @@ _do-scan dir flags:
 
 # ── Scan ──────────────────────────────────────────────────────────────
 
-# Scan — terminal output (default: Hunter persona on)
+# Scan — terminal output
 scan dir: build-ocaml
     just _do-scan {{dir}} ""
 
-# Scan with all Hunter features + Claws code smell analysis
-scan-hunter dir: build-ocaml
+# Scan with all analysis passes
+scan-all-features dir: build-ocaml
     just _do-scan {{dir}} "--predator-vision --crows-nest --claws"
 
-# Scan — Claws code smell & DRY analysis only
+# Scan — Claws code smell & DRY analysis
 scan-claws dir: build-ocaml
     just _do-scan {{dir}} "--claws"
-
-# Scan — plain output (no persona)
-scan-plain dir: build-ocaml
-    just _do-scan {{dir}} "--no-persona"
 
 # Scan — JSON to stdout
 scan-json dir: build-ocaml

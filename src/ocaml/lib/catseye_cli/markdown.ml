@@ -88,7 +88,7 @@ let to_markdown (findings : Finding.t list) (target : string)
            | _ -> "Unknown"
          in
          pr "| %s | %s | %s | %s |\n" name ver
-           (match level with "hiss" -> "🐱⚡ Hiss" | "meow" -> "🐾 Meow" | _ -> "😸 Purr")
+           (match level with "critical" -> "🔴 Critical" | "warning" -> "⚠️ Warning" | _ -> "✅ Clean")
            status_text
        ) deps;
        pr "\n"

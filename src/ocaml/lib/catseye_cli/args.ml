@@ -47,8 +47,6 @@ let parse_args () : t =
       go { acc with clear_cache = true } rest
     | "--cache-dir" :: path :: rest ->
       go { acc with cache_dir = resolve cwd path } rest
-    | "--no-persona" :: rest ->
-      go { acc with persona = false } rest
     | ("--predator-vision" | "-pv") :: rest ->
       go { acc with predator_vision = true } rest
     | ("--crows-nest" | "-cn") :: rest ->
@@ -59,6 +57,9 @@ let parse_args () : t =
       go { acc with ai_lint = true } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
+    | ("--version" | "-v") :: _ ->
+      Printf.printf "Catseye v%s\n" Catseye_engine.Engine.version;
+      exit 0
     | ("--help" | "-h") :: _ ->
       Printf.printf "Catseye v%s — Static security analysis\n\n" Catseye_engine.Engine.version;
       Printf.printf "Usage: catseye [options] <directory>\n\n";
@@ -72,7 +73,6 @@ let parse_args () : t =
       Printf.printf "  --no-cache           Disable extraction cache\n";
       Printf.printf "  --clear-cache       Clear cache and run full scan\n";
       Printf.printf "  --cache-dir <path>  Cache directory (default: .catseye)\n";
-      Printf.printf "  --no-persona         Disable Hunter persona (plain terminal output)\n";
       Printf.printf "  --predator-vision    Enable reachability heatmap\n";
       Printf.printf "  --crows-nest         Enable supply chain audit\n";
       Printf.printf "  --claws              Enable code smell & DRY detection\n";

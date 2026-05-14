@@ -18,32 +18,17 @@ let reset = "\027[0m"
 let styled color config text =
   if config.color then color ^ text ^ reset else text
 
-(* ── Hunter Persona ─────────────────────────────────────────────────── *)
+(* ── Severity helpers ────────────────────────────────────────────────── *)
 
-(* Catseye severity levels: terminal-only presentation layer *)
-let catseye_level = function
-  | "critical" | "high" | "Critical" | "High" -> "HISS"
-  | "medium" | "low" | "Medium" | "Low" -> "MEOW"
-  | _ -> "PURR"
+let severity_label = function
+  | "critical" | "high" | "Critical" | "High" -> "Error"
+  | "medium" | "low" | "Medium" | "Low" -> "Warning"
+  | _ -> "Info"
 
-let catseye_icon = function
-  | "critical" | "high" | "Critical" | "High" -> "🐱⚡ "
-  | "medium" | "low" | "Medium" | "Low" -> "🐾 "
-  | _ -> "😸 "
-
-(* Atmospheric scent lines — one chosen at random per scan *)
-let scent_lines = [|
-  "Fresh code detected";
-  "Many files to patrol";
-  "Something rustles in the undergrowth...";
-  "The codebase stirs.";
-  "Scent trail picked up.";
-  "The tall grass parts...";
-|]
-
-let random_scent () =
-  let idx = Random.int (Array.length scent_lines) in
-  scent_lines.(idx)
+let severity_icon = function
+  | "critical" | "high" | "Critical" | "High" -> "🔴 "
+  | "medium" | "low" | "Medium" | "Low" -> "⚠️  "
+  | _ -> "ℹ️  "
 
 (* ── Extractors ─────────────────────────────────────────────────────── *)
 
@@ -97,48 +82,25 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
     Returns nodes if extraction succeeded, or None on failure. *)
 let extract_with_log (config : t) (src : source_file)
     : Security_node.t list option =
-  if config.format = Terminal then begin
-    if config.persona then
-      Printf.printf "  🐾 Stalking %s\n" src.path
-    else
-      Printf.printf "%s→ Extracting: %s%s\n"
-        (styled cyan config "") src.path (styled reset config "")
-  end;
+  if config.format = Terminal then
+    Printf.printf "%s→ Extracting: %s%s\n"
+      (styled cyan config "") src.path (styled reset config "");
   try extract_file config src with Sys_error _ -> None
 
 (* ── Banner ─────────────────────────────────────────────────────────── *)
 
-let print_banner_persona (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =
-  Printf.printf " ╭──────────────────────────────────────────╮\n";
-  Printf.printf " │  🐈‍⬛  Catseye v%-6s                     │\n" version;
-  Printf.printf " │     The Hunter enters the tall grass...  │\n";
-  Printf.printf " ╰──────────────────────────────────────────╯\n";
-  Printf.printf "  Target:   %s\n" (styled green config config.target_dir);
-  Printf.printf "  Files:    %d Crystal, %d Gleam%s\n"
-    cr_count gleam_count
-    (if dep_count > 0 then Printf.sprintf " (%d dependencies)" dep_count else "");
-  Printf.printf "  Scent:    %s\n" (random_scent ());
-  Printf.printf "\n"
-
-let print_banner_plain (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =
-  Printf.printf "%s\n" (styled (bold ^ cyan) config
-    "╔══════════════════════════════════════╗");
-  Printf.printf "%s\n" (styled (bold ^ cyan) config
-    (Printf.sprintf "║            Catseye v%s           ║" version));
-  Printf.printf "%s\n" (styled (bold ^ cyan) config
-    "╚══════════════════════════════════════╝");
-  Printf.printf "  Target:   %s\n" (styled green config config.target_dir);
-  Printf.printf "  Files:    %d Crystal, %d Gleam%s\n"
-    cr_count gleam_count
-    (if dep_count > 0 then Printf.sprintf " (%d dependencies)" dep_count else "");
-  Printf.printf "  Engine:   OCaml (taint v3)\n";
-  Printf.printf "\n"
-
 let print_banner (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =
-  if config.persona then
-    print_banner_persona config cr_count gleam_count dep_count
-  else
-    print_banner_plain config cr_count gleam_count dep_count
+  Printf.printf "
+  %sCatseye v%s%s
+" (styled (bold ^ cyan) config "") version (styled reset config "");
+  Printf.printf "  Target:   %s
+" (styled green config config.target_dir);
+  Printf.printf "  Files:    %d Crystal, %d Gleam%s
+"
+    cr_count gleam_count
+    (if dep_count > 0 then Printf.sprintf " (%d dependencies)" dep_count else "");
+  Printf.printf "
+"
 
 (* ── Finding output ─────────────────────────────────────────────────── *)
 
@@ -149,21 +111,13 @@ let severity_color = function
 
 let print_finding (config : t) (f : Finding.t) =
   let c = severity_color f.severity in
-  if config.persona then begin
-    let icon = catseye_icon f.severity in
-    let level = catseye_level f.severity in
-    Printf.printf "  %s%s %s  %s:%d%s\n"
-      (styled (bold ^ c) config icon)
-      level f.rule f.file f.line (styled reset config "");
-    Printf.printf "%s       %s%s\n"
-      (styled dim config "") f.message (styled reset config "")
-  end else begin
-    Printf.printf "%s[%s] %s  %s:%d%s\n"
-      (styled (bold ^ c) config "")
-      f.rule f.severity f.file f.line reset;
-    Printf.printf "%s  %s%s\n"
-      (styled dim config "") f.message (styled reset config "")
-  end;
+  let icon = severity_icon f.severity in
+  let label = severity_label f.severity in
+  Printf.printf "  %s%s %s  %s:%d%s\n"
+    (styled (bold ^ c) config icon)
+    label f.rule f.file f.line (styled reset config "");
+  Printf.printf "%s       %s%s\n"
+    (styled dim config "") f.message (styled reset config "");
   List.iter (fun ({ Finding.file = sf; line = sl; message = sm } : Finding.flow_step) ->
     let loc = if sf <> "" && sl > 0
       then Printf.sprintf "  (%s:%d)" sf sl
@@ -177,15 +131,15 @@ let print_finding (config : t) (f : Finding.t) =
 (* ── Summary helpers ────────────────────────────────────────────────── *)
 
 let count_by_severity (findings : Finding.t list) =
-  let hiss = ref 0 in
-  let meow = ref 0 in
+  let errors = ref 0 in
+  let warnings = ref 0 in
   List.iter (fun f ->
-    match catseye_level f.Finding.severity with
-    | "HISS" -> incr hiss
-    | "MEOW" -> incr meow
+    match severity_label f.Finding.severity with
+    | "Error" -> incr errors
+    | "Warning" -> incr warnings
     | _ -> ()
   ) findings;
-  (!hiss, !meow)
+  (!errors, !warnings)
 
 (* ── JSON output ────────────────────────────────────────────────────── *)
 
@@ -251,7 +205,7 @@ let run_crows_nest (config : t) : Catseye_crowsnest.Aggregator.dep_result list o
 let crows_nest_to_json (target_dir : string) (results : Catseye_crowsnest.Aggregator.dep_result list) : Yojson.Safe.t =
   let dep_to_json (r : Catseye_crowsnest.Aggregator.dep_result) =
     let level_str = match r.level with
-      | `Hiss -> "hiss" | `Meow -> "meow" | `Purr -> "purr"
+      | `Critical -> "critical" | `Warning -> "warning" | `Clean -> "clean"
     in
     let osv_json = match r.osv with
       | Catseye_crowsnest.Osv.No_known_cves -> `Assoc [("status", `String "clean")]
@@ -280,9 +234,9 @@ let crows_nest_to_json (target_dir : string) (results : Catseye_crowsnest.Aggreg
       ("osv", osv_json);
     ]
   in
-  let hiss = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Hiss) results) in
-  let meow = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Meow) results) in
-  let purr = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Purr) results) in
+  let errors = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Critical) results) in
+  let warnings = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Warning) results) in
+  let clean = List.length (List.filter (fun (r : Catseye_crowsnest.Aggregator.dep_result) -> r.level = `Clean) results) in
   `Assoc [
     ("manifests", `List (List.map (fun m ->
       let (path, kind) = match m with
@@ -295,7 +249,7 @@ let crows_nest_to_json (target_dir : string) (results : Catseye_crowsnest.Aggreg
           else Filename.dirname target_dir))));
     ("dependencies", `List (List.map dep_to_json results));
     ("summary", `Assoc [
-      ("hiss", `Int hiss); ("meow", `Int meow); ("purr", `Int purr)
+      ("critical", `Int errors); ("warning", `Int warnings); ("clean", `Int clean)
     ]);
   ]
 
@@ -420,14 +374,8 @@ let run (config : t) : int =
   in
 
   (* Step 4: Analyze *)
-  if config.format = Terminal then begin
-    if config.persona then begin
-      Printf.printf "\n  👀 Watching... %d nodes to inspect\n" (List.length nodes);
-      Printf.printf "  🎯 Pouncing on taint flows...\n\n"
-    end else
-      Printf.printf "\n%s→ Running analysis engine (%d nodes)...\n\n"
-        (styled cyan config "") (List.length nodes)
-  end;
+  if config.format = Terminal then
+    Printf.printf "\n  → Running analysis engine (%d nodes)...\n\n" (List.length nodes);
 
   let findings = time_phase "analysis" (fun () ->
     Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes) in
@@ -500,13 +448,8 @@ let run (config : t) : int =
 
   (* Step 4d: AI Linter — Gleam & Crystal antipattern detection *)
   let ai_findings = if config.ai_lint then begin
-    if config.format = Terminal then begin
-      if config.persona then
-        Printf.printf "\n  🤖 Tuning in to AI patterns...\n\n"
-      else
-        Printf.printf "\n%s→ AI antipattern detection:%s\n\n"
-          (styled cyan config "") (styled reset config "")
-    end;
+    if config.format = Terminal then
+      Printf.printf "\n  → AI antipattern detection:\n\n";
     let ai_lint_findings = List.concat_map (fun src ->
       (try
         match Catseye_ast.Parse.parse_file ~path:src.path with
@@ -540,13 +483,8 @@ let run (config : t) : int =
   let all_findings = if config.claws then begin
     let claws_findings = Catseye_claws.Smells.analyze nodes
       config.claws_config in
-    if config.format = Terminal && claws_findings <> [] then begin
-      if config.persona then
-        Printf.printf "\n  🐾 Sniffing out code smells...\n\n"
-      else
-        Printf.printf "\n%s→ Code smell analysis:%s\n\n"
-          (styled cyan config "") (styled reset config "")
-    end;
+    if config.format = Terminal && claws_findings <> [] then
+        Printf.printf "\n  → Code smell analysis:\n\n";
     reachability @ claws_findings @ ai_findings
   end else reachability @ ai_findings in
 
@@ -563,25 +501,14 @@ let run (config : t) : int =
     List.iter (print_finding config) all_findings;
     Printf.printf "──────────────────────────────────────────────────────────────\n";
     if all_findings <> [] then begin
-      if config.persona then begin
-        let (hiss, meow) = count_by_severity all_findings in
-        Printf.printf "  🐱 Found %d Hiss, %d Meow across %d files.\n"
-          hiss meow (List.length sources);
-        Printf.printf "  The Hunter has prey. Review the findings above.\n"
-      end else
-        Printf.printf "%sFound %d issue(s) across %d file(s).%s\n"
-          (styled red config "")
-          (List.length all_findings) (List.length sources) (styled reset config "");
+      let (errors, warnings) = count_by_severity all_findings in
+      Printf.printf "  Found %d Error(s), %d Warning(s) across %d files.\n"
+        errors warnings (List.length sources);
+      Printf.printf "  Review the findings above.\n";
       1
     end else begin
-      if config.persona then begin
-        Printf.printf "  😸 PURR  The codebase is clean.\n";
-        Printf.printf "       %d files patrolled. Nothing lurking in the grass.\n\n"
-          (List.length sources);
-        Printf.printf "  The Hunter rests.\n"
-      end else
-        Printf.printf "%sNo issues found across %d file(s). ✨%s\n"
-          (styled green config "") (List.length sources) (styled reset config "");
+      Printf.printf "%sNo issues found across %d file(s). ✨%s\n"
+        (styled green config "") (List.length sources) (styled reset config "");
       0
     end
   | Json ->

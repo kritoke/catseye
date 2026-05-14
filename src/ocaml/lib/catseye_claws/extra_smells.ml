@@ -173,7 +173,7 @@ let count_logical_ops (name : string) : int =
   !count
 
 (** Flag functions containing conditionals with too many logical operators.
-    Threshold: 3+ operators in a single expression = Meow. *)
+    Threshold: 3+ operators in a single expression = Warning. *)
 let check_complex_conditionals (nodes : Security_node.t list)
     (config : Types.claws_config) : Finding.t list =
   let threshold = config.complex_conditional_threshold in
@@ -207,7 +207,7 @@ let check_complex_conditionals (nodes : Security_node.t list)
 
 (** Count the number of segments in a dotted call name.
     "feed.items.size.to_i32" has 4 segments.
-    Threshold: 4+ segments = Meow (Law of Demeter violation). *)
+    Threshold: 4+ segments = Warning (Law of Demeter violation). *)
 let count_chain_segments (name : string) : int =
   let count = ref 1 in
   for i = 0 to String.length name - 1 do
@@ -396,7 +396,7 @@ let check_flag_arguments (nodes : Security_node.t list)
 
 (** Flag case expressions with too many when branches.
     Uses the new Control nodes emitted by the extractor.
-    Threshold: 5+ when branches = Meow, 10+ = Hiss. *)
+    Threshold: 5+ when branches = Warning, 10+ = Error. *)
 let check_complex_match (nodes : Security_node.t list)
     (config : Types.claws_config) : Finding.t list =
   List.filter_map (fun (n : Security_node.t) ->

@@ -16,14 +16,14 @@ let styled color config text =
   if config.color then color ^ text ^ reset else text
 
 let level_icon = function
-  | `Hiss -> "🐱⚡ Hiss "
-  | `Meow -> "🐾 Meow  "
-  | `Purr -> "✅ Purr "
+  | `Critical -> "🔴 Critical "
+  | `Warning -> "⚠️  Warning "
+  | `Clean -> "✅ Clean    "
 
 let level_color = function
-  | `Hiss -> red
-  | `Meow -> yellow
-  | `Purr -> green
+  | `Critical -> red
+  | `Warning -> yellow
+  | `Clean -> green
 
 let osv_summary = function
   | Catseye_crowsnest.Osv.No_known_cves -> "Active, no known CVEs"
@@ -104,14 +104,14 @@ let print_crows_nest (config : t) (results : dep_result list) : unit =
   end;
 
   (* Summary line *)
-  let hiss = List.length (List.filter (fun r -> r.level = `Hiss) results) in
-  let meow = List.length (List.filter (fun r -> r.level = `Meow) results) in
-  let purr = List.length (List.filter (fun r -> r.level = `Purr) results) in
+  let critical = List.length (List.filter (fun r -> r.level = `Critical) results) in
+  let warning = List.length (List.filter (fun r -> r.level = `Warning) results) in
+  let clean = List.length (List.filter (fun r -> r.level = `Clean) results) in
   Printf.printf "  ────────────────────────────────────────\n";
-  Printf.printf "  %d Hiss  •  %d Meow  •  %d Purr\n\n" hiss meow purr;
+  Printf.printf "  %d Critical  •  %d Warning  •  %d Clean\n\n" critical warning clean;
 
-  (* Detailed findings for Hiss/Meow *)
-  let notable = List.filter (fun r -> r.level <> `Purr) results in
+  (* Detailed findings for Critical/Warning *)
+  let notable = List.filter (fun r -> r.level <> `Clean) results in
   List.iter (fun r ->
     let c = level_color r.level in
     let version = match r.version with Some v -> v | None -> "*" in

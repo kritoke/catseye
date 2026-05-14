@@ -5,10 +5,10 @@
     Claws detects code smells (complexity, structural issues) and DRY
     violations using the same Security_node.t stream as the security engine.
 
-    Findings use the Hunter taxonomy:
-    - HISS (critical) — complexity >= 20, god objects
-    - MEOW (warning)  — complexity 10–19, long params, deep nesting
-    - PURR (clean)    — below all thresholds
+    Findings use standard severity levels:
+    - Error (critical) — complexity >= 20, god objects
+    - Warning — complexity 10–19, long params, deep nesting
+    - Info (clean)    — below all thresholds
 *)
 
 type claws_config = {

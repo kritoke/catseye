@@ -13,7 +13,7 @@ type dep_result = {
   source_file : string;         (* which manifest declared this dep *)
   osv : osv_result;
   staleness : staleness option;
-  level : [ `Hiss | `Meow | `Purr ];
+  level : [ `Critical | `Warning | `Clean ];
 }
 
 let level_of_osv = function
@@ -29,22 +29,22 @@ let level_of_osv = function
           String.sub s 0 4 = "MOD" || s = "HIGH" || s = "CRITICAL"
         -> true
       | _ -> false
-    ) vulns then `Hiss
-    else `Meow
-  | No_known_cves -> `Purr
-  | Query_failed _ -> `Purr  (* don't penalize for network failures *)
+    ) vulns then `Critical
+    else `Warning
+  | No_known_cves -> `Clean
+  | Query_failed _ -> `Clean  (* don't penalize for network failures *)
 
 (* Merge OSV level and staleness level — take the worse one *)
-let merge_levels (osv_level : [> `Hiss | `Meow | `Purr ])
-    (staleness_level : [> `Hiss | `Meow | `Purr ] option)
-    : [ `Hiss | `Meow | `Purr ] =
+let merge_levels (osv_level : [> `Critical | `Warning | `Clean ])
+    (staleness_level : [> `Critical | `Warning | `Clean ] option)
+    : [ `Critical | `Warning | `Clean ] =
   match staleness_level with
   | None -> osv_level
   | Some sl ->
     match (osv_level, sl) with
-    | (`Hiss, _) | (_, `Hiss) -> `Hiss
-    | (`Meow, _) | (_, `Meow) -> `Meow
-    | (`Purr, `Purr) -> `Purr
+    | (`Critical, _) | (_, `Critical) -> `Critical
+    | (`Warning, _) | (_, `Warning) -> `Warning
+    | (`Clean, `Clean) -> `Clean
 
 (** Run the full Crow's Nest analysis on discovered manifests.
     Returns per-dependency results sorted by severity (worst first). *)
@@ -95,7 +95,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
             (match cached with
              | Some (score, signals, level) ->
                Some { Staleness.score; signals; level = (match level with
-                 | "hiss" -> `Hiss | "meow" -> `Meow | _ -> `Purr) }
+                 | "critical" -> `Critical | "warning" -> `Warning | _ -> `Clean) }
              | None ->
                let repo_activity = Staleness.query_github repo in
                let s = Staleness.compute_staleness
@@ -103,7 +103,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
                (match cache with
                 | Some c ->
                   let level_str = match s.level with
-                    | `Hiss -> "hiss" | `Meow -> "meow" | `Purr -> "purr"
+                    | `Critical -> "critical" | `Warning -> "warning" | `Clean -> "clean"
                   in
                   Cache.store_staleness c "github" dep.name
                     s.score s.signals level_str
@@ -164,6 +164,6 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
       ) deps
   ) manifests;
 
-  (* Sort: Hiss first, then Meow, then Purr *)
-  let level_rank = function `Hiss -> 0 | `Meow -> 1 | `Purr -> 2 in
+  (* Sort: Critical first, then Warning, then Clean *)
+  let level_rank = function `Critical -> 0 | `Warning -> 1 | `Clean -> 2 in
   List.sort (fun a b -> compare (level_rank a.level) (level_rank b.level)) !results
