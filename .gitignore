@@ -8,7 +8,7 @@ result-*
 node_modules/
 
 # Build artifacts
-bin/
+/bin/
 *.beam
 *.o
 *.so
