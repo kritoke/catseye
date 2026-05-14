@@ -10,6 +10,7 @@ open Catseye_ast.Parse
 
 module Ast_rules = Ai_linter.Ast_rules
 module Gleam_rules = Ai_linter.Gleam_rules
+module Crystal_rules = Ai_linter.Crystal_rules
 module Types = Ai_linter.Types
 
 (** AI finding output format *)
@@ -48,21 +49,29 @@ let finding_to_finding (f : Gleam_rules.finding) =
     severity = f.severity;
     message = f.message; }
 
+(** Convert Crystal finding to ai_finding *)
+let crystal_finding_to_finding (f : Crystal_rules.finding) =
+  { file = f.file;
+    line = f.line;
+    rule = f.rule_id;
+    severity = f.severity;
+    message = f.message; }
+
 (** Parse and analyze a file *)
 let analyze_file ~(path : string) =
   match parse_file ~path with
   | Error err -> [error_to_finding err]
   | Ok mod_ ->
-      let gleam_findings = match mod_.mod_lang with
+      let lang_findings = match mod_.mod_lang with
         | Gleam -> List.map finding_to_finding (Gleam_rules.analyze_module mod_)
-        | Crystal -> []  (* Crystal rules not yet implemented *)
+        | Crystal -> List.map crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
       in
       let ast_findings = List.map (fun v ->
         let base = violation_to_finding v in
         { base with file = path }
       ) (Ast_rules.analyze_module mod_)
       in
-      gleam_findings @ ast_findings
+      lang_findings @ ast_findings
 
 (** Print findings to stdout *)
 let print_finding (f : ai_finding) =
