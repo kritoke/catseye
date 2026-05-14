@@ -7,8 +7,8 @@
 ## Requirements
 
 - **OCaml** 5.x + **Dune** 3.x
-- **Crystal** 1.x (for the extractor)
-- **tree-sitter** + tree-sitter-gleam grammar (for Gleam parsing)
+- **Crystal** 1.x (needed for the Crystal language extractor)
+- **tree-sitter** + tree-sitter-gleam grammar (needed for Gleam parsing)
 - **just** (task runner)
 - OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
 
