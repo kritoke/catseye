@@ -8,6 +8,7 @@ module Ast_rules = Ai_linter.Ast_rules
 module Crystal_rules = Ai_linter.Crystal_rules
 
 let () =
+  (* Test Crystal AI anti-patterns *)
   let sample = "/workspaces/catseye/test/samples/ai_antipatterns.cr" in
   let extractor = "crystal run /workspaces/catseye/src/extractor/extractor.cr --" in
   Printf.printf "=== Testing CatseyeAST parsing ===\n";

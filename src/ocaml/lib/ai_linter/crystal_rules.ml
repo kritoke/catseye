@@ -144,16 +144,26 @@ let detect_unsafe_pointers (_m : t) =
 
 (** Rule 4.1: Redundant Conversions *)
 let detect_redundant_conversion (m : t) =
-  let calls = List.concat_map (fun item ->
+  let findings = ref [] in
+  List.iter (fun item ->
     match item.item_value with
-    | IFunction (_, _, _, body) -> collect_calls body
-    | _ -> []
-  ) m.mod_items in
-  List.filter_map (fun (name, _) ->
-    match name with
-    | Some "String.new" -> Some ("String.new is often redundant - string literal or to_s may suffice", 0)
-    | _ -> None
-  ) calls
+    | IFunction (_, _, _, body) ->
+        let rec check_expr e =
+          match e.expr_value with
+          | EApp (fn, _) ->
+              (match fn.expr_value with
+               | EVar "String.new" -> findings := ("String.new redundant - use literal", e.expr_location.start.line) :: !findings
+               | _ -> ())
+          | EBlock es -> List.iter check_expr es
+          | _ -> ()
+        in
+        check_expr body
+    | IUnknown s when String.length s > 5 && String.sub s 0 5 = "call:" ->
+        let call_name = String.sub s 5 (String.length s - 5) in
+        if call_name = "String.new" then findings := ("String.new redundant - use literal", item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
