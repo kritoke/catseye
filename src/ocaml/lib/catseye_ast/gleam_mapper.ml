@@ -354,13 +354,48 @@ and item_of_xml (n : xml) : item =
 
 (* ── Parse via tree-sitter CLI ─────────────────────────────────────── *)
 
+(** Resolve the Gleam tree-sitter grammar path.
+    Search order:
+    1. TREE_SITTER_GLEAM_GRAMMAR env var (explicit override)
+    2. Standard nix-store locations (auto-discover)
+    3. tree-sitter's default grammar search paths
+*)
+let resolve_gleam_grammar () : string option =
+  (* 1. Explicit env var *)
+  match Sys.getenv "TREE_SITTER_GLEAM_GRAMMAR" with
+  | exception Not_found ->
+    (* 2. Use find to locate tree-sitter-gleam in nix store (fast) *)
+    let discovered =
+      try
+        let ic = Unix.open_process_in
+          "find /nix/store -maxdepth 2 -name parser -path '*tree-sitter-gleam*' 2>/dev/null | head -1"
+        in
+        let line = try Some (input_line ic) with End_of_file -> None in
+        let _ = Unix.close_process_in ic in
+        (match line with
+         | Some p when Sys.file_exists p -> Some p
+         | _ -> None)
+      with _ -> None
+    in
+    (match discovered with
+     | Some p -> Some p
+     | None ->
+       (* 3. Check common paths *)
+       let common = [
+         "/usr/lib/tree-sitter-gleam/parser";
+         "/usr/local/lib/tree-sitter-gleam/parser";
+         Filename.concat (Sys.getcwd ()) "third_party/tree-sitter-gleam/parser";
+       ] in
+       List.find_opt Sys.file_exists common)
+  | path -> Some path
+
 let parse_file ~(path : string) : (t, parse_error) result =
-  let grammar_path = try Some (Sys.getenv "TREE_SITTER_GLEAM_GRAMMAR") with Not_found -> None in
+  let grammar_path = resolve_gleam_grammar () in
   match grammar_path with
   | None ->
-      Error (make_error ~file:path ~message:"TREE_SITTER_GLEAM_GRAMMAR not set")
+      Error (make_error ~file:path ~message:"Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")
   | Some grammar ->
-      let cmd = Printf.sprintf "(cd '%s' && tree-sitter parse --lib-path 'gleam_parser.so' --lang-name gleam -x '%s') 2>/dev/null" grammar path in
+      let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" grammar path in
       (try
         let ic = Unix.open_process_in cmd in
         let xml_str = Buffer.create 4096 in

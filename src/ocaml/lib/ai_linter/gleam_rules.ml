@@ -338,7 +338,8 @@ let all () = [
   ("hallucinated-or-default", T.Error, detect_hallucinated_or_default);
   ("hallucinated-to-list", T.Error, detect_hallucinated_to_list);
   ("typescript-interface", T.Error, detect_typescript_interface);
-  ("rust-fn", T.Error, detect_rust_fn);
+  (* Removed: rust-fn — 'fn' appears as identifier in Gleam's tree-sitter
+     output for anonymous functions, causing 100% FP rate *)
   ("var-keyword", T.Error, detect_var_keyword);
   ("todo-in-code", T.Warning, detect_todo);
   ("let-assert", T.Error, detect_let_assert);

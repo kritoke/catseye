@@ -304,10 +304,35 @@ let extract_nodes root path =
 (* ── Public interface ──────────────────────────────────────────────── *)
 
 let grammar_path () =
-  match Sys.getenv "TREE_SITTER_GLEAM_GRAMMAR" with
-  | exception Not_found ->
-    Error (`Msg "TREE_SITTER_GLEAM_GRAMMAR not set. Run in nix develop.")
-  | path -> Ok path
+  (* Try env var first, then auto-discover *)
+  let env_result = match Sys.getenv "TREE_SITTER_GLEAM_GRAMMAR" with
+    | exception Not_found -> None
+    | path -> Some path
+  in
+  match env_result with
+  | Some path -> Ok path
+  | None ->
+    (* Auto-discover: find in nix store or common paths *)
+    let discovered = try
+      let ic = Unix.open_process_in
+        "find /nix/store -maxdepth 2 -name parser -path '*tree-sitter-gleam*' 2>/dev/null | head -1"
+      in
+      let line = try Some (input_line ic) with End_of_file -> None in
+      let _ = Unix.close_process_in ic in
+      (match line with
+       | Some p when Sys.file_exists p -> Some p
+       | _ -> None)
+    with _ -> None in
+    (match discovered with
+     | Some p -> Ok p
+     | None ->
+       let common = [
+         "/usr/lib/tree-sitter-gleam/parser";
+         "/usr/local/lib/tree-sitter-gleam/parser";
+       ] in
+       (match List.find_opt Sys.file_exists common with
+        | Some p -> Ok p
+        | None -> Error (`Msg "Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")))
 
 let extract file_path =
   match grammar_path () with
