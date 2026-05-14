@@ -123,6 +123,7 @@ let parse_xml s =
   | ([], _) -> { tag = ""; attrs = []; children = []; text = "" }
   | (root :: _, _) -> root
 
+
 (* ── Position helpers ─────────────────────────────────────────────── *)
 
 let position_of_xml (n : xml) ~field =
@@ -132,6 +133,16 @@ let position_of_xml (n : xml) ~field =
 let range_of_xml (n : xml) =
   { start = position_of_xml n ~field:"srow";
     end_ = position_of_xml n ~field:"erow" }
+
+(* ── XML child helpers (non-recursive, direct children only) ─────── *)
+
+(** Find direct children with a specific field attribute *)
+let children_with_field (n : xml) ~(field : string) : xml list =
+  List.filter (fun c -> attr c "field" = field) n.children
+
+(** Find direct children with a specific tag *)
+let children_with_tag (n : xml) ~(tag : string) : xml list =
+  List.filter (fun c -> c.tag = tag) n.children
 
 (* ── XML → CatseyeAST conversion ────────────────────────────────────── *)
 
@@ -149,72 +160,197 @@ and pattern_of_xml (n : xml) =
   | _ when text n <> "" -> PLiteral (literal_of_xml n)
   | _ -> PVar (attr n "type")
 
-and expr_of_xml (n : xml) =
+(** [expr_of_xml ~depth n] converts an XML node to a typed expression.
+    Depth limits recursion to prevent stack overflow on malformed input. *)
+and expr_of_xml ?(depth=0) (n : xml) : expr =
   let loc = range_of_xml n in
-  let value = match attr n "type" with
+  if depth > 100 then
+    { expr_value = EUnknown ("depth:" ^ n.tag); expr_location = loc }
+  else
+  let d = depth + 1 in
+  let value : expr_value = match n.tag with
+
+    (* Literals *)
+    | "string" -> ELiteral (literal_of_xml n)
+    | "integer" -> ELiteral (literal_of_xml n)
+    | "float" -> ELiteral (literal_of_xml n)
     | "unit" -> EUnit
-    | "string" | "integer" | "float" -> ELiteral (literal_of_xml n)
+
+    (* Identifiers and constructors *)
     | "identifier" -> EVar (text n)
+    | "constructor_name" -> EVar (text n)
+    | "label" -> EVar (text n)
+
+    (* Field access: receiver.field *)
     | "field_access" ->
-        (match find n ~tag:"field" with [f] -> EFieldAccess (expr_of_xml n, text f) | _ -> EUnknown "field_access")
-    | "tuple" -> ETuple (List.map expr_of_xml (children_where n ~f:(fun c -> c.tag <> "type")))
-    | "list" -> EList (List.map expr_of_xml (children_where n ~f:(fun c -> c.tag <> "type")))
-    | "record" -> ERecord (List.map (fun c -> (attr c "field", expr_of_xml c)) (find n ~tag:"field"))
-    | "call" ->
-        let fn = match find n ~tag:"function" with [f] -> expr_of_xml f | _ -> expr_of_xml n in
-        EApp (fn, [])
+        let receiver = match children_with_field n ~field:"record" with
+          | [r] -> expr_of_xml ~depth:d r
+          | _ -> (match children_where n ~f:(fun c ->
+              c.tag = "identifier" || c.tag = "field_access") with
+            | [r] -> expr_of_xml ~depth:d r
+            | _ -> { expr_value = EUnknown "no_receiver"; expr_location = loc })
+        in
+        let field = match children_with_tag n ~tag:"label" with
+          | [l] -> text l
+          | _ -> ""
+        in
+        EFieldAccess (receiver, field)
+
+    (* Record construction (e.g., Ok(value), List, User{name: x}) *)
+    | "record" ->
+        let name = match children_with_tag n ~tag:"constructor_name" with
+        | [cn] -> text cn | _ -> "" in
+        (match children_with_tag n ~tag:"arguments" with
+         | [args_node] ->
+             let arg_exprs = List.filter_map (fun a ->
+               match children_where a ~f:(fun c -> c.tag <> "type") with
+               | [v] -> Some (expr_of_xml ~depth:d v)
+               | _ -> None
+             ) (children_with_tag args_node ~tag:"argument") in
+             EApp ({ expr_value = EVar name; expr_location = loc }, arg_exprs)
+         | _ -> EVar name)
+
+    (* Collections *)
+    | "tuple" ->
+        ETuple (List.map (expr_of_xml ~depth:d)
+          (children_where n ~f:(fun c -> c.tag <> "type" && c.tag <> "")))
+    | "list" ->
+        EList (List.map (expr_of_xml ~depth:d)
+          (children_where n ~f:(fun c -> c.tag <> "type" && c.tag <> "")))
+
+    (* Function call: <function_call> with function and arguments *)
+    | "function_call" ->
+        let fn_expr = match children_with_field n ~field:"function" with
+        | [f] -> expr_of_xml ~depth:d f
+        | _ -> { expr_value = EUnknown "no_fn"; expr_location = loc }
+        in
+        let args = match children_with_field n ~field:"arguments" with
+        | [args_node] ->
+            List.filter_map (fun a ->
+              match children_where a ~f:(fun c -> c.tag <> "type") with
+              | [v] -> Some (expr_of_xml ~depth:d v)
+              | _ -> None
+            ) (children_with_tag args_node ~tag:"argument")
+        | _ -> []
+        in
+        EApp (fn_expr, args)
+
+    (* Anonymous function *)
     | "fn" ->
         let params = children_where n ~f:(fun c -> c.tag = "parameter") in
-        let body = match find n ~tag:"body" with [b] -> expr_of_xml b | _ -> expr_of_xml n in
+        let body = match children_with_field n ~field:"body" with
+        | [b] -> expr_of_xml ~depth:d b
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
         EFn (List.map pattern_of_xml params, body)
+
+    (* If expression *)
     | "if" ->
-        let cond = match find n ~tag:"condition" with [c] -> expr_of_xml c | _ -> expr_of_xml n in
-        let then_ = match find n ~tag:"then" with [c] -> expr_of_xml c | _ -> expr_of_xml n in
-        EIf (cond, then_, None)
+        let cond = match children_with_field n ~field:"condition" with
+        | [c] -> expr_of_xml ~depth:d c
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        let then_ = match children_with_field n ~field:"then" with
+        | [c] -> expr_of_xml ~depth:d c
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        let else_ = match children_with_field n ~field:"else" with
+        | [c] -> Some (expr_of_xml ~depth:d c)
+        | _ -> None
+        in
+        EIf (cond, then_, else_)
+
+    (* Let binding *)
     | "let" | "assignment" ->
-        let body = match find n ~tag:"body" with [b] -> expr_of_xml b | _ -> expr_of_xml n in
-        ELet (PVar "pat", expr_of_xml n, body)
-    | _ when text n <> "" -> EVar (text n)
-    | _ -> EUnknown (attr n "type")
+        let pat = match children_with_field n ~field:"pattern" with
+        | [p] -> PVar (text p)
+        | _ -> PVar "_"
+        in
+        let val_expr = match children_with_field n ~field:"value" with
+        | [v] -> expr_of_xml ~depth:d v
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        (* Let bindings in blocks: the body is the next sibling in the parent block,
+           not a child of this node. Return just the binding. *)
+        ELet (pat, val_expr, { expr_value = EUnit; expr_location = loc })
+
+    (* Panic — treat as a function call *)
+    | "panic" ->
+        EApp ({ expr_value = EVar "panic"; expr_location = loc }, [])
+
+    (* Todo *)
+    | "todo" ->
+        EApp ({ expr_value = EVar "todo"; expr_location = loc }, [])
+
+    (* Block — sequence of expressions *)
+    | "block" ->
+        let body_exprs = List.filter_map (fun c ->
+          match c.tag with
+          | "comment" | "" -> None
+          | _ -> Some (expr_of_xml ~depth:d c)
+        ) n.children in
+        (match body_exprs with
+         | [] -> EUnit
+         | [e] -> e.expr_value  (* unwrap single-child blocks *)
+         | _ -> EBlock body_exprs)
+
+    (* Case expression *)
+    | "case" ->
+        let subject = match children_with_field n ~field:"value" with
+        | [s] -> expr_of_xml ~depth:d s
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        (* Simplified: collect pattern branches *)
+        ECase (subject, [])
+
+    (* Binary expression *)
+    | "binary_expression" ->
+        let left = match children_with_field n ~field:"left" with
+        | [l] -> expr_of_xml ~depth:d l
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        let right = match children_with_field n ~field:"right" with
+        | [r] -> expr_of_xml ~depth:d r
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        let op = String.trim (text n) in
+        EBinOp (left, op, right)
+
+    (* ERROR nodes from tree-sitter *)
+    | "ERROR" -> EError (String.trim (text n))
+
+    (* Fallback: bare text becomes a variable reference *)
+    | _ ->
+        let t = String.trim (text n) in
+        if t <> "" then EVar t
+        else EUnknown n.tag
   in
   { expr_value = value; expr_location = loc }
 
-and item_of_xml (n : xml) =
+(** Convert a top-level XML item to a CatseyeAST item. *)
+and item_of_xml (n : xml) : item =
   let loc = range_of_xml n in
   let value = match n.tag with
     | "function" ->
-        let name = (try List.find (fun c -> c.tag = "identifier" && attr c "field" = "name") n.children |> text with Not_found -> "unknown") in
-        let params = List.map (fun p -> PVar (text p)) (find n ~tag:"function_parameter") in
-        let body = expr_of_xml n in
+        let name = (try List.find (fun c ->
+          c.tag = "identifier" && attr c "field" = "name"
+        ) n.children |> text with Not_found -> "unknown") in
+        let params = List.map (fun p -> PVar (text p))
+          (children_with_tag n ~tag:"function_parameter") in
+        let body = match children_with_field n ~field:"body" with
+        | [b] -> expr_of_xml b
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
         IFunction (name, params, None, body)
-    | "import" -> 
-        let name = match find n ~tag:"module" with [m] -> text m | _ -> "" in
+    | "import" ->
+        let name = match children_with_tag n ~tag:"module" with
+        | [m] -> text m | _ -> "" in
         IImport (name, None)
     | "type" -> ITypeDef (text n, [], [])
     | "module" -> IModule (text n, [])
     | _ -> IUnknown ("tag:" ^ n.tag)
   in
   { item_value = value; item_location = loc }
-and collect_function_calls (n : xml) : item list =
-  let get_call_name (fc : xml) =
-    match find fc ~tag:"field_access" with
-    | [fa] -> (match find fa ~tag:"label" with [l] -> text l | _ -> "")
-    | _ -> ""
-  in
-  let calls = List.map (fun c -> 
-    let loc = range_of_xml c in
-    let name = get_call_name c in
-    { item_value = IUnknown ("call:" ^ name); item_location = loc }
-  ) (find n ~tag:"function_call") in
-  let panics = List.map (fun c ->
-    let loc = range_of_xml c in
-    { item_value = IUnknown "call:panic"; item_location = loc }
-  ) (find n ~tag:"panic") in
-  let interfaces = List.map (fun c ->
-    let loc = range_of_xml c in
-    { item_value = IUnknown "tag:interface"; item_location = loc }
-  ) (find n ~tag:"ERROR") in
-  calls @ panics @ interfaces
 
 (* ── Parse via tree-sitter CLI ─────────────────────────────────────── *)
 
@@ -238,11 +374,8 @@ let parse_file ~(path : string) : (t, parse_error) result =
               let root = if xml.tag = "sources" && List.length xml.children > 0 then List.hd xml.children else xml in
               let source_file = if root.tag = "source" && List.length root.children > 0 then List.hd root.children else root in
               let items = List.filter (fun c -> List.mem c.tag ["function"; "import"; "type"; "module"]) source_file.children in
-              let items_with_calls = List.concat_map (fun c -> 
-                let base = item_of_xml c in
-                if c.tag = "function" then base :: collect_function_calls c else [base]
-              ) items in
-              Ok { mod_lang = Gleam; mod_path = path; mod_items = items_with_calls; parse_errors = [] }
+              let items_list = List.map item_of_xml items in
+              Ok { mod_lang = Gleam; mod_path = path; mod_items = items_list; parse_errors = [] }
             else
               Error (make_error ~file:path ~message:("Invalid XML output: " ^ String.sub xml_content 0 (min 100 (String.length xml_content))))
         | _ ->
