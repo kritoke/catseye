@@ -47,6 +47,9 @@ type claws_config = {
   complex_match_warning : int;  (** default: 5 when branches *)
   complex_match_critical : int; (** default: 10 when branches *)
   concurrency_enabled : bool;  (** default: true *)
+
+  (* Per-rule suppression: rule name -> glob patterns for files to suppress *)
+  suppress : (string, string list) Hashtbl.t;  (** default: empty *)
 }
 
 let default_config = {
@@ -74,4 +77,5 @@ let default_config = {
   complex_match_warning = 5;
   complex_match_critical = 10;
   concurrency_enabled = true;
+  suppress = Hashtbl.create 0;
 }

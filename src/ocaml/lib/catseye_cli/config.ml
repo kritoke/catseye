@@ -192,6 +192,43 @@ let load_toml (path : string) (cfg : t) : t =
         complex_match_warning = get_int table "claws.complex_match_warning" 5;
         complex_match_critical = get_int table "claws.complex_match_critical" 10;
         concurrency_enabled = get_bool table "claws.concurrency_enabled" true;
+        suppress =
+          let sup = Hashtbl.create 8 in
+          (* Parse [claws.suppress] from raw TOML — avoids abstract Key.t issues *)
+          (try
+            let ic = open_in path in
+            let len = in_channel_length ic in
+            let buf = Bytes.create len in
+            really_input ic buf 0 len;
+            close_in ic;
+            let raw = Bytes.to_string buf in
+            let lines = String.split_on_char '\n' raw in
+            let in_suppress = ref false in
+            List.iter (fun line ->
+              let trimmed = String.trim line in
+              if trimmed = "[claws.suppress]" then in_suppress := true
+              else if !in_suppress && String.length trimmed > 0 && trimmed.[0] = '[' then
+                in_suppress := false
+              else if !in_suppress then begin
+                match String.index_opt trimmed '=' with
+                | Some eq_pos ->
+                    let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
+                    let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
+                    if String.length rest >= 2 && rest.[0] = '[' then begin
+                      let inner = String.sub rest 1 (String.length rest - 2) in
+                      let pats = List.map (fun s ->
+                        let s = String.trim s in
+                        if String.length s >= 2 && s.[0] = '\"' && s.[String.length s - 1] = '\"' then
+                          String.sub s 1 (String.length s - 2)
+                        else s
+                      ) (String.split_on_char ',' inner) in
+                      Hashtbl.replace sup rule_name pats
+                    end
+                | None -> ()
+              end
+            ) lines
+          with _ -> ());
+          sup;
       }
     }
   with _ -> cfg

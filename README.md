@@ -196,6 +196,11 @@ parallelism = 4
 [claws]
 complexity_warning = 10
 max_params = 5
+
+[claws.suppress]
+# Suppress specific rules by file glob pattern
+DataClump = ["**"]
+LongParameterList = ["**/repositories/**"]
 ```
 
 ## Justfile Recipes

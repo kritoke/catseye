@@ -15,6 +15,48 @@
 
 open Catseye_types
 
+(** Simple glob matcher supporting * and ** patterns.
+    * matches any chars except /
+    ** matches any chars including / *)
+let glob_match (pattern : string) (path : string) : bool =
+  let plen = String.length pattern in
+  let pathlen = String.length path in
+  (* If no special chars, do plain comparison *)
+  if not (String.contains pattern '*') then
+    pattern = path
+  else if pattern = "**" then true
+  else begin
+    let rec match_at pi fi =
+      if pi = plen then fi = pathlen
+      else if fi = pathlen then
+        pi < plen && pattern.[pi] = '*' && match_at (pi + 1) fi
+      else begin
+        let pc = pattern.[pi] in
+        if pc = '?' || pc = path.[fi] then match_at (pi + 1) (fi + 1)
+        else if pc = '*' then
+          (* Try matching zero or more chars *)
+          if pi + 2 <= plen && pattern.[pi + 1] = '*' then
+            (* ** — match any including / *)
+            let skip = if pi + 2 < plen && pattern.[pi + 2] = '/' then 3 else 2 in
+            match_at (pi + skip) fi || match_at pi (fi + 1)
+          else
+            (* * — match any except / *)
+            if path.[fi] = '/' then match_at (pi + 1) fi
+            else match_at (pi + 1) fi || match_at pi (fi + 1)
+        else false
+      end
+    in
+    match_at 0 0
+  end
+
+(** Check if a finding should be suppressed based on config.
+    Returns true if the finding matches a suppression rule. *)
+let is_suppressed (config : Types.claws_config) (f : Finding.t) : bool =
+  match Hashtbl.find_opt config.Types.suppress f.Finding.rule with
+  | None -> false
+  | Some patterns ->
+    List.exists (fun pat -> glob_match pat f.Finding.file) patterns
+
 (** Deduplicate findings by (rule, file, line) key. *)
 let deduplicate (findings : Finding.t list) : Finding.t list =
   let seen = Hashtbl.create 64 in
@@ -50,3 +92,4 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
   let ameba_findings = Ameba_hook.run config nodes in
   (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate
+  |> List.filter (fun f -> not (is_suppressed config f))
