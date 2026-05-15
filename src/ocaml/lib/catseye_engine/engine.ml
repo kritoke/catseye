@@ -13,6 +13,67 @@ let version = Catseye_types.Version.version
 (** Named constants *)
 let dag_visited_size = 16
 
+(** Cross-file taint propagation.
+    After per-file analysis, check if any call targets a function defined
+    in an imported file that returns tainted data. If so, propagate taint
+    to the calling file.
+    
+    Algorithm:
+    1. Build symbol table (fn_name -> defining locations)
+    2. Build import map (file -> imported file paths)
+    3. For each Assign where RHS is a call to an imported function:
+       - If that function returns tainted data in its defining file,
+         propagate the taint to the calling file.
+*)
+let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
+  let sym_tbl = Symbol_table.build nodes in
+  let import_map = Symbol_table.build_import_map nodes in
+  (* Now propagate: for each assign where RHS is a call,
+     check if the called function is defined in an imported file
+     and returns tainted data there. *)
+  List.fold_left (fun acc node ->
+    if node.Security_node.node_type <> Security_node.Assign then acc
+    else if Db.has_record acc node.Security_node.name then acc
+    else begin
+      let file = node.Security_node.file in
+      (* Get files imported by this file *)
+      let imported_files = try Hashtbl.find import_map file with Not_found -> [] in
+      (* Check each call arg *)
+      let tainted_call =
+        node.Security_node.args
+        |> List.find_opt (fun a ->
+          if a.Security_node.arg_type <> Security_node.ArgCall then false
+          else begin
+            let fn_name = a.Security_node.value in
+            (* Look up where this function is defined *)
+            let defs = Symbol_table.lookup sym_tbl fn_name in
+            List.exists (fun sym ->
+              (* Is this function defined in an imported file? *)
+              List.mem sym.Symbol_table.file imported_files &&
+              (* Does it return tainted data in its defining file? *)
+              Db.has_record_in_file acc fn_name sym.Symbol_table.file
+            ) defs
+          end
+        )
+      in
+      match tainted_call with
+      | Some a ->
+          Db.add_record acc {
+            var_name = node.Security_node.name;
+            file = node.Security_node.file;
+            line = node.Security_node.line;
+            description = node.Security_node.name ^
+              " assigned from cross-file tainted call: " ^ a.Security_node.value;
+            source_var = a.Security_node.value;
+            field = None;
+            status = Tainted { source = a.Security_node.value;
+                              field = None;
+                              origin = From_var a.Security_node.value }
+          }
+      | None -> acc
+    end
+  ) db nodes
+
 (** Build the full taint database: seed -> propagate -> returns -> interproc -> propagate -> guards *)
 let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   let seeded = seed_sources ~extra_sources nodes Db.empty in
@@ -21,11 +82,15 @@ let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   let with_interproc = propagate_interprocedural nodes with_returns in
   (* Second pass propagation after inter-procedural *)
   let with_prop2 = propagate nodes with_interproc in
+  (* Cross-file propagation: taint from imported functions *)
+  let with_cross_file = propagate_cross_file nodes with_prop2 in
+  (* Third pass propagation after cross-file *)
+  let with_prop3 = propagate nodes with_cross_file in
   (* Apply guards: remove taint from vars validated by guard nodes *)
   List.filter (fun n -> n.Security_node.node_type = Security_node.Guard) nodes
   |> List.fold_left (fun db guard ->
     Db.apply_guard db guard.Security_node.name guard.Security_node.file guard.Security_node.line
-  ) with_prop2
+  ) with_prop3
 
 (** Build a lookup map from (file, line) to Call node for O(1) sink lookup *)
 let build_sink_lookup_map (nodes : Security_node.t list) 

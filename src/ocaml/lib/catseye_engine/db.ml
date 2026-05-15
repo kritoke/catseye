@@ -78,6 +78,10 @@ let find_record (db : t) (var : string) : taint_record option =
 let has_record (db : t) (var : string) : bool =
   is_tainted db var
 
+(** Check if a specific variable is tainted in a specific file. *)
+let has_record_in_file (db : t) (var : string) (file : string) : bool =
+  is_tainted_in_file db var file
+
 let db_size (db : t) : int =
   StringMap.fold (fun _ records acc -> acc + List.length records) db 0
 
