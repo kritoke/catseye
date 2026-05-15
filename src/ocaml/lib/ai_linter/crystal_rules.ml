@@ -737,6 +737,108 @@ let detect_string_interpolation_in_query (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 11: Structural Complexity ────────────────────────────── *)
+
+(** Rule: Complex Conditional
+    Detects boolean expressions with 4+ && / || operators.
+    AI often generates monster conditions instead of extracting predicates. *)
+let detect_complex_conditional (m : t) =
+  let max_operators = 3 in
+  let rec count_bool_ops (e : expr) : int =
+    match e.expr_value with
+    | EApp (fn, args) ->
+        let name = get_full_name fn in
+        let own = if name = "&&" || name = "||" || name = "and" || name = "or" then 1 else 0 in
+        own + List.fold_left (fun acc a -> acc + count_bool_ops a) 0 args
+    | EBlock es -> List.fold_left (fun acc e -> acc + count_bool_ops e) 0 es
+    | ELet (_, e1, e2) -> count_bool_ops e1 + count_bool_ops e2
+    | EIf (_, then_, else_) ->
+        count_bool_ops then_ + (match else_ with Some e -> count_bool_ops e | None -> 0)
+    | _ -> 0
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let count = count_bool_ops body in
+        if count > max_operators then
+          findings := (Printf.sprintf
+            "Function '%s' has %d boolean operators (max %d) — extract into named predicates"
+            name count max_operators, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Message Chain (Law of Demeter)
+    Detects call chains with 5+ dotted segments like `a.b.c.d.e.f`.
+    AI often generates deep chains instead of using intermediate variables. *)
+let detect_message_chain (m : t) =
+  let max_depth = 4 in
+  let rec chain_depth (e : expr) : int =
+    match e.expr_value with
+    | EFieldAccess (recv, _) -> 1 + chain_depth recv
+    | _ -> 0
+  in
+  let rec find_chains (e : expr) : (int * int) list =
+    match e.expr_value with
+    | EApp (fn, args) ->
+        let depth = chain_depth fn in
+        let hits = if depth > max_depth then [(depth, e.expr_location.start.line)] else [] in
+        hits @ List.concat_map find_chains args
+    | EBlock es -> List.concat_map find_chains es
+    | ELet (_, e1, e2) -> find_chains e1 @ find_chains e2
+    | EIf (_, then_, else_) ->
+        find_chains then_ @ (match else_ with Some e -> find_chains e | None -> [])
+    | _ -> []
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (depth, line) ->
+          findings := (Printf.sprintf
+            "Call chain has %d segments (max %d) — violates Law of Demeter, use intermediate variables"
+            depth max_depth, line) :: !findings
+        ) (find_chains body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Nested Ternary
+    Detects nested ternary expressions (? :). AI sometimes generates
+    deeply nested ternaries instead of case/cond. *)
+let detect_nested_ternary (m : t) =
+  let rec count_ternary_depth (e : expr) : int =
+    match e.expr_value with
+    | EIf (_, then_, else_) ->
+        let then_depth = count_ternary_depth then_ in
+        let else_depth = match else_ with Some e -> count_ternary_depth e | None -> 0 in
+        1 + max then_depth else_depth
+    | EBlock es -> List.fold_left (fun acc e -> max acc (count_ternary_depth e)) 0 es
+    | ELet (_, e1, e2) -> max (count_ternary_depth e1) (count_ternary_depth e2)
+    | _ -> 0
+  in
+  let rec find_nested_ternaries (e : expr) : int list =
+    match e.expr_value with
+    | EIf (_, then_, else_) when count_ternary_depth e >= 3 ->
+        (* This is a nested ternary of depth 3+ *)
+        e.expr_location.start.line :: List.concat_map find_nested_ternaries (
+          then_ :: (match else_ with Some e -> [e] | None -> []))
+    | EBlock es -> List.concat_map find_nested_ternaries es
+    | ELet (_, e1, e2) -> find_nested_ternaries e1 @ find_nested_ternaries e2
+    | _ -> []
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun line ->
+          findings := ("Nested ternary expression (3+ levels) — use case/cond for readability", line) :: !findings
+        ) (find_nested_ternaries body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -780,6 +882,11 @@ let all () = [
   ("infinite-recursion", T.Error, detect_infinite_recursion);
   ("debug-print", T.Warning, detect_debug_print);
   ("string-interpolation-query", T.Error, detect_string_interpolation_in_query);
+
+  (* Structural Complexity *)
+  ("complex-conditional", T.Hint, detect_complex_conditional);
+  ("message-chain", T.Hint, detect_message_chain);
+  ("nested-ternary", T.Warning, detect_nested_ternary);
 ]
 
 (** Analyze module and return findings *)

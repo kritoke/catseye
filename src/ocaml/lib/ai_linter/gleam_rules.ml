@@ -442,6 +442,41 @@ let detect_implicit_return_discard (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Deeply Nested Case
+    Detects case expressions nested 3+ levels deep.
+    AI often generates nested pattern matching instead of combining patterns. *)
+let detect_nested_case (m : t) =
+  let max_depth = 2 in
+  let rec case_depth (e : expr) : int =
+    match e.expr_value with
+    | ECase (_, branches) ->
+        let child_max = List.fold_left (fun acc (_, e) -> max acc (case_depth e)) 0 branches in
+        1 + child_max
+    | EBlock es -> List.fold_left (fun acc e -> max acc (case_depth e)) 0 es
+    | ELet (_, e1, e2) -> max (case_depth e1) (case_depth e2)
+    | _ -> 0
+  in
+  let rec find_deep_cases (e : expr) : (int * int) list =
+    match e.expr_value with
+    | ECase (_, branches) when case_depth e > max_depth ->
+        (case_depth e, e.expr_location.start.line)
+        :: List.concat_map (fun (_, e) -> find_deep_cases e) branches
+    | EBlock es -> List.concat_map find_deep_cases es
+    | ELet (_, e1, e2) -> find_deep_cases e1 @ find_deep_cases e2
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_deep_cases body with
+         | (depth, line) :: _ ->
+             Some (Printf.sprintf
+               "Case expression nested %d levels deep (max %d) — combine patterns or extract functions"
+               depth max_depth, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -508,6 +543,7 @@ let all () = [
   ("discard-result", T.Warning, detect_discard_result);
   ("redundant-pipeline", T.Hint, detect_redundant_pipeline);
   ("implicit-return-discard", T.Hint, detect_implicit_return_discard);
+  ("nested-case", T.Warning, detect_nested_case);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
