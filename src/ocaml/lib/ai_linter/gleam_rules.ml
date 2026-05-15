@@ -816,6 +816,50 @@ let detect_redundant_single_case (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Unused Let Binding
+    Detects let bindings where the variable is never used in subsequent code.
+    AI often generates intermediate bindings that are never referenced.
+    Heuristic: checks that the bound name appears as an EVar in the body. *)
+let detect_unused_let (m : t) =
+  let rec collect_vars (e : expr) : string list =
+    match e.expr_value with
+    | EVar v -> [v]
+    | EBlock es -> List.concat_map collect_vars es
+    | ELet (_, e1, e2) -> collect_vars e1 @ collect_vars e2
+    | EIf (_, then_, else_) ->
+        collect_vars then_ @ (match else_ with Some e -> collect_vars e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> collect_vars e) branches
+    | EApp (fn, args) -> collect_vars fn @ List.concat_map collect_vars args
+    | _ -> []
+  in
+  let rec find_unused (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ELet (PVar name, _, body) ->
+        let used_in_body = collect_vars body in
+        let is_used = List.mem name used_in_body in
+        let self = if not is_used && String.length name > 1 && name <> "_" then
+          [(name, e.expr_location.start.line)] else [] in
+        self @ find_unused body
+    | EBlock es -> List.concat_map find_unused es
+    | ELet (_, e1, e2) -> find_unused e1 @ find_unused e2
+    | EIf (_, then_, else_) ->
+        find_unused then_ @ (match else_ with Some e -> find_unused e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_unused e) branches
+    | EApp (fn, args) -> find_unused fn @ List.concat_map find_unused args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_unused body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf "Let binding '%s' is never used after assignment" name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -894,6 +938,7 @@ let all () = [
   ("string-concat-chain", T.Hint, detect_string_concat_chain);
   ("equals-true", T.Hint, detect_equals_true);
   ("redundant-single-case", T.Hint, detect_redundant_single_case);
+  ("unused-let", T.Hint, detect_unused_let);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

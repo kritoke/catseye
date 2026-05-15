@@ -1280,6 +1280,36 @@ let detect_hardcoded_port (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 19: Style ─────────────────────────────────────────────── *)
+
+(** Rule: Unless with Else
+    Detects unless ... else constructs. These are confusing double-negatives.
+    AI often generates 'unless condition else ...' which should be
+    rewritten as 'if condition ... else ...'. *)
+let detect_unless_with_else (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EApp (fn, args) ->
+              (if get_full_name fn = "unless" && List.length args >= 2 then
+                findings := ("unless with else is a double-negative — rewrite as if/else",
+                  e.expr_location.start.line) :: !findings
+              else ());
+              scan fn; List.iter scan args
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1354,6 +1384,9 @@ let all () = [
   (* Type & Network *)
   ("type-checker-abuse", T.Hint, detect_type_checker_abuse);
   ("hardcoded-port", T.Warning, detect_hardcoded_port);
+
+  (* Style *)
+  ("unless-with-else", T.Hint, detect_unless_with_else);
 ]
 
 (** Analyze module and return findings *)
