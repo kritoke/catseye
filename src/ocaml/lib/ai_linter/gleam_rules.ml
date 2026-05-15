@@ -477,6 +477,44 @@ let detect_nested_case (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Guard After Wildcard
+    Detects case branches that appear after a wildcard pattern.
+    In Gleam, a wildcard _ matches everything, so later branches are unreachable.
+    AI often puts the wildcard first instead of last. *)
+let detect_guard_after_wildcard (m : t) =
+  let rec has_wildcard_then_more (branches : (pattern * expr) list) : int option =
+    match branches with
+    | [] | [_] -> None
+    | (pat, _) :: rest ->
+        (match pat with
+         | PDiscard ->
+             (* Wildcard found — any branch after this is unreachable *)
+             (match rest with
+              | [] -> None
+              | (_, e) :: _ -> Some e.expr_location.start.line)
+         | _ -> has_wildcard_then_more rest)
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec find_in_expr (e : expr) : int option =
+          match e.expr_value with
+          | ECase (_, branches) ->
+              (match has_wildcard_then_more branches with
+               | Some line -> Some line
+               | None -> List.find_map (fun (_, e) -> find_in_expr e) branches)
+          | EBlock es -> List.find_map find_in_expr es
+          | ELet (_, e1, e2) ->
+              (match find_in_expr e1 with Some l -> Some l | None -> find_in_expr e2)
+          | _ -> None
+        in
+        (match find_in_expr body with
+         | Some line ->
+             Some ("Case branch after wildcard is unreachable — move wildcard to last position", line)
+         | None -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -544,6 +582,7 @@ let all () = [
   ("redundant-pipeline", T.Hint, detect_redundant_pipeline);
   ("implicit-return-discard", T.Hint, detect_implicit_return_discard);
   ("nested-case", T.Warning, detect_nested_case);
+  ("guard-after-wildcard", T.Warning, detect_guard_after_wildcard);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

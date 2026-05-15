@@ -839,6 +839,91 @@ let detect_nested_ternary (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 12: Design Smells ──────────────────────────────────────── *)
+
+(** Rule: Data Clump
+    Detects the same pair of parameters appearing together in 3+ functions.
+    AI often generates repetitive parameter lists instead of grouping into a record. *)
+let detect_data_clump (m : t) =
+  let min_co_occurrence = 3 in
+  (* Collect all function parameter sets *)
+  let param_sets = List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, params, _, _) ->
+        Some (List.filter_map (function PVar v -> Some v | _ -> None) params)
+    | _ -> None
+  ) m.mod_items in
+  (* Count how many functions each parameter appears in *)
+  let param_counts = Hashtbl.create 32 in
+  List.iter (fun params ->
+    List.iter (fun p ->
+      let current = try Hashtbl.find param_counts p with Not_found -> 0 in
+      Hashtbl.replace param_counts p (current + 1)
+    ) params
+  ) param_sets;
+  (* Find pairs that co-occur in 3+ functions *)
+  let pair_counts = Hashtbl.create 64 in
+  List.iter (fun params ->
+    let sorted = List.sort_uniq String.compare params in
+    let rec count_pairs = function
+      | [] | [_] -> ()
+      | a :: rest ->
+          List.iter (fun b ->
+            let key = a ^ "," ^ b in
+            let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
+            Hashtbl.replace pair_counts key (current + 1)
+          ) rest;
+          count_pairs rest
+    in
+    count_pairs sorted
+  ) param_sets;
+  let findings = ref [] in
+  Hashtbl.iter (fun key count ->
+    if count >= min_co_occurrence then begin
+      let pair_name = String.map (fun c -> if c = ',' then ' ' else c) key in
+      findings := (Printf.sprintf
+        "Parameters %s appear together in %d functions — consider grouping into a record"
+        pair_name count, m.mod_items |> List.hd |> fun i -> i.item_location.start.line) :: !findings
+    end
+  ) pair_counts;
+  List.sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) !findings
+
+(** Rule: Feature Envy
+    Detects functions that make most of their calls on a single external type.
+    AI often generates functions that should be methods on the envied object. *)
+let detect_feature_envy (m : t) =
+  let min_calls = 5 in
+  let envy_threshold = 0.7 in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let calls = collect_app_names body in
+        (* Count calls by receiver prefix *)
+        let receiver_counts = Hashtbl.create 16 in
+        List.iter (fun (call_name, _) ->
+          (match String.index_opt call_name '.' with
+           | Some idx ->
+               let receiver = String.sub call_name 0 idx in
+               let current = try Hashtbl.find receiver_counts receiver with Not_found -> 0 in
+               Hashtbl.replace receiver_counts receiver (current + 1)
+           | None -> ());
+        ) calls;
+        let total_calls = List.length calls in
+        if total_calls >= min_calls then begin
+          Hashtbl.iter (fun receiver count ->
+            let ratio = float_of_int count /. float_of_int total_calls in
+            if ratio >= envy_threshold then
+              findings := (Printf.sprintf
+                "Function '%s' makes %d/%d calls on '%s' (%.0f%%) — consider moving to %s module"
+                name count total_calls receiver (ratio *. 100.0) receiver,
+                item.item_location.start.line) :: !findings
+          ) receiver_counts
+        end
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -887,6 +972,10 @@ let all () = [
   ("complex-conditional", T.Hint, detect_complex_conditional);
   ("message-chain", T.Hint, detect_message_chain);
   ("nested-ternary", T.Warning, detect_nested_ternary);
+
+  (* Design Smells *)
+  ("data-clump", T.Hint, detect_data_clump);
+  ("feature-envy", T.Hint, detect_feature_envy);
 ]
 
 (** Analyze module and return findings *)
