@@ -108,5 +108,20 @@ clean:
     rm -rf src/ocaml/_build bin/
     @echo "✓ Cleaned"
 
+# Install to PREFIX (default /usr/local)
+install prefix="/usr/local": build
+    install -d {{prefix}}/bin
+    install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
+    install -d {{prefix}}/lib/catseye/rules
+    install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/
+    install -d {{prefix}}/lib/catseye/extractor
+    install -m 755 bin/catseye-crystal-extractor {{prefix}}/lib/catseye/extractor/catseye-crystal-extractor
+    @echo "✓ Installed to {{prefix}}"
+
+uninstall prefix="/usr/local":
+    rm -f {{prefix}}/bin/catseye-ocaml
+    rm -rf {{prefix}}/lib/catseye
+    @echo "✓ Uninstalled from {{prefix}}"
+
 list:
     @just --list

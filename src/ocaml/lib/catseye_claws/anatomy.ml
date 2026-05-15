@@ -236,20 +236,52 @@ let is_exempt_god_object (file : string) (method_names : string list) : bool =
   ) method_names in
   List.length format_methods * 100 / total >= 40
 
-(** Group Def nodes by file and flag files exceeding the threshold. *)
+(** Group Def nodes by class/module scope and flag scopes exceeding the threshold.
+    Uses Class/Module node line ranges to determine which defs belong to which scope.
+    If no class/module is found, falls back to per-file counting. *)
 let check_god_objects (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   let defs = List.filter (fun (n : Security_node.t) ->
     n.Security_node.node_type = Security_node.Def
-    && n.Security_node.name <> "initialize"  (* Exclude constructors *)
+    && n.Security_node.name <> "initialize"
   ) nodes in
-  let by_file = Hashtbl.create 16 in
+  let containers = List.filter (fun (n : Security_node.t) ->
+    n.Security_node.node_type = Security_node.Class
+    || n.Security_node.node_type = Security_node.Module
+  ) nodes in
+  (* Build sorted list of (line, file, container_name) for scope resolution *)
+  let containers_sorted = List.sort (fun a b ->
+    let c = compare a.Security_node.file b.Security_node.file in
+    if c <> 0 then c else compare a.Security_node.line b.Security_node.line
+  ) containers in
+  (* For each def, find which container (class/module) it belongs to *)
+  let scope_of_def (d : Security_node.t) : string =
+    let file = d.Security_node.file in
+    let line = d.Security_node.line in
+    (* Find the last container in the same file with line <= def line *)
+    let best = ref "" in
+    List.iter (fun (c : Security_node.t) ->
+      if c.Security_node.file = file && c.Security_node.line <= line then
+        best := c.Security_node.name
+    ) containers_sorted;
+    !best
+  in
+  (* Group defs by (file, scope) *)
+  let by_scope = Hashtbl.create 32 in
   List.iter (fun (d : Security_node.t) ->
-    let existing = try Hashtbl.find by_file d.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file d.Security_node.file (d :: existing)
+    let file = d.Security_node.file in
+    let scope = scope_of_def d in
+    let key = file ^ "::" ^ scope in
+    let existing = try Hashtbl.find by_scope key with Not_found -> [] in
+    Hashtbl.replace by_scope key (d :: existing)
   ) defs;
-  Hashtbl.fold (fun file file_defs acc ->
+  (* Check each scope *)
+  Hashtbl.fold (fun key file_defs acc ->
     let count = List.length file_defs in
+    let file = match String.index_opt key ':' with
+      | Some i -> String.sub key 0 i
+      | None -> key
+    in
     let method_names = List.map (fun (d : Security_node.t) -> d.Security_node.name) file_defs in
     if count >= config.max_methods_per_file
        && not (is_exempt_god_object file method_names)
@@ -257,24 +289,31 @@ let check_god_objects (nodes : Security_node.t list) (config : Types.claws_confi
       let first_def = List.hd (List.sort (fun (a : Security_node.t) (b : Security_node.t) ->
         compare a.Security_node.line b.Security_node.line
       ) file_defs) in
+      (* Extract scope name from key *)
+      let scope_name = match String.index_opt key ':' with
+        | Some i ->
+            let rest = String.sub key (i + 2) (String.length key - i - 2) in
+            if rest = "" then "(top-level)" else rest
+        | None -> "(top-level)"
+      in
       { Finding.rule = "GodObject"
       ; severity = "Medium"
       ; file
       ; line = first_def.Security_node.line
       ; message = Printf.sprintf
-          "File has %d method definitions (threshold: %d). Consider splitting."
-          count config.max_methods_per_file
-      ; flow = [ {
+          "%s has %d method definitions (threshold: %d). Consider splitting."
+          scope_name count config.max_methods_per_file
+      ; flow = [{
           Finding.file; line = first_def.Security_node.line
-          ; message = Printf.sprintf "First definition of %d in this file" count
-        } ]
+          ; message = Printf.sprintf "First definition of %d in %s" count scope_name
+        }]
       ; language = first_def.Security_node.language
       ; dependency = None
       ; reachability = None
       ; suggestion = None
       } :: acc
     end else acc
-  ) by_file []
+  ) by_scope []
 
 (* ── Combined anatomy analysis ──────────────────────────────────────── *)
 
