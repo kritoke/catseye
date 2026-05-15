@@ -1210,6 +1210,76 @@ let detect_unreachable_code (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 18: Type & Network ────────────────────────────────────── *)
+
+(** Rule: Type Checker Abuse
+    Detects 3+ is_a?/as/responds_to? calls in one function.
+    AI often generates manual type checking instead of using polymorphism.
+    Indicates the function should be split or use method dispatch. *)
+let detect_type_checker_abuse (m : t) =
+  let max_checks = 2 in
+  let is_type_check (name : string) =
+    String.length name >= 5 &&
+    let suffixes = ["is_a?"; "responds_to?"; "kind_of?"; "nil?"; "is_a"] in
+    List.exists (fun s ->
+      String.length name >= String.length s &&
+      String.sub name (String.length name - String.length s) (String.length s) = s
+    ) suffixes
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let checks = List.filter (fun (n, _) -> is_type_check n) (collect_app_names body) in
+        if List.length checks > max_checks then
+          findings := (Printf.sprintf
+            "Function '%s' has %d type-check calls (max %d) — use polymorphism or overloads"
+            name (List.length checks) max_checks, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Hardcoded Port
+    Detects hardcoded port numbers (80, 443, 3000, 8080, etc.) in
+    network-related calls. AI often bakes in port numbers instead of
+    reading from configuration. *)
+let detect_hardcoded_port (m : t) =
+  let common_ports = [80; 443; 3000; 4000; 5000; 8000; 8080; 8443; 9090] in
+  let network_prefixes = ["HTTP::"; "http"; "TCPServer"; "TCPSocket"; "URI"; "socket"] in
+  let is_network_context (calls : (string * int) list) =
+    List.exists (fun (n, _) ->
+      List.exists (fun prefix ->
+        String.length n >= String.length prefix &&
+        String.sub n 0 (String.length prefix) = prefix
+      ) network_prefixes
+    ) calls
+  in
+  let rec find_port_literals (e : expr) : (int * int) list =
+    match e.expr_value with
+    | ELiteral (LInt i) ->
+        let port_val = int_of_string_opt i in
+        (match port_val with
+         | Some v when List.mem v common_ports -> [(v, e.expr_location.start.line)]
+         | _ -> [])
+    | EBlock es -> List.concat_map find_port_literals es
+    | ELet (_, e1, e2) -> find_port_literals e1 @ find_port_literals e2
+    | EApp (fn, args) -> find_port_literals fn @ List.concat_map find_port_literals args
+    | _ -> []
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let calls = collect_app_names body in
+        if is_network_context calls then
+          List.iter (fun (port, line) ->
+            findings := (Printf.sprintf
+              "Hardcoded port %d in network context — use environment variable or config" port, line) :: !findings
+          ) (find_port_literals body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1280,6 +1350,10 @@ let all () = [
   (* Control Flow Clarity *)
   ("reassignment-in-condition", T.Warning, detect_reassignment_in_condition);
   ("unreachable-code", T.Warning, detect_unreachable_code);
+
+  (* Type & Network *)
+  ("type-checker-abuse", T.Hint, detect_type_checker_abuse);
+  ("hardcoded-port", T.Warning, detect_hardcoded_port);
 ]
 
 (** Analyze module and return findings *)

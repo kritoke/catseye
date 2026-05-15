@@ -788,6 +788,34 @@ let detect_equals_true (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Redundant Single Case
+    Detects case expressions with only one branch.
+    A case with one branch is equivalent to a let binding — less noise.
+    AI often generates unnecessary case wrapping. *)
+let detect_redundant_single_case (m : t) =
+  let rec find_single_cases (e : expr) : int list =
+    match e.expr_value with
+    | ECase (_, [(_branch)]) ->
+        e.expr_location.start.line :: []
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_single_cases e) branches
+    | EBlock es -> List.concat_map find_single_cases es
+    | ELet (_, e1, e2) -> find_single_cases e1 @ find_single_cases e2
+    | EIf (_, then_, else_) ->
+        find_single_cases then_ @
+        (match else_ with Some e -> find_single_cases e | None -> [])
+    | EApp (fn, args) -> find_single_cases fn @ List.concat_map find_single_cases args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_single_cases body with
+         | line :: _ -> Some ("Case with only one branch — use a let binding instead", line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -865,6 +893,7 @@ let all () = [
   ("todo-as-body", T.Warning, detect_todo_as_body);
   ("string-concat-chain", T.Hint, detect_string_concat_chain);
   ("equals-true", T.Hint, detect_equals_true);
+  ("redundant-single-case", T.Hint, detect_redundant_single_case);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
