@@ -404,6 +404,44 @@ let detect_redundant_pipeline (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Implicit Return Discard
+    Detects when the last expression in a function body is a call whose
+    return value would be implicitly returned, but the function signature
+    suggests it shouldn't be. Heuristic: last call in body is a
+    side-effecty function like IO.println, process.sleep, etc. *)
+let detect_implicit_return_discard (m : t) =
+  let side_effect_calls = [
+    "io.println"; "io.print"; "io.debug";
+    "process.sleep"; "process.spawn";
+    "list.each"; "dict.each";
+  ] in
+  let is_side_effect (name : string) =
+    List.exists (fun s ->
+      String.length name >= String.length s &&
+      String.sub name (String.length name - String.length s) (String.length s) = s
+    ) side_effect_calls
+  in
+  let rec last_expr (e : expr) : expr option =
+    match e.expr_value with
+    | EBlock es -> (match List.rev es with [] -> None | last :: _ -> Some last)
+    | ELet (_, _, e2) -> last_expr e2
+    | _ -> Some e
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match last_expr body with
+         | Some e ->
+             (match e.expr_value with
+              | EApp (fn, _) when is_side_effect (expr_name fn) ->
+                  Some (Printf.sprintf
+                    "Last expression in function is %s — return value is implicitly discarded"
+                    (expr_name fn), e.expr_location.start.line)
+              | _ -> None)
+         | None -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -469,6 +507,7 @@ let all () = [
   ("unused-import", T.Hint, detect_unused_import);
   ("discard-result", T.Warning, detect_discard_result);
   ("redundant-pipeline", T.Hint, detect_redundant_pipeline);
+  ("implicit-return-discard", T.Hint, detect_implicit_return_discard);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

@@ -648,6 +648,95 @@ let detect_long_method (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 10: The Looper & Misc ─────────────────────────────────── *)
+
+(** Rule: Infinite Recursion
+    Detects a function that calls itself with the same argument names
+    unchanged — a common AI mistake when generating recursive functions. *)
+let detect_infinite_recursion (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (fname, params, _, body) ->
+        let param_names = List.filter_map (function PVar v -> Some v | _ -> None) params in
+        let calls = collect_app_names body in
+        List.iter (fun (name, line) ->
+          if name = fname then begin
+            (* Self-call found — check if any param is passed unchanged *)
+            let is_unchanged = List.exists (fun p ->
+              List.exists (fun (n, _) -> n = p) calls
+            ) param_names in
+            if is_unchanged then
+              findings := (Printf.sprintf
+                "Function '%s' calls itself with unchanged argument — possible infinite recursion" fname, line) :: !findings
+          end
+        ) calls
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Debug Print
+    Broader than deprecated-syntax — catches print, printf, p!, pp!,
+    stderr.puts, STDERR.print that are left in production code. *)
+let detect_debug_print (m : t) =
+  let debug_calls = [
+    "print"; "printf"; "p!"; "pp!";
+    "stderr.puts"; "STDERR.puts"; "STDERR.print"; "STDERR.printf";
+    "debug_print"; "debug_puts"; "log.debug";
+  ] in
+  let is_debug (name : string) =
+    List.exists (fun prefix ->
+      name = prefix ||
+      (String.length name > String.length prefix + 1 &&
+       String.sub name (String.length name - String.length prefix - 1) (String.length prefix + 1) = "." ^ prefix)
+    ) debug_calls
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        List.iter (fun (name, line) ->
+          if is_debug name then
+            findings := (Printf.sprintf
+              "Debug output via %s — remove or gate behind a debug flag before production" name, line) :: !findings
+        ) (collect_app_names body)
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: String Interpolation in Query
+    Detects string interpolation or concatenation patterns that build
+    SQL/HTML/shell commands — a classic injection vector.
+    Catches calls named like concat/interpolate near DB/query methods. *)
+let detect_string_interpolation_in_query (m : t) =
+  let query_methods = [
+    "DB.query"; "DB.exec"; "DB.query_one"; "DB.query_one?";
+    "database.query"; "db.query"; "repo.query"; "repo.exec";
+  ] in
+  let is_query (name : string) =
+    List.exists (fun q ->
+      String.length name >= String.length q &&
+      String.sub name (String.length name - String.length q) (String.length q) = q
+    ) query_methods
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let calls = collect_app_names body in
+        let has_interpolation = List.exists (fun (n, _) ->
+          n = "String.interpolation" || n = "String.concat" || n = "sprintf"
+        ) calls in
+        let has_query = List.exists (fun (n, _) -> is_query n) calls in
+        if has_interpolation && has_query then
+          let line = match List.find_opt (fun (n, _) -> is_query n) calls with
+            | Some (_, l) -> l | None -> 0
+          in
+          findings := ("String interpolation used near database query — use parameterized queries instead", line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -686,6 +775,11 @@ let all () = [
   ("empty-catch", T.Warning, detect_empty_catch);
   ("flag-argument", T.Hint, detect_flag_argument);
   ("long-method", T.Warning, detect_long_method);
+
+  (* Looper & Misc *)
+  ("infinite-recursion", T.Error, detect_infinite_recursion);
+  ("debug-print", T.Warning, detect_debug_print);
+  ("string-interpolation-query", T.Error, detect_string_interpolation_in_query);
 ]
 
 (** Analyze module and return findings *)
