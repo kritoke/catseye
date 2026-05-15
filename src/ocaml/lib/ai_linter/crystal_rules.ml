@@ -924,6 +924,56 @@ let detect_feature_envy (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 13: Dead Code ────────────────────────────────────────── *)
+
+(** Rule: Dead Code After Error
+    Detects code that appears after a raise/error expression.
+    AI often generates unreachable code after raise statements. *)
+let detect_dead_code_after_error (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan_block (exprs : expr list) =
+          match exprs with
+          | [] | [_] -> ()
+          | e :: rest ->
+              (match e.expr_value with
+               | EError _ ->
+                   (* Everything after this in the block is unreachable *)
+                   List.iter (fun dead ->
+                     findings := (Printf.sprintf
+                       "Unreachable code after raise/error on line %d" e.expr_location.start.line,
+                       dead.expr_location.start.line) :: !findings
+                   ) rest
+               | EIf (_, then_, else_) ->
+                   (match then_.expr_value with EError _ ->
+                     List.iter (fun dead ->
+                       findings := (Printf.sprintf
+                         "Unreachable code after raise in conditional on line %d"
+                         then_.expr_location.start.line, dead.expr_location.start.line) :: !findings
+                     ) rest
+                   | _ -> ());
+                   (match else_ with
+                    | Some e2 -> (match e2.expr_value with
+                      | EError _ ->
+                          List.iter (fun dead ->
+                            findings := (Printf.sprintf
+                              "Unreachable code after raise in conditional on line %d"
+                              e2.expr_location.start.line, dead.expr_location.start.line) :: !findings
+                          ) rest
+                      | _ -> ())
+                    | None -> ())
+               | _ -> ());
+              scan_block rest
+        in
+        (match body.expr_value with
+         | EBlock exprs -> scan_block exprs
+         | _ -> ())
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -976,6 +1026,9 @@ let all () = [
   (* Design Smells *)
   ("data-clump", T.Hint, detect_data_clump);
   ("feature-envy", T.Hint, detect_feature_envy);
+
+  (* Dead Code *)
+  ("dead-code-after-error", T.Warning, detect_dead_code_after_error);
 ]
 
 (** Analyze module and return findings *)

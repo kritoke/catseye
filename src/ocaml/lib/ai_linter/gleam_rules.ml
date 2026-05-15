@@ -515,6 +515,80 @@ let detect_guard_after_wildcard (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Tuple Abuse
+    Detects tuples with 4+ elements. In Gleam, tuples should be small
+    (2-3 elements). Larger groupings should use records for clarity.
+    AI often generates large tuples instead of named records. *)
+let detect_tuple_abuse (m : t) =
+  let rec find_large_tuples (e : expr) : (int * int) list =
+    match e.expr_value with
+    | ETuple elems when List.length elems >= 4 ->
+        (List.length elems, e.expr_location.start.line)
+        :: List.concat_map find_large_tuples elems
+    | ETuple elems -> List.concat_map find_large_tuples elems
+    | EBlock es -> List.concat_map find_large_tuples es
+    | ELet (_, e1, e2) -> find_large_tuples e1 @ find_large_tuples e2
+    | EIf (_, then_, else_) ->
+        find_large_tuples then_ @
+        (match else_ with Some e -> find_large_tuples e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_large_tuples e) branches
+    | EApp (fn, args) -> find_large_tuples fn @ List.concat_map find_large_tuples args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_large_tuples body with
+         | (size, line) :: _ ->
+             Some (Printf.sprintf
+               "Tuple has %d elements (max 3) — use a named record for clarity" size, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Complex Pipeline
+    Detects pipeline chains (function application chains) with 6+ steps.
+    AI often generates very long pipelines that are hard to debug.
+    Heuristic: count EApp nesting depth where the function is also an EApp. *)
+let detect_complex_pipeline (m : t) =
+  let max_depth = 5 in
+  let rec pipeline_depth (e : expr) : int =
+    match e.expr_value with
+    | EApp (fn, [arg]) ->
+        1 + pipeline_depth fn + pipeline_depth arg
+    | EApp (fn, args) ->
+        1 + pipeline_depth fn + List.fold_left (fun acc a -> max acc (pipeline_depth a)) 0 args
+    | EBlock es -> List.fold_left (fun acc e -> max acc (pipeline_depth e)) 0 es
+    | ELet (_, e1, e2) -> max (pipeline_depth e1) (pipeline_depth e2)
+    | _ -> 0
+  in
+  let rec find_deep_pipelines (e : expr) : (int * int) list =
+    match e.expr_value with
+    | EApp (fn, args) when pipeline_depth e > max_depth ->
+        (pipeline_depth e, e.expr_location.start.line)
+        :: List.concat_map find_deep_pipelines (fn :: args)
+    | EApp (fn, args) ->
+        find_deep_pipelines fn @ List.concat_map find_deep_pipelines args
+    | EBlock es -> List.concat_map find_deep_pipelines es
+    | ELet (_, e1, e2) -> find_deep_pipelines e1 @ find_deep_pipelines e2
+    | EIf (_, then_, else_) ->
+        find_deep_pipelines then_ @
+        (match else_ with Some e -> find_deep_pipelines e | None -> [])
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_deep_pipelines body with
+         | (depth, line) :: _ ->
+             Some (Printf.sprintf
+               "Pipeline chain has %d steps (max %d) — break into named intermediates for readability"
+               depth max_depth, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -577,12 +651,15 @@ let all () = [
   ("let-assert", T.Error, detect_let_assert);
   ("non-exhaustive-case", T.Warning, detect_non_exhaustive_case);
   ("ignored-result", T.Warning, detect_ignored_result);
-  ("unused-import", T.Hint, detect_unused_import);
+  (* unused-import disabled: Gleam tree-sitter module parsing is broken — extracts '/' not module names *)
+  (* redundant-pipeline disabled: |> is idiomatic Gleam, this rule is 100% FP *)
   ("discard-result", T.Warning, detect_discard_result);
-  ("redundant-pipeline", T.Hint, detect_redundant_pipeline);
+
   ("implicit-return-discard", T.Hint, detect_implicit_return_discard);
   ("nested-case", T.Warning, detect_nested_case);
   ("guard-after-wildcard", T.Warning, detect_guard_after_wildcard);
+  ("tuple-abuse", T.Hint, detect_tuple_abuse);
+  ("complex-pipeline", T.Hint, detect_complex_pipeline);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
