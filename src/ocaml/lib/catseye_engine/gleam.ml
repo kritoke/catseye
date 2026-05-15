@@ -345,8 +345,10 @@ let extract file_path =
   let buf = Buffer.create 8192 in
   (try while true do Buffer.add_channel buf out 4096 done
    with End_of_file -> ());
-  let ok = Unix.close_process_full (out, inp, err) |> function
-    | Unix.WEXITED 0 -> true | _ -> false in
+  let ok = match Unix.close_process_full (out, inp, err) with
+    | Unix.WEXITED 0 -> true
+    | Unix.WEXITED 1 -> Buffer.length buf > 0  (* tree-sitter returns 1 for partial parse errors but still emits XML *)
+    | _ -> false in
   if not ok then Error (`Msg (Printf.sprintf "tree-sitter failed for %s" file_path))
   else begin
     let doc = parse_xml (Buffer.contents buf) in
