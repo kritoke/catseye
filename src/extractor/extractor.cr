@@ -399,6 +399,34 @@ class SecurityVisitor < Crystal::Visitor
     true
   end
 
+  def visit(node : Crystal::ExceptionHandler) : Bool
+    @nodes << {
+      type:     "control",
+      name:     "exception_handler",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit body, rescues, else, ensure
+  end
+
+  def visit(node : Crystal::Rescue) : Bool
+    @nodes << {
+      type:     "control",
+      name:     "rescue",
+      args:     [] of ArgNode,
+      line:     location_line(node),
+      taint:    false,
+      file:     @file_path,
+      language: "crystal",
+      metadata: nil,
+    }
+    true # visit the rescue body
+  end
+
   # ── Control flow terminators: return / raise / break / next ─────────
 
   def visit(node : Crystal::Return) : Bool

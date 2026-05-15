@@ -85,11 +85,11 @@ let is_long_method_exempt (name : string) : bool =
   (String.length name >= 9 &&
    let prefix = String.sub name 0 9 in
    prefix = "benchmark") ||
-  (* Binary format decoders — inherently sequential *)
+  (* Binary format decoders - inherently sequential *)
   (String.length name >= 6 &&
    let prefix = String.sub name 0 6 in
    prefix = "decode" || prefix = "parse_" || prefix = "from_s") ||
-  (* Algorithm implementations — well-known structures *)
+  (* Algorithm implementations - well-known structures *)
   (String.length name >= 9 &&
    let suffix = String.sub name (String.length name - 9) 9 in
    suffix = "_weighted" || suffix = "_quantize" || suffix = "_histogra") ||
@@ -219,7 +219,7 @@ let count_chain_segments (name : string) : int =
     or common Crystal stdlib paths that are idiomatic, or mathematical expressions. *)
 let is_idiomatic_chain (name : string) : bool =
   let lower = String.lowercase_ascii name in
-  (* Module paths use :: not . — these are fine *)
+  (* Module paths use :: not . - these are fine *)
   find_substring lower "::" >= 0
   (* Type conversions are idiomatic *)
   || List.exists (fun suffix ->
@@ -231,12 +231,12 @@ let is_idiomatic_chain (name : string) : bool =
      ; ".size"; ".empty?"; ".blank?"; ".present?"; ".try"; ".not_nil!"
      ; ".to_s.downcase"; ".to_s.strip"; ".to_i32?"; ".to_i64?"
      ; ".to_f32?"; ".to_f64?"; ".starts_with?"; ".ends_with?"
-     (* Math/numeric coercion chains — standard Crystal numeric patterns *)
+     (* Math/numeric coercion chains - standard Crystal numeric patterns *)
      ; ".to_i.clamp"; ".to_f.clamp"; ".to_i32.clamp"; ".to_i64.clamp"
      ; ".to_i.round"; ".to_f.round"; ".to_i.abs"; ".to_f.abs"
      ; ".clamp"; ".round"; ".abs"
   ]
-  (* Math expressions — chains containing arithmetic operators *)
+  (* Math expressions - chains containing arithmetic operators *)
   || List.exists (fun op -> find_substring lower op >= 0)
     ["+"; "-"; "*"; "/"; "%"; "**"]
   (* Bitwise operations for binary parsing *)
@@ -465,7 +465,7 @@ let check_complex_match (nodes : Security_node.t list)
 
 (* ── Dead Code (after unconditional terminators) ────────────────────── *)
 
-(** Build a set of control flow lines (if/unless) — terminators on
+(** Build a set of control flow lines (if/unless) - terminators on
     these lines are conditional (e.g., "return if x") and NOT dead code. *)
 let build_control_lines (nodes : Security_node.t list) : (string, int list) Hashtbl.t =
   let tbl : (string, int list) Hashtbl.t = Hashtbl.create 32 in
@@ -477,11 +477,17 @@ let build_control_lines (nodes : Security_node.t list) : (string, int list) Hash
   ) nodes;
   tbl
 
-(** Check if a line is a control flow line (conditional terminator) *)
+(** Check if a line is a control flow line (conditional terminator).
+    Checks the exact line and the 2 lines before it to handle
+    `if condition\n  return\nend` patterns where control and terminator
+    are on different lines. *)
 let is_conditional_terminator (control_lines : (string, int list) Hashtbl.t)
     (file : string) (line : int) : bool =
   match Hashtbl.find_opt control_lines file with
-  | Some lines -> List.mem line lines
+  | Some lines ->
+    List.mem line lines
+    || List.mem (line - 1) lines
+    || List.mem (line - 2) lines
   | None -> false
 
 (** Detect code after unconditional return/raise in the same function scope.
@@ -496,18 +502,51 @@ let check_dead_code (nodes : Security_node.t list)
   List.filter_map (fun ({ def; body } : scope) ->
     (* Scan body for unconditional terminators followed by code *)
       (* Scan body for unconditional terminators followed by code.
-         Skip terminators in the last 3 nodes of the body — these are
+         Skip terminators in the last 3 nodes of the body - these are
          common "return at end of function" patterns, not dead code.
          Also require at least 2 nodes after terminator to reduce noise. *)
-      let rec scan (idx : int) = function
+      let rec scan (nesting : int) (idx : int) = function
         | [] -> None
         | n :: rest ->
           let remaining = List.length rest in
+          let next_nesting =
+            if n.Security_node.node_type = Security_node.Control then nesting + 1
+            else nesting
+          in
+          let is_inline_guard =
+            (* A terminator on the same line as an assign or call is likely
+               an inline guard like `x || return` or `x ? return` *)
+            n.Security_node.node_type = Security_node.Terminator
+            && List.exists (fun (prev : Security_node.t) ->
+              prev.Security_node.line = n.Security_node.line
+              && (prev.Security_node.node_type = Security_node.Assign
+                  || prev.Security_node.node_type = Security_node.Call)
+            ) body
+          in
           if remaining <= 2 then None  (* too close to end of function *)
+          else if n.Security_node.node_type = Security_node.Terminator
+             && (nesting > 0 || is_inline_guard
+                 || is_conditional_terminator control_lines
+                       n.Security_node.file n.Security_node.line)
+          then
+            (* Terminator inside a control branch — not unconditional *)
+            scan next_nesting (idx + 1) rest
           else if n.Security_node.node_type = Security_node.Terminator
              && not (is_conditional_terminator control_lines
                        n.Security_node.file n.Security_node.line)
           then begin
+            (* Check for branch boundaries (rescue, when) between terminator
+               and potential dead code — if a branch boundary exists, the
+               terminator and “dead” code are in different branches. *)
+            let has_branch_boundary = List.exists (fun (b : Security_node.t) ->
+              b.Security_node.node_type = Security_node.Control
+              && (b.Security_node.name = "rescue"
+                  || b.Security_node.name = "when"
+                  || b.Security_node.name = "exception_handler")
+              && b.Security_node.line > n.Security_node.line
+            ) rest in
+            if has_branch_boundary then scan next_nesting (idx + 1) rest
+            else begin
             (* Find next meaningful node — skip control/terminator/class nodes *)
             let dead = List.find_opt (fun (d : Security_node.t) ->
               d.Security_node.node_type <> Security_node.Control
@@ -524,9 +563,10 @@ let check_dead_code (nodes : Security_node.t list)
                      def.Security_node.name,
                      d.Security_node.node_type, d.Security_node.name)
              | None -> None)
-          end else scan (idx + 1) rest
+            end
+          end else scan next_nesting (idx + 1) rest
       in
-      match (scan 0) body with
+      match (scan 0 0) body with
     | Some (file, line, term_name, term_line, def_name, dead_type, dead_name) ->
       Some {
         Finding.rule = "DeadCode";
@@ -650,7 +690,7 @@ let is_parameter (def_node : Security_node.t) (obj_name : string) : bool =
   ) def_node.Security_node.args
 
 (* Check if the envied target name is embedded in the function name.
-   E.g. 'validate_feed_urls!' envies 'feed' — the function is ABOUT feeds.
+   E.g. 'validate_feed_urls!' envies 'feed' - the function is ABOUT feeds.
    Not envy, it's the function's declared domain. *)
 let is_name_related (def_name : string) (obj_name : string) : bool =
   let lower_def = String.lowercase_ascii def_name in
@@ -665,7 +705,7 @@ let is_name_related (def_name : string) (obj_name : string) : bool =
     in check 0)
 
 (* Build set of locally-assigned variable names in a function body.
-   These are NOT envied — they are the function's own working data. *)
+   These are NOT envied - they are the function's own working data. *)
 let build_local_vars (body : Security_node.t list) : string list =
   List.filter_map (fun (n : Security_node.t) ->
     if n.Security_node.node_type = Security_node.Assign then
@@ -674,10 +714,10 @@ let build_local_vars (body : Security_node.t list) : string list =
   ) body
 
 (* Generic data-access target names used in repository/DB patterns.
-   Not real domain targets — iteration artifacts.
+   Not real domain targets - iteration artifacts.
    Also includes common loop iterator and exception variable names. *)
 (* Generic data-access target names used in repository/DB patterns.
-   Not real domain targets — iteration artifacts.
+   Not real domain targets - iteration artifacts.
    Also includes common loop iterator and exception variable names.
    Uses prefix match: 'item' matches 'items', 'entry' matches 'entries'. *)
 let is_generic_target (name : string) : bool =
@@ -701,7 +741,7 @@ let is_generic_target (name : string) : bool =
     "part"; "segment"; "chunk"; "piece";
     (* Network address variables *)
     "addr"; "address"; "host";
-    (* Web framework context objects — always passed in *)
+    (* Web framework context objects - always passed in *)
     "site"; "app"; "ctx"; "context";
     (* Constructor/config parameter patterns *)
     "opts"; "options"; "config"; "settings"; "params";
