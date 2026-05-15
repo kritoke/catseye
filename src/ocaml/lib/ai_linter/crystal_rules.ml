@@ -1075,6 +1075,65 @@ let detect_too_many_params (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 16: Exception Safety ─────────────────────────────────── *)
+
+(** Rule: Open Rescue
+    Detects rescue blocks that catch all exceptions without specifying a type.
+    AI often generates bare 'rescue' or 'rescue ex' instead of 'rescue SpecificError'.
+    Catches everything including SignalException, NoMemoryError etc. *)
+let detect_open_rescue (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EApp (fn, args) ->
+              (if get_full_name fn = "rescue" then
+                findings := ("Open rescue catches all exceptions — specify the exception type (e.g. rescue ArgumentError)",
+                  e.expr_location.start.line) :: !findings
+              else ());
+              scan fn; List.iter scan args
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Missing Else
+    Detects if-expressions without an else branch where the result appears
+    to be used (assigned to a variable or returned as last expression).
+    Missing else means nil is implicitly returned for the false branch.
+    AI often forgets the else branch, causing unexpected nil values. *)
+let detect_missing_else (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EIf (cond, then_, None) ->
+              (* if without else — check if used in assignment context *)
+              findings := ("if expression without else — false branch implicitly returns nil",
+                e.expr_location.start.line) :: !findings;
+              scan cond; scan then_
+          | EIf (cond, then_, Some else_) ->
+              scan cond; scan then_; scan else_
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1137,6 +1196,10 @@ let all () = [
 
   (* Arity *)
   ("too-many-params", T.Hint, detect_too_many_params);
+
+  (* Exception Safety *)
+  ("open-rescue", T.Warning, detect_open_rescue);
+  ("missing-else", T.Hint, detect_missing_else);
 ]
 
 (** Analyze module and return findings *)

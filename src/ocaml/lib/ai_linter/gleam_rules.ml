@@ -688,6 +688,64 @@ let detect_let_assert_on_result (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Todo as Body
+    Detects functions whose body is just a call to todo().
+    AI often generates stub functions with todo that never get implemented.
+    These will crash at runtime. *)
+let detect_todo_as_body (m : t) =
+  let rec is_todo_call (e : expr) : bool =
+    match e.expr_value with
+    | EApp (fn, _) -> expr_name fn = "todo"
+    | EBlock [e] -> is_todo_call e
+    | _ -> false
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) when is_todo_call body ->
+        Some (Printf.sprintf
+          "Function '%s' body is just todo() — will crash at runtime if called" name,
+          item.item_location.start.line)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: String Concat Chain
+    Detects 3+ string concatenations using <> operator.
+    Should use string.concat or string.join instead for readability.
+    AI often generates long concat chains instead of joining a list. *)
+let detect_string_concat_chain (m : t) =
+  let rec count_concats (e : expr) : int =
+    match e.expr_value with
+    | EBinOp (_, "<>", e2) -> 1 + count_concats e2
+    | EBlock es -> List.fold_left (fun acc e -> max acc (count_concats e)) 0 es
+    | ELet (_, e1, e2) -> max (count_concats e1) (count_concats e2)
+    | EApp (fn, args) ->
+        max (count_concats fn) (List.fold_left (fun acc a -> max acc (count_concats a)) 0 args)
+    | _ -> 0
+  in
+  let rec find_chains (e : expr) : (int * int) list =
+    match e.expr_value with
+    | EBinOp (_, "<>", e2) ->
+        let depth = count_concats e in
+        if depth >= 3 then [(depth, e.expr_location.start.line)]
+        else find_chains e2
+    | EBlock es -> List.concat_map find_chains es
+    | ELet (_, e1, e2) -> find_chains e1 @ find_chains e2
+    | EApp (fn, args) -> find_chains fn @ List.concat_map find_chains args
+    | EIf (_, then_, else_) ->
+        find_chains then_ @ (match else_ with Some e -> find_chains e | None -> [])
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_chains body with
+         | (count, line) :: _ ->
+             Some (Printf.sprintf
+               "String concat chain of %d segments — use string.concat or string.join" count, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -762,6 +820,8 @@ let all () = [
   ("assert-density", T.Warning, detect_assert_density);
   ("shadow-variable", T.Hint, detect_shadow_variable);
   ("let-assert-on-result", T.Warning, detect_let_assert_on_result);
+  ("todo-as-body", T.Warning, detect_todo_as_body);
+  ("string-concat-chain", T.Hint, detect_string_concat_chain);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
