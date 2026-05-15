@@ -91,7 +91,12 @@ let arg_to_expr (arg : arg_node) (loc : range) =
       with _ ->
         { expr_value = ELiteral (LString arg.value); expr_location = loc })
   | "call" ->
-      { expr_value = EApp (dotted_to_expr ~loc arg.value, []); expr_location = loc }
+      let fn_expr = dotted_to_expr ~loc arg.value in
+      let args = match arg.field with
+        | "" | "?" -> []
+        | f -> [{ expr_value = ELiteral (LString f); expr_location = loc }]
+      in
+      { expr_value = EApp (fn_expr, args); expr_location = loc }
   | "var" ->
       dotted_to_expr ~loc arg.value
   | _ ->

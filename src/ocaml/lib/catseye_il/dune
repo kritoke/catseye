@@ -2,5 +2,5 @@
 (library
  (name catseye_il)
  (public_name catseye.il)
- (modules il_types of_catseye_ast cfg_builder)
- (libraries catseye.ast))
+ (modules il_types of_catseye_ast cfg_builder cfg_taint)
+ (libraries catseye.ast catseye.rules catseye.types))

@@ -49,7 +49,8 @@ let () =
 
   let test_files = [
     ("/workspaces/catseye/test/samples/guard_test/guarded.cr", "crystal");
-    ("/workspaces/fetcher.cr/src/fetcher/html_utils.cr", "crystal");
+    ("/workspaces/catseye/test/samples/vulnerable.cr", "crystal");
+    ("/workspaces/catseye/test/samples/vulnerable_kemal.cr", "crystal");
   ] in
 
   List.iter (fun (path, _expected_lang) ->

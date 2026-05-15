@@ -393,7 +393,23 @@ let run (config : t) : int =
     Printf.printf "\n  → Running analysis engine (%d nodes)...\n\n" (List.length nodes);
 
   let findings = time_phase "analysis" (fun () ->
-    Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes) in
+    if config.use_cfg then begin
+      (* CFG-based taint analysis *)
+      let all_sources = List.concat_map (fun (r : Catseye_rules.Types.rule_def) ->
+        r.sources
+      ) rules in
+      List.concat_map (fun src ->
+        try
+          match Catseye_ast.Parse.parse_file ~path:src.path with
+          | Error _ -> []
+          | Ok mod_ ->
+            let unit = Catseye_il.Of_catseye_ast.translate mod_ in
+            Catseye_il.Cfg_taint.analyze_unit unit all_sources rules
+        with _ -> []
+      ) sources
+    end else
+      Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes
+  ) in
 
   (* Step 4b: Predator Vision — reachability analysis *)
   let reachability = if config.predator_vision && findings <> [] then begin

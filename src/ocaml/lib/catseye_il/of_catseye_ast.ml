@@ -120,13 +120,16 @@ and translate_stmt_expr (e : expr) : il_block =
     let assign_nodes = match e1.expr_value with
       | EApp (fn, args) ->
         let fn_name = expr_full_name fn in
-        [ILCall (Some lv, fn_name, List.map translate_expr args, pos_of_expr e1)]
+        let translated_args = List.map translate_expr args in
+        (* Walk nested args for sub-calls *)
+        let nested = List.concat_map (fun a ->
+          match a.expr_value with EApp _ -> extract_calls a | _ -> []
+        ) args in
+        nested @ [ILCall (Some lv, fn_name, translated_args, pos_of_expr e1)]
       | _ ->
         [ILAssign (lv, translate_expr e1, pos)]
     in
-    (* Walk the RHS for nested calls that produce taint *)
-    let rhs_calls = extract_calls e1 in
-    assign_nodes @ rhs_calls @ translate_block_expr e2
+    assign_nodes @ translate_block_expr e2
 
   | ELetAssert (pat, e1, e2) ->
     (* Assert let — treat same as regular let for taint purposes *)
