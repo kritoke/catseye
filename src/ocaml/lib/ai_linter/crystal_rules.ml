@@ -1387,6 +1387,67 @@ let detect_float_equality (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 21: Idiomatic Crystal ─────────────────────────────────── *)
+
+(** Rule: Empty String Comparison
+    Detects str == "" or str != "" instead of str.empty?.
+    AI often generates string comparisons instead of using the idiomatic method. *)
+let detect_empty_string_comparison (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EBinOp (e1, op, e2) when op = "==" || op = "!=" ->
+              (match e1.expr_value, e2.expr_value with
+               | ELiteral (LString ""), _ | _, ELiteral (LString "") ->
+                   findings := ("Compare with empty string using .empty? instead of == \"\"",
+                     e.expr_location.start.line) :: !findings
+               | _ -> ());
+              scan e1; scan e2
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Negated Comparison
+    Detects not(x == y) instead of x != y, or not(x != y) instead of x == y.
+    AI sometimes generates inverted comparisons that are harder to read. *)
+let detect_negated_comparison (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EApp (fn, [arg]) when get_full_name fn = "not" || get_full_name fn = "!" ->
+              (match arg.expr_value with
+               | EBinOp (_, ("==" | "!=" | "<=" | ">=" | "<" | ">" | "===" as op), _) ->
+                   findings := (Printf.sprintf
+                     "not(x %s y) is clearer written with the negated operator" op,
+                     e.expr_location.start.line) :: !findings
+               | _ -> ());
+              scan arg
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1468,6 +1529,10 @@ let all () = [
   (* Correctness *)
   ("global-variable", T.Warning, detect_global_variable);
   ("float-equality", T.Warning, detect_float_equality);
+
+  (* Idiomatic Crystal *)
+  ("empty-string-comparison", T.Hint, detect_empty_string_comparison);
+  ("negated-comparison", T.Hint, detect_negated_comparison);
 ]
 
 (** Analyze module and return findings *)

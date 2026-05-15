@@ -946,6 +946,69 @@ let detect_bool_return_check (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Useless Let Binding
+    Detects let x = x where a variable is rebound to itself.
+    This is a no-op — AI sometimes generates these by mistake. *)
+let detect_useless_let_binding (m : t) =
+  let rec find_useless (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ELet (PVar name, e1, e2) ->
+        (match e1.expr_value with
+         | EVar v when v = name ->
+             (name, e.expr_location.start.line) :: find_useless e2
+         | _ -> find_useless e1 @ find_useless e2)
+    | EBlock es -> List.concat_map find_useless es
+    | ELet (_, e1, e2) -> find_useless e1 @ find_useless e2
+    | EIf (_, then_, else_) ->
+        find_useless then_ @
+        (match else_ with Some e -> find_useless e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_useless e) branches
+    | EApp (fn, args) -> find_useless fn @ List.concat_map find_useless args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_useless body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf "let %s = %s is a no-op — remove the rebinding" name name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Int/Float Division Confusion
+    Detects integer division when the context suggests float division was intended,
+    or mixing int and float literals in arithmetic.
+    AI coming from dynamically-typed languages often mixes int/float incorrectly.
+    Heuristic: division of int literals that should produce a float result. *)
+let detect_int_float_division (m : t) =
+  let is_int_literal (e : expr) =
+    match e.expr_value with
+    | ELiteral (LInt _) -> true | _ -> false
+  in
+  let rec find_suspicious_div (e : expr) : int list =
+    match e.expr_value with
+    | EBinOp (e1, "/", e2) when is_int_literal e1 && is_int_literal e2 ->
+        e.expr_location.start.line :: []
+    | EBlock es -> List.concat_map find_suspicious_div es
+    | ELet (_, e1, e2) -> find_suspicious_div e1 @ find_suspicious_div e2
+    | EIf (_, then_, else_) ->
+        find_suspicious_div then_ @
+        (match else_ with Some e -> find_suspicious_div e | None -> [])
+    | EApp (fn, args) -> find_suspicious_div fn @ List.concat_map find_suspicious_div args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_suspicious_div body with
+         | line :: _ ->
+             Some ("Integer division of two int literals — use float literals (e.g. 1.0 / 2.0) if float result expected", line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -1027,6 +1090,8 @@ let all () = [
   ("unused-let", T.Hint, detect_unused_let);
   ("nested-function", T.Hint, detect_nested_function);
   ("bool-return-check", T.Hint, detect_bool_return_check);
+  ("useless-let-binding", T.Hint, detect_useless_let_binding);
+  ("int-float-division", T.Hint, detect_int_float_division);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
