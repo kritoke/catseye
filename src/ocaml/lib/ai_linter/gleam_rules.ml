@@ -860,6 +860,92 @@ let detect_unused_let (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Nested Function
+    Detects anonymous functions (EFn) defined inside named functions that
+    are large enough to be their own named function.
+    AI often inlines helper functions as anonymous fns instead of
+    extracting them as testable, reusable named functions.
+    Heuristic: EFn with body containing 3+ expressions. *)
+let detect_nested_function (m : t) =
+  let rec count_stmts (e : expr) : int =
+    match e.expr_value with
+    | EBlock es -> List.length es
+    | ELet (_, _, e2) -> 1 + count_stmts e2
+    | _ -> 1
+  in
+  let rec find_nested_fns (e : expr) : (int * int) list =
+    match e.expr_value with
+    | EFn (_, body) when count_stmts body >= 3 ->
+        (count_stmts body, e.expr_location.start.line)
+        :: find_nested_fns body
+    | EFn (_, body) -> find_nested_fns body
+    | EBlock es -> List.concat_map find_nested_fns es
+    | ELet (_, e1, e2) -> find_nested_fns e1 @ find_nested_fns e2
+    | EIf (_, then_, else_) ->
+        find_nested_fns then_ @
+        (match else_ with Some e -> find_nested_fns e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_nested_fns e) branches
+    | EApp (fn, args) -> find_nested_fns fn @ List.concat_map find_nested_fns args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_nested_fns body with
+         | (size, line) :: _ ->
+             Some (Printf.sprintf
+               "Anonymous function with %d statements — extract as a named function for testability"
+               size, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Bool Return Check
+    Detects if expressions that explicitly return True in one branch and
+    False in another — the condition itself should be returned.
+    AI often writes verbose boolean returns instead of returning the condition.
+    Example: if x > 0 { True } else { False } should just be x > 0 *)
+let detect_bool_return_check (m : t) =
+  let is_bool_literal (e : expr) =
+    match e.expr_value with
+    | ELiteral (LBool _) -> true
+    | EVar v -> v = "True" || v = "False"
+    | _ -> false
+  and bool_val (e : expr) =
+    match e.expr_value with
+    | ELiteral (LBool b) -> Some b
+    | EVar v when v = "True" -> Some true
+    | EVar v when v = "False" -> Some false
+    | _ -> None
+  in
+  let rec find_bool_returns (e : expr) : int list =
+    match e.expr_value with
+    | EIf (_, then_, Some else_) when is_bool_literal then_ && is_bool_literal else_ ->
+        (match bool_val then_, bool_val else_ with
+         | Some true, Some false | Some false, Some true ->
+             [e.expr_location.start.line]
+         | _ -> [])
+    | EBlock es -> List.concat_map find_bool_returns es
+    | ELet (_, e1, e2) -> find_bool_returns e1 @ find_bool_returns e2
+    | EIf (_, then_, else_) ->
+        find_bool_returns then_ @
+        (match else_ with Some e -> find_bool_returns e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_bool_returns e) branches
+    | EApp (fn, args) -> find_bool_returns fn @ List.concat_map find_bool_returns args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_bool_returns body with
+         | line :: _ ->
+             Some ("if True else False is redundant — return the condition directly", line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -939,6 +1025,8 @@ let all () = [
   ("equals-true", T.Hint, detect_equals_true);
   ("redundant-single-case", T.Hint, detect_redundant_single_case);
   ("unused-let", T.Hint, detect_unused_let);
+  ("nested-function", T.Hint, detect_nested_function);
+  ("bool-return-check", T.Hint, detect_bool_return_check);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

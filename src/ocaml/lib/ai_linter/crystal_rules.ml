@@ -1310,6 +1310,83 @@ let detect_unless_with_else (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 20: Correctness ────────────────────────────────────────── *)
+
+(** Rule: Global Variable
+    Detects $-prefixed global variables in Crystal.
+    AI trained on Ruby often uses $globals which are a code smell in Crystal.
+    Use class variables, constants, or module-level state instead. *)
+let detect_global_variable (m : t) =
+  let findings = ref [] in
+  let rec scan (e : expr) =
+    match e.expr_value with
+    | EVar v when String.length v > 1 && String.sub v 0 1 = "$" ->
+        findings := (Printf.sprintf
+          "Global variable $%s — use a constant or module-level binding instead"
+          (String.sub v 1 (String.length v - 1)), e.expr_location.start.line) :: !findings
+    | EBlock es -> List.iter scan es
+    | ELet (_, e1, e2) -> scan e1; scan e2
+    | EIf (_, then_, else_) ->
+        scan then_; (match else_ with Some e -> scan e | None -> ())
+    | EApp (fn, args) -> scan fn; List.iter scan args
+    | ECase (_, branches) ->
+        List.iter (fun (_, e) -> scan e) branches
+    | _ -> ()
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Float Equality Comparison
+    Detects == comparisons involving float literals or float-returning functions.
+    Float equality is unreliable due to precision — use delta comparison.
+    AI often generates naive float == float checks. *)
+let detect_float_equality (m : t) =
+  let is_float_expr (e : expr) =
+    match e.expr_value with
+    | ELiteral (LFloat _) -> true
+    | ELiteral (LString s) ->
+        (* Check if it looks like a float constant *)
+        String.length s > 0 &&
+        let has_dot = String.contains s '.' in
+        let is_num = List.for_all (fun c -> Char.code c >= 48 && Char.code c <= 57 || c = '.')
+          (List.init (String.length s) (fun i -> s.[i])) in
+        has_dot && is_num
+    | _ -> false
+  in
+  let is_float_fn (name : string) =
+    List.exists (fun s ->
+      String.length name >= String.length s &&
+      String.sub name (String.length name - String.length s) (String.length s) = s
+    ) ["to_f"; ".floor"; ".ceil"; ".round"; ".abs"; "Float"; "rand"]
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EBinOp (e1, op, e2) when op = "==" || op = "!=" ->
+              if is_float_expr e1 || is_float_expr e2 ||
+                 is_float_fn (get_full_name e1) || is_float_fn (get_full_name e2) then
+                findings := ("Float equality comparison is unreliable — use delta comparison (abs(a - b) < epsilon)",
+                  e.expr_location.start.line) :: !findings;
+              scan e1; scan e2
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1387,6 +1464,10 @@ let all () = [
 
   (* Style *)
   ("unless-with-else", T.Hint, detect_unless_with_else);
+
+  (* Correctness *)
+  ("global-variable", T.Warning, detect_global_variable);
+  ("float-equality", T.Warning, detect_float_equality);
 ]
 
 (** Analyze module and return findings *)
