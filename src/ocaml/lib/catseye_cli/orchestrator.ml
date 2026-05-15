@@ -49,6 +49,21 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
   else Error exit_code
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
+  if config.ast_bridge then begin
+    (* Bridge path: parse → CatseyeAST.t → Security_node.t *)
+    try
+      match Catseye_ast.Parse.parse_file ~path:src.path with
+      | Ok mod_ ->
+          let nodes = Catseye_ast.To_security_node.derive mod_ in
+          Some nodes
+      | Error err ->
+          Printf.eprintf "Bridge parse error: %s:%d: %s\n" err.file
+            (Option.value err.line ~default:0) err.message;
+          None
+    with e ->
+      Printf.eprintf "Bridge error: %s\n" (Printexc.to_string e);
+      None
+  end else
   match src.lang with
   | "crystal" ->
     let cmd = Printf.sprintf "%s %s 2>/dev/null"

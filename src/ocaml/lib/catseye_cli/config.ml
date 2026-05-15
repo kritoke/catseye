@@ -33,6 +33,7 @@ type t = {
   crows_nest : bool;
   claws : bool;
   ai_lint : bool;  (* Enable AI linter rules *)
+  ast_bridge : bool;  (* Use CatseyeAST.t bridge instead of direct extraction *)
   claws_config : Catseye_claws.Types.claws_config;
 }
 
@@ -57,6 +58,7 @@ let default = {
   crows_nest = false;
   claws = false;
   ai_lint = false;
+  ast_bridge = false;
   claws_config = Catseye_claws.Types.default_config;
 }
 

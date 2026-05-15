@@ -2,5 +2,5 @@
 (library
  (name catseye_ast)
  (public_name catseye.ast)
- (modules types error parse gleam_mapper crystal_mapper)
- (libraries unix yojson))
+ (modules types error parse gleam_mapper crystal_mapper to_security_node)
+ (libraries unix yojson catseye.types))
