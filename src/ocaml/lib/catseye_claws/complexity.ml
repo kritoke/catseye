@@ -21,7 +21,7 @@ let decision_patterns =
   [ "if"; "unless"; "case"; "select"; "when"
   ; "&&"; "||"; "and "; "or "
   ; "loop"; "while"; "for "; "each"
-  ; "try"; "rescue"
+  ; "exception_handler"
   ]
 
 (** Find substring [needle] in [haystack], returning start index or -1. *)
