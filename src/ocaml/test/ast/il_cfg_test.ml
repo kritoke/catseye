@@ -50,7 +50,13 @@ let () =
   let test_files = [
     ("/workspaces/catseye/test/samples/guard_test/guarded.cr", "crystal");
     ("/workspaces/catseye/test/samples/vulnerable.cr", "crystal");
+    ("/workspaces/catseye/test/samples/vulnerable_lucky.cr", "crystal");
     ("/workspaces/catseye/test/samples/vulnerable_kemal.cr", "crystal");
+    ("/workspaces/catseye/test/samples/unsafe_sql.cr", "crystal");
+    ("/workspaces/catseye/test/samples/vulnerable_extra.cr", "crystal");
+    ("/workspaces/catseye/test/samples/vulnerable_patterns.cr", "crystal");
+    ("/workspaces/catseye/test/samples/smell_samples/dry_a.cr", "crystal");
+    ("/workspaces/catseye/test/samples/smell_samples/dry_b.cr", "crystal");
   ] in
 
   List.iter (fun (path, _expected_lang) ->

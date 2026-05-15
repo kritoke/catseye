@@ -50,7 +50,8 @@ let rec lval_of_expr (e : il_expr) : lval option =
      | None -> None)
   | _ -> None
 
-(* Check if an expression references tainted data *)
+(* Check if an expression references tainted data.
+   Special case: <interpolation> passes through any tainted var in scope. *)
 let rec is_expr_tainted (state : taint_state) (e : il_expr) : bool =
   match e with
   | IEVar v -> is_tainted state (LVVar v)
@@ -58,6 +59,9 @@ let rec is_expr_tainted (state : taint_state) (e : il_expr) : bool =
     (match lval_of_expr e with
      | Some lv -> is_tainted state lv
      | None -> false)
+  | IECall (fn, _args, _) when fn = "<interpolation>" ->
+    (* Interpolation passes through taint from any var in scope *)
+    not (LvalSet.is_empty state.tainted)
   | IECall (_, args, _) -> List.exists (is_expr_tainted state) args
   | IELiteral _ -> false
   | IEUnknown _ -> false
@@ -114,11 +118,12 @@ let rec transfer_node (state : taint_state) (node : il_node)
          else
            (* Check if receiver is a source: params.[]() means params[key] *)
            let receiver_tainted =
-             (* For x.[](arg), if x is a source, the result is tainted *)
+             (* For x.[](arg), if x is a source OR x is already tainted, result is tainted *)
              String.length fn_name > 3 &&
              String.sub fn_name (String.length fn_name - 3) 3 = ".[]" &&
              let receiver = String.sub fn_name 0 (String.length fn_name - 3) in
-             List.exists (fun (s : source_def) -> receiver = s.name) sources
+             is_tainted state (LVVar receiver)
+             || List.exists (fun (s : source_def) -> receiver = s.name) sources
            in
            if receiver_tainted then taint_lval state lv
            else
@@ -139,18 +144,22 @@ let rec transfer_node (state : taint_state) (node : il_node)
     (* Check if this call matches a sink with tainted args *)
     let new_findings = check_call_sinks fn_name args pos file lang rules state in
     (* Propagate taint through call if result is assigned *)
-    (* Check: (1) any explicit arg is tainted, OR (2) receiver is tainted (params.[]) *)
+    (* Check: (1) any explicit arg is tainted, (2) receiver is tainted (params.[]),
+       (3) <interpolation> passes through any taint *)
     let any_tainted = List.exists (is_expr_tainted state) args in
     let receiver_tainted =
-      (* For x.method(args), if x is tainted, result is tainted *)
       match String.index_opt fn_name '.' with
       | Some idx ->
         let receiver = String.sub fn_name 0 idx in
         is_tainted state (LVVar receiver)
+        || List.exists (fun (s : source_def) -> receiver = s.name) sources
       | None -> false
     in
+    let interpolation_tainted =
+      fn_name = "<interpolation>" && not (LvalSet.is_empty state.tainted)
+    in
     let state' = match result_lv with
-      | Some lv when any_tainted || receiver_tainted ->
+      | Some lv when any_tainted || receiver_tainted || interpolation_tainted ->
         taint_lval state lv
       | _ -> state
     in
