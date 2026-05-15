@@ -974,6 +974,86 @@ let detect_dead_code_after_error (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 14: Async & DRY ───────────────────────────────────────── *)
+
+(** Rule: Callback Hell
+    Detects 3+ levels of nested EFn (anonymous functions / blocks).
+    AI often generates deeply nested callbacks instead of flat control flow. *)
+let detect_callback_hell (m : t) =
+  let max_depth = 2 in
+  let rec fn_depth (e : expr) : int =
+    match e.expr_value with
+    | EFn (_, body) -> 1 + fn_depth body
+    | EBlock es -> List.fold_left (fun acc e -> max acc (fn_depth e)) 0 es
+    | ELet (_, e1, e2) -> max (fn_depth e1) (fn_depth e2)
+    | EIf (_, then_, else_) ->
+        max (fn_depth then_)
+          (match else_ with Some e -> fn_depth e | None -> 0)
+    | EApp (fn, args) -> max (fn_depth fn) (List.fold_left (fun acc a -> max acc (fn_depth a)) 0 args)
+    | _ -> 0
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let depth = fn_depth body in
+        if depth > max_depth then
+          findings := (Printf.sprintf
+            "Function '%s' has %d levels of nested closures (max %d) — flatten with named functions"
+            name depth max_depth, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Repeated Regex
+    Detects the same regex literal appearing in 2+ functions.
+    AI often duplicates regex patterns instead of extracting to a constant. *)
+let detect_repeated_regex (m : t) =
+  let regex_by_func = Hashtbl.create 16 in
+  let regex_locations = Hashtbl.create 16 in
+  let rec collect_regexes (e : expr) : string list =
+    match e.expr_value with
+    | ELiteral (LString s) when
+        String.length s >= 3 &&
+        (String.length s >= 2 && String.sub s 0 1 = "/" ||
+         String.length s >= 3 && String.sub s 0 2 = "r/") ->
+        [s]
+    | ELiteral (LString s) when
+        String.length s >= 4 &&
+        (String.sub s 0 1 = "^" || String.sub s (String.length s - 1) 1 = "$") &&
+        List.exists (fun c -> String.contains s c) ['.'; '*'; '+'; '?'; '['; '('; '|'] ->
+        [s]
+    | EBlock es -> List.concat_map collect_regexes es
+    | ELet (_, e1, e2) -> collect_regexes e1 @ collect_regexes e2
+    | EApp (fn, args) -> collect_regexes fn @ List.concat_map collect_regexes args
+    | EIf (_, then_, else_) ->
+        collect_regexes then_ @ (match else_ with Some e -> collect_regexes e | None -> [])
+    | _ -> []
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        List.iter (fun rx ->
+          let funcs = try Hashtbl.find regex_by_func rx with Not_found -> [] in
+          if not (List.mem name funcs) then begin
+            Hashtbl.replace regex_by_func rx (name :: funcs);
+            let line = item.item_location.start.line in
+            let existing = try Hashtbl.find regex_locations rx with Not_found -> [] in
+            Hashtbl.replace regex_locations rx ((name, line) :: existing)
+          end
+        ) (collect_regexes body)
+    | _ -> ()
+  ) m.mod_items;
+  let findings = ref [] in
+  Hashtbl.iter (fun rx locations ->
+    if List.length locations >= 2 then
+      let funcs = String.concat ", " (List.map fst locations) in
+      let _, line = List.hd locations in
+      findings := (Printf.sprintf
+        "Regex %s duplicated in functions: %s — extract to a constant" rx funcs, line) :: !findings
+  ) regex_locations;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1029,6 +1109,10 @@ let all () = [
 
   (* Dead Code *)
   ("dead-code-after-error", T.Warning, detect_dead_code_after_error);
+
+  (* Async & DRY *)
+  ("callback-hell", T.Warning, detect_callback_hell);
+  ("repeated-regex", T.Hint, detect_repeated_regex);
 ]
 
 (** Analyze module and return findings *)

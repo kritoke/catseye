@@ -589,6 +589,68 @@ let detect_complex_pipeline (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Assert Density
+    Detects functions with 3+ let assert statements.
+    Using too many asserts indicates the function assumes too much about
+    its data — use proper case/Result handling instead.
+    AI often generates assert-heavy code instead of proper error handling. *)
+let detect_assert_density (m : t) =
+  let max_asserts = 2 in
+  let rec count_asserts (e : expr) : int =
+    match e.expr_value with
+    | ELetAssert _ -> 1
+    | EBlock es -> List.fold_left (fun acc e -> acc + count_asserts e) 0 es
+    | ELet (_, e1, e2) -> count_asserts e1 + count_asserts e2
+    | EIf (_, then_, else_) ->
+        count_asserts then_ + (match else_ with Some e -> count_asserts e | None -> 0)
+    | ECase (_, branches) ->
+        List.fold_left (fun acc (_, e) -> acc + count_asserts e) 0 branches
+    | EApp (fn, args) -> count_asserts fn + List.fold_left (fun acc a -> acc + count_asserts a) 0 args
+    | _ -> 0
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let count = count_asserts body in
+        if count > max_asserts then
+          Some (Printf.sprintf
+            "Function '%s' has %d let assert statements (max %d) — use case expressions for proper error handling"
+            name count max_asserts, item.item_location.start.line)
+        else None
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Shadow Variable
+    Detects let-bindings that reuse a variable name from an outer scope.
+    AI often accidentally shadows variables, causing subtle bugs.
+    Heuristic: PVar in ELet whose name already appears in an enclosing let. *)
+let detect_shadow_variable (m : t) =
+  let rec find_shadows (e : expr) (bound : string list) : (string * int) list =
+    match e.expr_value with
+    | ELet (PVar name, e1, body) ->
+        let shadow_findings =
+          if List.mem name bound then [(name, e.expr_location.start.line)] else [] in
+        shadow_findings @ find_shadows e1 bound @ find_shadows body (name :: bound)
+    | EBlock es -> List.concat_map (fun e -> find_shadows e bound) es
+    | ELet (_, e1, e2) -> find_shadows e1 bound @ find_shadows e2 bound
+    | EIf (_, then_, else_) ->
+        find_shadows then_ bound @ (match else_ with Some e -> find_shadows e bound | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_shadows e bound) branches
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, params, _, body) ->
+        let param_names = List.filter_map (function PVar v -> Some v | _ -> None) params in
+        (match find_shadows body param_names with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf
+               "Variable '%s' shadows an outer binding — rename to avoid confusion" name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -660,6 +722,8 @@ let all () = [
   ("guard-after-wildcard", T.Warning, detect_guard_after_wildcard);
   ("tuple-abuse", T.Hint, detect_tuple_abuse);
   ("complex-pipeline", T.Hint, detect_complex_pipeline);
+  ("assert-density", T.Warning, detect_assert_density);
+  ("shadow-variable", T.Hint, detect_shadow_variable);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
