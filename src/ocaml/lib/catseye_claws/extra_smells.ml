@@ -316,24 +316,36 @@ let check_data_clumps (nodes : Security_node.t list)
         ) params
       ) params)
     ) defs;
-    (* Report pairs exceeding threshold *)
+    (* Report pairs exceeding threshold, filtering out common Crystal stdlib patterns
+       that are idiomatic rather than code smells. *)
+    let common_pairs = Hashtbl.create 16 in
+    List.iter (fun (a, b) -> Hashtbl.replace common_pairs (a, b) true) [
+      ("config", "url"); ("key", "value"); ("message", "url");
+      ("body", "url"); ("body", "config"); ("content", "limit");
+      ("io", "limit"); ("data", "limit"); ("ex", "url");
+    ];
     Hashtbl.fold (fun (p1, p2) count acc ->
-      if count >= threshold then begin
+      if count < threshold then acc
+      else begin
         let files = try Hashtbl.find pair_files (p1, p2) with Not_found -> [] in
-        { Finding.rule = "DataClump";
-          severity = "Medium";
-          file = List.hd (List.sort String.compare files);
-          line = 0;
-          message = Printf.sprintf
-            "Parameters '%s' and '%s' always appear together in %d functions \
-             across %d files. Consider grouping into a struct or record."
-            p1 p2 count (List.length files);
-          flow = [];
-          language = "";
-          dependency = None;
-          reachability = None; suggestion = None;
-        } :: acc
-      end else acc
+        let is_common = Hashtbl.mem common_pairs (min p1 p2, max p1 p2) in
+        let file_count = List.length files in
+        if is_common || file_count < 2 then acc
+        else
+          { Finding.rule = "DataClump";
+            severity = "Medium";
+            file = List.hd (List.sort String.compare files);
+            line = 0;
+            message = Printf.sprintf
+              "Parameters '%s' and '%s' always appear together in %d functions \
+               across %d files. Consider grouping into a struct or record."
+              p1 p2 count file_count;
+            flow = [];
+            language = "";
+            dependency = None;
+            reachability = None; suggestion = None;
+          } :: acc
+      end
     ) pair_counts []
   end
 
