@@ -1054,6 +1054,27 @@ let detect_repeated_regex (m : t) =
   ) regex_locations;
   !findings
 
+(* ── Category 15: Arity ────────────────────────────────────────────── *)
+
+(** Rule: Too Many Parameters
+    Detects functions with 7+ parameters.
+    AI often generates functions with too many arguments instead of
+    grouping into a configuration record/struct. *)
+let detect_too_many_params (m : t) =
+  let max_params = 6 in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, params, _, _) ->
+        let count = List.length params in
+        if count > max_params then
+          findings := (Printf.sprintf
+            "Function '%s' has %d parameters (max %d) — group into a configuration record"
+            name count max_params, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1113,6 +1134,9 @@ let all () = [
   (* Async & DRY *)
   ("callback-hell", T.Warning, detect_callback_hell);
   ("repeated-regex", T.Hint, detect_repeated_regex);
+
+  (* Arity *)
+  ("too-many-params", T.Hint, detect_too_many_params);
 ]
 
 (** Analyze module and return findings *)

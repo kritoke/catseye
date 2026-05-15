@@ -651,6 +651,43 @@ let detect_shadow_variable (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Let Assert on Result
+    Detects let assert on functions known to return Result type.
+    Using assert on Result types will crash at runtime on Error —
+    use a proper case expression instead. *)
+let detect_let_assert_on_result (m : t) =
+  let rec find_asserts_on_results (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ELetAssert (_, e1, _) ->
+        (match e1.expr_value with
+         | EApp (fn, _) ->
+             let name = expr_name fn in
+             (match Type_inference.lookup_gleam name with
+              | Some { Type_inference.kind = Result; _ } ->
+                  [(name, e1.expr_location.start.line)]
+              | _ -> [])
+         | _ -> [])
+    | EBlock es -> List.concat_map find_asserts_on_results es
+    | ELet (_, e1, e2) -> find_asserts_on_results e1 @ find_asserts_on_results e2
+    | EIf (_, then_, else_) ->
+        find_asserts_on_results then_ @
+        (match else_ with Some e -> find_asserts_on_results e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_asserts_on_results e) branches
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_asserts_on_results body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf
+               "let assert on %s which returns Result — will crash on Error. Use case expression"
+               name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -724,6 +761,7 @@ let all () = [
   ("complex-pipeline", T.Hint, detect_complex_pipeline);
   ("assert-density", T.Warning, detect_assert_density);
   ("shadow-variable", T.Hint, detect_shadow_variable);
+  ("let-assert-on-result", T.Warning, detect_let_assert_on_result);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
