@@ -1448,6 +1448,38 @@ let detect_negated_comparison (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 22: Final Sweep ─────────────────────────────────────────── *)
+
+(** Rule: Redundant Self
+    Detects explicit self. method calls where implicit self would suffice.
+    AI trained on Python/Ruby often adds unnecessary self. prefixes. *)
+let detect_redundant_self (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EFieldAccess (recv, field) ->
+              (match recv.expr_value with
+               | EVar v when v = "self" && String.length field > 0 ->
+                   findings := (Printf.sprintf
+                     "self.%s is redundant — method calls are implicitly on self" field,
+                     e.expr_location.start.line) :: !findings
+               | _ -> ());
+              scan recv
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1533,6 +1565,9 @@ let all () = [
   (* Idiomatic Crystal *)
   ("empty-string-comparison", T.Hint, detect_empty_string_comparison);
   ("negated-comparison", T.Hint, detect_negated_comparison);
+
+  (* Final Sweep *)
+  ("redundant-self", T.Hint, detect_redundant_self);
 ]
 
 (** Analyze module and return findings *)

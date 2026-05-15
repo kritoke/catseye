@@ -1009,6 +1009,50 @@ let detect_int_float_division (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Repeated String Literal
+    Detects the same string literal appearing in 2+ functions.
+    Should be extracted to a module-level constant.
+    AI often duplicates string constants across functions. *)
+let detect_repeated_string_literal (m : t) =
+  let min_length = 4 in
+  let lit_by_func = Hashtbl.create 32 in
+  let lit_locations = Hashtbl.create 32 in
+  let rec collect_strings (e : expr) : string list =
+    match e.expr_value with
+    | ELiteral (LString s) when String.length s >= min_length -> [s]
+    | EBlock es -> List.concat_map collect_strings es
+    | ELet (_, e1, e2) -> collect_strings e1 @ collect_strings e2
+    | EIf (_, then_, else_) ->
+        collect_strings then_ @ (match else_ with Some e -> collect_strings e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> collect_strings e) branches
+    | EApp (fn, args) -> collect_strings fn @ List.concat_map collect_strings args
+    | _ -> []
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        List.iter (fun s ->
+          let funcs = try Hashtbl.find lit_by_func s with Not_found -> [] in
+          if not (List.mem name funcs) then begin
+            Hashtbl.replace lit_by_func s (name :: funcs);
+            let existing = try Hashtbl.find lit_locations s with Not_found -> [] in
+            Hashtbl.replace lit_locations s ((name, item.item_location.start.line) :: existing)
+          end
+        ) (collect_strings body)
+    | _ -> ()
+  ) m.mod_items;
+  let findings = ref [] in
+  Hashtbl.iter (fun s locations ->
+    if List.length locations >= 2 then
+      let funcs = String.concat ", " (List.map fst (List.sort_uniq compare locations)) in
+      let _, line = List.hd locations in
+      findings := (Printf.sprintf
+        "String \"%s\" appears in %d functions (%s) — extract to a module constant"
+        s (List.length locations) funcs, line) :: !findings
+  ) lit_locations;
+  List.sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) !findings
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -1092,6 +1136,7 @@ let all () = [
   ("bool-return-check", T.Hint, detect_bool_return_check);
   ("useless-let-binding", T.Hint, detect_useless_let_binding);
   ("int-float-division", T.Hint, detect_int_float_division);
+  ("repeated-string-literal", T.Hint, detect_repeated_string_literal);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
