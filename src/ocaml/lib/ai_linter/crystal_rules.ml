@@ -553,6 +553,101 @@ let detect_debug_require (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 9: Code Quality ────────────────────────────────────────── *)
+
+(** Rule: Empty Catch Block
+    Detects rescue/except blocks with empty bodies — errors swallowed silently.
+    AI often generates empty rescue blocks as placeholders. *)
+let detect_empty_catch (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec has_empty_rescue (e : expr) =
+          match e.expr_value with
+          | EApp (fn, args) when get_full_name fn = "rescue" ->
+              (* rescue block with no meaningful content *)
+              let has_body = List.exists (fun a ->
+                match a.expr_value with
+                | EBlock [] | EUnit -> false
+                | _ -> true
+              ) args in
+              if not has_body then
+                Some e.expr_location.start.line
+              else None
+          | EBlock es -> List.find_map has_empty_rescue es
+          | ELet (_, e1, e2) ->
+              (match has_empty_rescue e1 with Some l -> Some l | None -> has_empty_rescue e2)
+          | EIf (_, then_, else_) ->
+              (match has_empty_rescue then_ with
+               | Some l -> Some l
+               | None -> (match else_ with Some e -> has_empty_rescue e | None -> None))
+          | _ -> None
+        in
+        (match has_empty_rescue body with
+         | Some line ->
+             findings := ("Empty rescue block — errors are silently swallowed. Log or handle the exception.", line) :: !findings
+         | None -> ())
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(* Rule: Flag Argument
+    Detects boolean-style parameters (is_X, should_X, has_X, with_X, no_X).
+    AI-generated code often uses flag arguments instead of separate methods or enums. *)
+let detect_flag_argument (m : t) =
+  let is_flag_name (s : string) =
+    String.length s >= 3 &&
+    let prefixes = ["is_"; "should_"; "has_"; "with_"; "no_"; "use_"; "enable_"; "disable_"] in
+    List.exists (fun p -> String.length s > String.length p && String.sub s 0 (String.length p) = p) prefixes
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, patterns, _, _) ->
+        let flag_params = List.filter_map (function
+          | PVar v when is_flag_name v -> Some v
+          | _ -> None
+        ) patterns in
+        List.iter (fun p ->
+          findings := (Printf.sprintf
+            "Function '%s' has flag argument '%s' — consider splitting into separate methods or using an enum"
+            name p, item.item_location.start.line) :: !findings
+        ) flag_params
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Long Method
+    Detects functions with too many expression nodes in their body.
+    AI often generates monolithic functions that should be decomposed. *)
+let detect_long_method (m : t) =
+  let max_nodes = 50 in
+  let rec count_nodes (e : expr) : int =
+    match e.expr_value with
+    | EBlock es -> List.fold_left (fun acc e -> acc + count_nodes e) 0 es
+    | ELet (_, e1, e2) -> 1 + count_nodes e1 + count_nodes e2
+    | EIf (_, then_, else_) ->
+        1 + count_nodes then_ +
+        (match else_ with Some e -> count_nodes e | None -> 0)
+    | ECase (_, branches) ->
+        1 + List.fold_left (fun acc (_, e) -> acc + count_nodes e) 0 branches
+    | EApp (fn, args) -> 1 + count_nodes fn + List.fold_left (fun acc e -> acc + count_nodes e) 0 args
+    | _ -> 1
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let count = count_nodes body in
+        if count > max_nodes then
+          findings := (Printf.sprintf
+            "Function '%s' has %d AST nodes (max %d) — consider breaking into smaller functions"
+            name count max_nodes, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -586,6 +681,11 @@ let all () = [
   (* The Looper *)
   ("magic-string", T.Hint, detect_magic_string);
   ("debug-require", T.Warning, detect_debug_require);
+
+  (* Code Quality *)
+  ("empty-catch", T.Warning, detect_empty_catch);
+  ("flag-argument", T.Hint, detect_flag_argument);
+  ("long-method", T.Warning, detect_long_method);
 ]
 
 (** Analyze module and return findings *)

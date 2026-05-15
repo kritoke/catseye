@@ -367,6 +367,43 @@ let detect_discard_result (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Redundant Pipeline
+    Detects pipeline expressions where the final step is an identity-like
+    function or where a single-step pipeline could be a direct call.
+    AI often overuses the |> operator. *)
+let detect_redundant_pipeline (m : t) =
+  let rec collect_piped_identity (e : expr) : (string * int) list =
+    match e.expr_value with
+    (* x |> fn(args) where fn has no args = just fn(x), pipeline is redundant *)
+    | EApp (fn, [single_arg]) ->
+        let name = expr_name fn in
+        let arg_name = expr_name single_arg in
+        (* Single-arg call with a named arg — could be piped *)
+        if String.length name > 0 && String.length arg_name > 0 &&
+           name <> "=" && name <> "==" && name <> "!=" then
+          [(name, e.expr_location.start.line)]
+        else []
+    | EBlock es -> List.concat_map collect_piped_identity es
+    | ELet (_, e1, e2) -> collect_piped_identity e1 @ collect_piped_identity e2
+    | EIf (_, then_, else_) ->
+        collect_piped_identity then_ @
+        (match else_ with Some e -> collect_piped_identity e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> collect_piped_identity e) branches
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match collect_piped_identity body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf
+               "Pipeline to %s could be a direct call — overuse of |> is common in AI-generated code"
+               name, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -431,6 +468,7 @@ let all () = [
   ("ignored-result", T.Warning, detect_ignored_result);
   ("unused-import", T.Hint, detect_unused_import);
   ("discard-result", T.Warning, detect_discard_result);
+  ("redundant-pipeline", T.Hint, detect_redundant_pipeline);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
