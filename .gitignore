@@ -61,3 +61,6 @@ flake.private.nix
 .tickets/
 # Planning docs (local only, not tracked)
 planning/
+
+# OpenSpec (local only)
+openspec/

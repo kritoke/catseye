@@ -57,6 +57,8 @@ let parse_args () : t =
       go { acc with ai_lint = true } rest
     | "--bridge" :: rest ->
       go { acc with ast_bridge = true } rest
+    | "--cfg" :: rest ->
+      go { acc with use_cfg = true } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
     | ("--version" | "-v") :: _ ->

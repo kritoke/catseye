@@ -34,6 +34,7 @@ type t = {
   claws : bool;
   ai_lint : bool;  (* Enable AI linter rules *)
   ast_bridge : bool;  (* Use CatseyeAST.t bridge instead of direct extraction *)
+  use_cfg : bool;     (* Use IL/CFG-based taint engine *)
   claws_config : Catseye_claws.Types.claws_config;
 }
 
@@ -59,6 +60,7 @@ let default = {
   claws = false;
   ai_lint = false;
   ast_bridge = false;
+  use_cfg = false;
   claws_config = Catseye_claws.Types.default_config;
 }
 

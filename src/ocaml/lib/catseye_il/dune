@@ -1,0 +1,6 @@
+; src/ocaml/lib/catseye_il/dune
+(library
+ (name catseye_il)
+ (public_name catseye.il)
+ (modules il_types of_catseye_ast cfg_builder)
+ (libraries catseye.ast))
