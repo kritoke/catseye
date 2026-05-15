@@ -1134,6 +1134,82 @@ let detect_missing_else (m : t) =
   ) m.mod_items;
   !findings
 
+(* ── Category 17: Control Flow Clarity ──────────────────────────────── *)
+
+(** Rule: Reassignment in Condition
+    Detects variable reassignment inside if/case conditions.
+    AI sometimes mutates variables in conditions, leading to subtle bugs
+    and hard-to-read code. *)
+let detect_reassignment_in_condition (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EIf (cond, then_, else_) ->
+              (match cond.expr_value with
+               | EAssignment _ ->
+                   findings := ("Assignment inside if condition — extract to a separate binding for clarity",
+                     cond.expr_location.start.line) :: !findings
+               | _ -> ());
+              scan cond; scan then_; (match else_ with Some e -> scan e | None -> ())
+          | EBlock es -> List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | ECase (_, branches) ->
+              List.iter (fun (_, e) -> scan e) branches
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Unreachable Code
+    Detects any code after return-like statements (EError, or raise-equivalents)
+    in a block. Broader than dead-code-after-error — catches more patterns.
+    AI often generates code that can never execute. *)
+let detect_unreachable_code (m : t) =
+  let is_terminal (e : expr) =
+    match e.expr_value with
+    | EError _ -> true
+    | EApp (fn, _) ->
+        let name = get_full_name fn in
+        name = "return" || name = "raise" || name = "fail" || name = "exit"
+        || name = "abort"
+    | _ -> false
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let rec scan_block = function
+          | [] | [_] -> ()
+          | e :: rest when is_terminal e ->
+              List.iter (fun dead ->
+                findings := (Printf.sprintf
+                  "Unreachable code after terminal statement on line %d"
+                  e.expr_location.start.line, dead.expr_location.start.line) :: !findings
+              ) rest
+          | _ :: rest -> scan_block rest
+        in
+        let rec scan (e : expr) =
+          match e.expr_value with
+          | EBlock es -> scan_block es; List.iter scan es
+          | ELet (_, e1, e2) -> scan e1; scan e2
+          | EIf (_, then_, else_) ->
+              scan then_; (match else_ with Some e -> scan e | None -> ())
+          | ECase (_, branches) ->
+              List.iter (fun (_, e) -> scan e) branches
+          | EApp (fn, args) -> scan fn; List.iter scan args
+          | _ -> ()
+        in
+        scan body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── All Rules ──────────────────────────────────────────────────────── *)
 
 let all () = [
@@ -1200,6 +1276,10 @@ let all () = [
   (* Exception Safety *)
   ("open-rescue", T.Warning, detect_open_rescue);
   ("missing-else", T.Hint, detect_missing_else);
+
+  (* Control Flow Clarity *)
+  ("reassignment-in-condition", T.Warning, detect_reassignment_in_condition);
+  ("unreachable-code", T.Warning, detect_unreachable_code);
 ]
 
 (** Analyze module and return findings *)

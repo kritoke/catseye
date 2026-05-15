@@ -746,6 +746,48 @@ let detect_string_concat_chain (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Equals True/False
+    Detects comparisons like x == True or x == False.
+    In Gleam, just use the boolean directly or use not.
+    AI coming from other languages often writes this redundant comparison. *)
+let detect_equals_true (m : t) =
+  let rec find_bool_comparisons (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EBinOp (e1, op, e2) when op = "==" || op = "!=" ->
+        let is_bool_literal (x : expr) =
+          match x.expr_value with
+          | ELiteral (LString "True") | ELiteral (LString "False") -> true
+          | EVar v -> v = "True" || v = "False"
+          | _ -> false
+        in
+        let hits =
+          if is_bool_literal e1 || is_bool_literal e2 then
+            let lit = if is_bool_literal e1 then expr_name e1 else expr_name e2 in
+            [(lit, e.expr_location.start.line)]
+          else [] in
+        hits @ find_bool_comparisons e1 @ find_bool_comparisons e2
+    | EBlock es -> List.concat_map find_bool_comparisons es
+    | ELet (_, e1, e2) -> find_bool_comparisons e1 @ find_bool_comparisons e2
+    | EIf (_, then_, else_) ->
+        find_bool_comparisons then_ @
+        (match else_ with Some e -> find_bool_comparisons e | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, e) -> find_bool_comparisons e) branches
+    | EApp (fn, args) ->
+        find_bool_comparisons fn @ List.concat_map find_bool_comparisons args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_bool_comparisons body with
+         | (lit, line) :: _ ->
+             Some (Printf.sprintf
+               "Comparison with %s is redundant — use the boolean directly or 'not'" lit, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -822,6 +864,7 @@ let all () = [
   ("let-assert-on-result", T.Warning, detect_let_assert_on_result);
   ("todo-as-body", T.Warning, detect_todo_as_body);
   ("string-concat-chain", T.Hint, detect_string_concat_chain);
+  ("equals-true", T.Hint, detect_equals_true);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
