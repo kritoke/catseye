@@ -82,7 +82,9 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     ) [] nodes in
   let by_file = List.map (fun f -> (f, get_tainted_vars_in_file db f)) files in
   let ctx = Catseye_rules.Interpreter.make_taint_context
-    ~global:tainted ~by_file in
+    ~global:tainted ~by_file
+    ~import_map:(Symbol_table.build_import_map nodes)
+    () in
   let raw_findings = Catseye_rules.Interpreter.run_all rules nodes ctx in
   (* Precompute sink lookup map for O(1) access per finding *)
   let sink_map = build_sink_lookup_map nodes in

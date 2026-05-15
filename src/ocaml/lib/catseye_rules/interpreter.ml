@@ -90,13 +90,17 @@ let var_names_from_args (args : Security_node.arg list) : string =
 type taint_context = {
   global : string list;
   by_file : (string * string list) list;
+  import_map : (string, string list) Hashtbl.t;  (* file -> resolved import paths *)
 }
 
 (** Build a taint context from the taint DB and the set of files in scope. *)
 let make_taint_context ~(global : string list)
-    ~(by_file : (string * string list) list) : taint_context = {
+    ~(by_file : (string * string list) list)
+    ?(import_map = Hashtbl.create 0)
+    () : taint_context = {
   global;
   by_file;
+  import_map;
 }
 
 (** Get the tainted variable list for a specific file.

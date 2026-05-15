@@ -196,7 +196,11 @@ let build_items (nodes : security_node list) : item list =
     | "module" ->
         items := { item_value = IModule (node.name, []); item_location = loc } :: !items
     | "import" ->
-        items := { item_value = IImport (node.name, None); item_location = loc } :: !items
+        let module_path = match node.args with
+          | [{ value; _ }] -> value
+          | _ -> node.name
+        in
+        items := { item_value = IImport (module_path, None); item_location = loc } :: !items
     | _ -> ()
   ) nodes_array;
   
