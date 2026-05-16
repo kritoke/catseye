@@ -107,9 +107,10 @@ let analyze_ast (modules : Catseye_ast.Types.t list) (config : Types.claws_confi
     if config.anatomy_enabled then Anatomy_ast.analyze modules config
     else []
   in
-  (* TODO: migrate dry, extra_smells, concurrency to AST path
-     For now, non-migrated detectors still need Security_node.t input.
-     The full AST path will be available once all modules are migrated. *)
-  (complexity_findings @ anatomy_findings)
+  let dry_findings =
+    if config.dry_enabled then Dry_ast.analyze modules config
+    else []
+  in
+  (complexity_findings @ anatomy_findings @ dry_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))

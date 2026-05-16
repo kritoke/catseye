@@ -1,5 +1,5 @@
 (library
  (name catseye_claws)
  (public_name catseye.claws)
- (modules types complexity complexity_ast anatomy anatomy_ast dry ameba_hook extra_smells smells concurrency ast_scope)
+ (modules types complexity complexity_ast anatomy anatomy_ast dry dry_ast ameba_hook extra_smells smells concurrency ast_scope)
  (libraries catseye.types catseye.ast yojson logs unix))
