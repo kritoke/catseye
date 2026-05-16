@@ -93,3 +93,19 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
   (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))
+
+(** Run all Claws detectors on AST-native input and return merged findings.
+    Uses CatseyeAST.t directly for modules that have been migrated.
+    Falls back to Security_node.t for unmigrated modules. *)
+let analyze_ast (modules : Catseye_ast.Types.t list) (config : Types.claws_config)
+    : Finding.t list =
+  let complexity_findings =
+    if config.complexity_enabled then Complexity_ast.analyze modules config
+    else []
+  in
+  (* TODO: migrate anatomy, dry, extra_smells, concurrency to AST path
+     For now, non-complexity detectors still need Security_node.t input.
+     The full AST path will be available once all modules are migrated. *)
+  complexity_findings
+  |> deduplicate
+  |> List.filter (fun f -> not (is_suppressed config f))

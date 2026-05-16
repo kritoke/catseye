@@ -296,12 +296,50 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
 
     (* Case expression *)
     | "case" ->
-        let subject = match children_with_field n ~field:"value" with
-        | [s] -> expr_of_xml ~depth:d s
+        let subject = match children_with_field n ~field:"subjects" with
+        | [s] ->
+          (* subjects wrapper -> get first child as the actual subject expr *)
+          (match s.children with
+           | [subj] -> expr_of_xml ~depth:d subj
+           | _ -> { expr_value = EUnit; expr_location = loc })
         | _ -> { expr_value = EUnit; expr_location = loc }
         in
-        (* Simplified: collect pattern branches *)
-        ECase (subject, [])
+        let branches =
+          match children_with_field n ~field:"clauses" with
+          | [clauses_node] ->
+            List.filter_map (fun (clause : xml) ->
+              if clause.tag = "case_clause" then begin
+                let body = match children_with_field clause ~field:"value" with
+                  | [v] -> Some (expr_of_xml ~depth:d v)
+                  | _ ->
+                    (* No value field — try children after the pattern as block *)
+                    let body_children = List.filter (fun (c : xml) ->
+                      c.tag <> "case_clause_patterns"
+                      && c.tag <> "case_clause_guard"
+                    ) clause.children in
+                    if body_children <> [] then
+                      Some { expr_value = EBlock (List.map (expr_of_xml ~depth:d) body_children); expr_location = loc }
+                    else
+                      Some { expr_value = EUnit; expr_location = loc }
+                in
+                let pat = match children_with_field clause ~field:"patterns" with
+                  | [p] -> (
+                    match p.children with
+                    | [cp] -> (
+                      match cp.children with
+                      | [pat_node] -> pattern_of_xml pat_node
+                      | _ -> PDiscard
+                    )
+                    | _ -> PDiscard
+                  )
+                  | _ -> PDiscard
+                in
+                Some (pat, Option.value body ~default:{ expr_value = EUnit; expr_location = loc })
+              end else None
+            ) clauses_node.children
+          | _ -> []
+        in
+        ECase (subject, branches)
 
     (* Binary expression *)
     | "binary_expression" ->
@@ -380,8 +418,10 @@ let resolve_gleam_grammar () : string option =
     (match discovered with
      | Some p -> Some p
      | None ->
-       (* 3. Check common paths *)
+       (* 3. Check common paths, including bundled gleam_parser.so *)
+       let bundled = Filename.concat (Sys.getcwd ()) "gleam_parser.so" in
        let common = [
+         bundled;  (* Bundled parser — works without nix *)
          "/usr/lib/tree-sitter-gleam/parser";
          "/usr/local/lib/tree-sitter-gleam/parser";
          Filename.concat (Sys.getcwd ()) "third_party/tree-sitter-gleam/parser";

@@ -567,11 +567,33 @@ let run (config : t) : int =
 
   (* Step 4e: Claws — code smell analysis *)
   let all_findings = if config.claws then begin
-    let claws_findings = Catseye_claws.Smells.analyze nodes
-      config.claws_config in
-    if config.format = Terminal && claws_findings <> [] then
+    (* Parse ASTs for files that support it (Gleam always, Crystal via bridge) *)
+    let ast_modules = List.filter_map (fun src ->
+      try match Catseye_ast.Parse.parse_file ~path:src.path with
+        | Ok mod_ -> Some mod_
+        | Error _ -> None
+      with _ -> None
+    ) sources in
+    let claws_findings =
+      if ast_modules <> [] then
+        Catseye_claws.Smells.analyze_ast ast_modules config.claws_config
+      else
+        Catseye_claws.Smells.analyze nodes config.claws_config
+    in
+    (* Merge with flat-engine findings for detectors not yet on AST path *)
+    let flat_claws = Catseye_claws.Smells.analyze nodes config.claws_config in
+    (* Only add findings from flat engine for rules the AST path doesn't cover yet *)
+    let ast_rules = Hashtbl.create 8 in
+    List.iter (fun (f : Finding.t) ->
+      Hashtbl.replace ast_rules f.Finding.rule true
+    ) claws_findings;
+    let extra_flat = List.filter (fun (f : Finding.t) ->
+      not (Hashtbl.mem ast_rules f.Finding.rule)
+    ) flat_claws in
+    let all_claws = claws_findings @ extra_flat in
+    if config.format = Terminal && all_claws <> [] then
         Printf.printf "\n  → Code smell analysis:\n\n";
-    reachability @ claws_findings @ ai_findings
+    reachability @ all_claws @ ai_findings
   end else reachability @ ai_findings in
 
   (* Step 5: Report *)
