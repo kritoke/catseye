@@ -183,6 +183,12 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
       ~node_type:Security_node.Terminator ~name:"raise" ~args:[make_arg ~arg_type:Security_node.ArgLiteral ~value:msg]
       ~line:e.expr_location.start.line ~file ~language:lang in
     [term_node]
+  | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body } ->
+    let try_nodes = walk_expr try_body file lang in
+    let rescue_nodes = List.concat_map (fun c -> walk_expr c.rescue_body file lang) rescue_clauses in
+    let ensure_nodes = match ensure_body with Some e -> walk_expr e file lang | None -> [] in
+    let else_nodes = match else_body with Some e -> walk_expr e file lang | None -> [] in
+    try_nodes @ rescue_nodes @ ensure_nodes @ else_nodes
   | EUnknown _ -> []
 
 (* ── Item → node list ───────────────────────────────────────────────── *)

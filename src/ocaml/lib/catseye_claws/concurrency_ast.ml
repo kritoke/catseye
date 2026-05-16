@@ -83,6 +83,7 @@ let rec extract_channel_actions (e : expr) : channel_action list =
 
 let rec has_error_handling (e : expr) : bool =
   match e.expr_value with
+  | ETryCatchFinally _ -> true
   | EUnknown s when s = "exception_handler" || s = "rescue" || s = "ensure" -> true
   | EApp (fn, args) ->
     (match fn.expr_value with
@@ -158,12 +159,45 @@ let check_dead_letter (actions : channel_action list) : (string * string) list =
   ) actions;
   !results
 
-(** Check for error handling in the function body or in begin/end blocks.
-    Note: Crystal's flat extractor doesn't nest exception_handler inside the
-    function body - it's a sibling item. For now, we rely on the AST-level
-    detection (EUnknown patterns). This may have FPs for method-level rescue. *)
-let has_error_handling_full (scope : Ast_scope.ast_scope) : bool =
-  has_error_handling scope.body
+(** Check for OrphanedSpawn using flat module item list.
+    The Crystal flat extractor outputs spawn/rescue as sibling items.
+    We scan items within the function's line range. *)
+let has_spawn_in_items (fn_line : int) (items : item list) : bool =
+  let rec check_until_next_def (items : item list) =
+    match items with
+    | [] -> false
+    | item :: rest ->
+      (match item.item_value with
+       | IFunction (_, _, _, _) -> false  (* Hit next function *)
+       | _ ->
+         if item.item_location.start.line > fn_line then
+           (* Check if this is a spawn call *)
+           (match item.item_value with
+            | IUnknown "spawn" -> true
+            | _ -> check_until_next_def rest)
+         else
+           check_until_next_def rest)
+  in
+  check_until_next_def items
+
+let has_error_handling_in_items (fn_line : int) (items : item list) : bool =
+  let rec check_until_next_def (items : item list) =
+    match items with
+    | [] -> false
+    | item :: rest ->
+      (match item.item_value with
+       | IFunction (_, _, _, _) -> false  (* Hit next function *)
+       | _ ->
+         if item.item_location.start.line > fn_line then
+           (match item.item_value with
+            | IUnknown "exception_handler" -> true
+            | IUnknown "rescue" -> true
+            | IUnknown "ensure" -> true
+            | _ -> check_until_next_def rest)
+         else
+           check_until_next_def rest)
+  in
+  check_until_next_def items
 
 let analyze (modules : Catseye_ast.Types.t list)
     (_config : Types.claws_config) : Finding.t list =
@@ -173,8 +207,17 @@ let analyze (modules : Catseye_ast.Types.t list)
       let actions = extract_channel_actions scope.body in
       let muted = check_muted_pack actions in
       let dead = check_dead_letter actions in
-      let has_err = has_error_handling_full scope in
-      let orphaned = has_spawn scope.body && not has_err in
+
+      (* Check for spawn and error handling in both AST body and flat item list *)
+      let has_spawn_body = has_spawn scope.body in
+      let has_spawn_items = has_spawn_in_items scope.line mod_.mod_items in
+      let has_spawn = has_spawn_body || has_spawn_items in
+
+      let has_err_body = has_error_handling scope.body in
+      let has_err_items = has_error_handling_in_items scope.line mod_.mod_items in
+      let has_err = has_err_body || has_err_items in
+
+      let orphaned = has_spawn && not has_err in
 
       let muted_findings = List.map (fun (var, desc) ->
         make_finding scope.file scope.line scope.lang "MutedPack" "High"

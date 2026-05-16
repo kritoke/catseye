@@ -85,7 +85,7 @@ let rec canonicalize (e : expr) : string =
   | EBlock es ->
     Printf.sprintf "Bl[%s]" (canon_list es)
   | EError _ -> "Err"
-  | EUnknown _ -> "Unk"
+  | EUnknown _ | ETryCatchFinally _ -> "Unk"
 
 and canon_list (es : expr list) : string =
   String.concat "," (List.map canonicalize es)

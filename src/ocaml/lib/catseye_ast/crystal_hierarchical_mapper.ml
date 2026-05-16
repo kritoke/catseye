@@ -78,7 +78,6 @@ let rec expr_of_json json : expr =
     | "array" -> parse_array json loc
     | "hash" -> EUnknown "hash"
     | "exception_handler" -> parse_try json loc
-    | "rescue" -> parse_rescue json loc
     | "while" | "until" -> parse_loop json loc
     | "return" -> parse_return json loc
     | "raise" -> parse_raise json loc
@@ -218,16 +217,32 @@ and parse_array json _loc =
   EList elems
 
 and parse_try json _loc =
-  let body = match get_opt_obj json "body" with
+  let try_body = match get_opt_obj json "body" with
     | Some b -> expr_of_json b
     | None -> { expr_value = EUnit; expr_location = zero_loc }
   in
-  body.expr_value
+  let rescue_clauses = List.map parse_rescue_clause (get_list json "rescues") in
+  let ensure_body = match get_opt_obj json "ensure" with
+    | Some e -> Some (expr_of_json e)
+    | None -> None
+  in
+  let else_body = match get_opt_obj json "else" with
+    | Some e -> Some (expr_of_json e)
+    | None -> None
+  in
+  ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body }
 
-and parse_rescue json _loc =
-  (match get_opt_obj json "body" with
-   | Some b -> (expr_of_json b).expr_value
-   | None -> EUnit)
+and parse_rescue_clause json : rescue_clause =
+  let exception_var = match get_opt_obj json "name" with
+    | Some n -> Some (get_str n "value")
+    | None -> None
+  in
+  let matched_types = List.map (fun t -> get_str t "name") (get_list json "types") in
+  let rescue_body = match get_opt_obj json "body" with
+    | Some b -> expr_of_json b
+    | None -> { expr_value = EUnit; expr_location = zero_loc }
+  in
+  { exception_var; matched_types; rescue_body }
 
 and parse_loop json _loc =
   let body = match get_opt_obj json "body" with

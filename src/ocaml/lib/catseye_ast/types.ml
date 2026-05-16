@@ -88,7 +88,20 @@ type expr_value =
   | EUnOp of string * expr
   | EBlock of expr list
   | EError of string
+  | ETryCatchFinally of {
+      try_body : expr;
+      rescue_clauses : rescue_clause list;
+      ensure_body : expr option;
+      else_body : expr option;
+    }
   | EUnknown of string
+
+(** Rescue clause inside a try/catch/finally block *)
+and rescue_clause = {
+  exception_var : string option;
+  matched_types : string list;
+  rescue_body : expr;
+}
 
 (** An expression with location *)
 and expr = {

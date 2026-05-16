@@ -55,7 +55,7 @@ let rec count_decisions (expr : expr) : int =
     count_decisions e1
   | EBlock es ->
     List.fold_left (fun acc e -> acc + count_decisions e) 0 es
-  | EError _ | EUnknown _ ->
+  | EError _ | EUnknown _ | ETryCatchFinally _ ->
     0
 
 (** Run complexity analysis on AST scopes. *)

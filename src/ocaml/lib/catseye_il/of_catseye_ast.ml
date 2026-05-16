@@ -88,6 +88,7 @@ let rec translate_expr (e : expr) : il_expr =
   | EAssignment _ | ELet _ | ELetAssert _ ->
     IEUnknown "<assign_expr>"
   | EError msg -> IEUnknown ("error:" ^ msg)
+  | ETryCatchFinally _ -> IEUnknown "<try>"
   | EUnknown s -> IEUnknown s
   | ERecordUpdate (_, _) -> IEUnknown "<record_update>"
 
