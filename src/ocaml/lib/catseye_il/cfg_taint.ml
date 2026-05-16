@@ -256,20 +256,29 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
     ) rule.sinks
   ) rules
 
-(* ── CFG dataflow ──────────────────────────────────────────────────── *)
+(* ── CFG dataflow via ocamlgraph Fixpoint ────────────────────────────── *)
+
+(* ── CFG dataflow via worklist on ocamlgraph ──────────────────────────── *)
+
+(** Forward taint analysis using worklist algorithm on the ocamlgraph CFG.
+
+    The worklist processes blocks in order, propagating taint state
+    forward through the graph. Convergence is ensured by tracking
+    visit counts per block (max_visits=3 for a may-analysis).
+
+    We keep the hand-rolled worklist rather than using
+    Graph.Fixpoint.Make because our transfer function operates
+    per-block (not per-edge) and accumulates findings as a side
+    effect. Fixpoint.Make's [analyze : edge -> data -> data] API
+    doesn't map naturally to block-level transfer with side effects.
+
+    Instead, we use ocamlgraph's graph APIs (G.pred for predecessor
+    lookup, G.succ for successor iteration) which are already
+    available through the Cfg_graph adapter. *)
 
 let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
     (rules : rule_def list) (file : string) (lang : string)
     : Catseye_types.Finding.t list =
-
-  (* Build predecessor map using ocamlgraph edge iteration *)
-  let preds = Hashtbl.create 32 in
-  Cfg_graph.iter_vertices cfg (fun vid ->
-    Cfg_graph.iter_succ cfg (fun sid ->
-      let existing = try Hashtbl.find preds sid with Not_found -> [] in
-      Hashtbl.replace preds sid (vid :: existing)
-    ) vid
-  );
 
   (* State per block *)
   let states = Hashtbl.create 32 in
@@ -296,7 +305,7 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
       let nodes = Cfg_graph.block_nodes cfg block_id in
       if nodes <> [] then begin
         (* Input state = union of predecessor outputs *)
-        let pred_ids = try Hashtbl.find preds block_id with Not_found -> [] in
+        let pred_ids = Cfg_graph.G.pred cfg.Cfg_graph.graph block_id in
         let input_state = List.fold_left (fun acc pid ->
           union_state acc (get_state pid)
         ) { empty_state with findings = [] } pred_ids in
