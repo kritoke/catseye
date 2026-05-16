@@ -41,21 +41,26 @@ just test
 ```
 catseye [options] <directory>
 
-  -f, --format <fmt>       terminal (default), json, sarif, markdown, dot
-  -o, --output <path>      write results to file
-  -r, --rules <path>       rules directory (default: rules/)
-  --lang <lang>            all (default), crystal, gleam
-  --no-color               disable colored output
-  --no-cache               disable extraction cache
-  --clear-cache            clear cache and run full scan
-  --cache-dir <path>       cache directory (default: .catseye)
-  --predator-vision        enable reachability analysis (live/dormant/safe)
-  --crows-nest             enable supply chain audit (CVE + staleness)
-  --claws                  enable code smell detection
-  --ai-lint                enable AI antipattern detection
-  -p, --parallelism <n>    parallel workers (0 = auto)
-  -v, --version            show version
-  -h, --help               show help
+  -f, --format <fmt>         terminal (default), json, sarif, markdown, dot
+  -o, --output <path>        write results to file
+  -r, --rules <path>         rules directory (default: rules/)
+  --lang <lang>              all (default), crystal, gleam
+  --no-color                 disable colored output
+  --no-cache                 disable extraction cache
+  --clear-cache              clear cache and run full scan
+  --cache-dir <path>         cache directory (default: .catseye)
+  --cfg                      use IL/CFG-based taint engine (more sensitive)
+  --no-cfg                   use flat taint engine (default, fewer findings)
+  --analysis-timeout <ms>    timeout for analysis phase (0 = disabled)
+  --cfg-max-blocks <n>       max blocks per function CFG (default: 500)
+  --cfg-timeout-ms <ms>      timeout per function CFG build (default: 5000)
+  --predator-vision          enable reachability analysis (live/dormant/safe)
+  --crows-nest               enable supply chain audit (CVE + staleness)
+  --claws                    enable code smell detection
+  --ai-lint                  enable AI antipattern detection
+  -p, --parallelism <n>      parallel workers (0 = auto)
+  -v, --version              show version
+  -h, --help                 show help
 ```
 
 ## What It Detects
@@ -140,24 +145,35 @@ Source files
                             ▼
                     Security Node JSON
                             │
+              ┌──────────────┴──────────────┐
+              ▼                             ▼
+        Flat Engine                   CFG Engine (--cfg)
+     (default, fast)            (more sensitive, branch-aware)
+              │                             │
+              └──────────────┬──────────────┘
+                             ▼
+                    KDL Rule Interpreter
+                             │
               ┌──────────────┼──────────────┐
               ▼              ▼              ▼
-         Taint Engine    AI Linter      Code Smells
-         (KDL rules)    (AST rules)    (complexity, etc.)
+         Findings        AI Linter      Code Smells
+         (taint)        (AST rules)    (complexity, etc.)
               │              │              │
               └──────────────┼──────────────┘
                              ▼
                      Terminal / JSON / SARIF / Markdown / DOT
 ```
 
-**Taint pipeline:** seed → propagate → returns → interproc → guards → rules
+**Flat taint pipeline:** seed → propagate → returns → interproc → propagate → cross-file → guards → rules
 
 1. **Seed** — Params named like taint sources (`url`, `request`, `params`) are marked tainted
-2. **Propagate** — Fixed-point; taint flows through assignments and call chains
+2. **Propagate** — Fixed-point; taint flows through assignments and call chains (sanitizer-aware: `File.expand_path`, `URI.parse`, `validate_*` cleanse taint)
 3. **Returns** — Functions with tainted bodies return tainted data
 4. **Inter-procedural** — Taint crosses function boundaries
 5. **Guards** — `unless path.starts_with?("/safe/")` suppresses taint
-6. **Rules** — KDL rules match sinks against tainted variables
+6. **Rules** — KDL rules match sinks against tainted variables, with `arg=N` position matching
+
+**CFG engine** (`--cfg`) converts CatseyeAST.t → IL → basic block CFG → forward dataflow taint analysis. Branch-aware: taint does not flow across dead branches. Field-sensitive lvalues.
 
 ### Adding a Security Rule
 
@@ -166,7 +182,7 @@ Create `src/ocaml/rules/my_rule.kdl`:
 ```kdl
 rule "MyRule" severity="Medium" {
     sinks {
-        sink "Dangerous.call" {
+        sink "Dangerous.call" arg=0 {
             sanitizer "Safe.wrapper"
         }
     }
@@ -177,6 +193,9 @@ rule "MyRule" severity="Medium" {
     message "My rule: {sink} with tainted argument(s): {tainted_vars}."
 }
 ```
+
+`arg=0` means only flag when tainted data is in the first argument. Omit for any-arg matching.
+`$var` metavariables match any receiver prefix: `sink "$client.get"` matches `http.get`, `conn.get`, `my_client.get`.
 
 Rebuild with `just build` and test.
 
@@ -227,17 +246,19 @@ catseye/
 │   ├── ocaml/
 │   │   ├── bin/main.ml                 # CLI entry point
 │   │   ├── lib/
-│   │   │   ├── catseye_engine/          # Taint analysis
-│   │   │   ├── catseye_ast/             # Unified AST + mappers
-│   │   │   ├── ai_linter/              # AI antipattern rules
+│   │   │   ├── catseye_engine/          # Flat taint analysis + propagation
+│   │   │   ├── catseye_il/              # IL types, CFG builder, CFG taint engine
+│   │   │   ├── catseye_ast/             # Unified AST + mappers + bridge
+│   │   │   ├── ai_linter/              # AI antipattern rules (73 rules)
 │   │   │   ├── catseye_claws/           # Code smell detection
 │   │   │   ├── catseye_crowsnest/       # Supply chain audit
-│   │   │   ├── catseye_rules/           # KDL rule interpreter
+│   │   │   ├── catseye_rules/           # KDL rule interpreter (arg, $var)
 │   │   │   ├── catseye_cli/             # CLI, orchestrator, output formats
 │   │   │   └── catseye_types/           # Shared types
 │   │   └── rules/                       # 12 KDL rule files
 │   └── extractor/extractor.cr           # Crystal AST extractor
 ├── test/samples/                        # Test corpus
+├── openspec/                            # Spec-driven change tracking
 ├── .github/workflows/                   # CI
 ├── flake.nix                            # Nix dev shell
 └── justfile                             # Build tasks
@@ -249,6 +270,8 @@ catseye/
 |------|-----------|----------|
 | 66-file Crystal (cold) | ~0.12s | ~0.06s |
 | 66-file Crystal (cached) | ~0.02s | ~0.06s |
+
+**CFG engine** scales linearly: 500 sequential branches in 0.09ms, 10,000 nodes in 2.4ms, 500-block taint analysis in 0.75ms.
 
 ## License
 
