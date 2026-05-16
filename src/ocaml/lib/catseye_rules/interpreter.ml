@@ -49,9 +49,42 @@ let substitute_template (template : string) ~(sink : string) ~(vars : string) : 
 
 (* ── Sink / Sanitizer Matching ─────────────────────────────────────── *)
 
-(** Check if a call name matches a sink pattern (substring match) *)
+(** Check if a pattern starts with [$] — a metavariable that matches any receiver prefix.
+    ["$client.get"] matches [http.get], [client.get], [conn.get], [my_client.get], etc.
+    The [$] captures everything before the first [.] in the pattern, and matches
+    everything before the first [.] in the name.
+    If the pattern has no [.] (e.g., ["$fn"]), it matches any single name.
+    Patterns without [$] use the existing substring match (backward compatible). *)
+let matches_metavar ~(pattern : string) ~(name : string) : bool =
+  if String.length pattern = 0 || pattern.[0] <> '$' then false
+  else
+    (* Extract the suffix after [$var]: e.g., "$client.get" → ".get" *)
+    let suffix =
+      match String.index_opt pattern '.' with
+      | Some idx -> String.sub pattern idx (String.length pattern - idx)
+      | None -> ""
+    in
+    if suffix = "" then
+      (* Pattern is "$fn" with no dot — matches any name *)
+      true
+    else
+      (* Name must end with the same suffix, and have something before the dot *)
+      let name_has_dot = String.length suffix <= String.length name in
+      name_has_dot
+      && let name_suffix_start = String.length name - String.length suffix in
+         String.sub name name_suffix_start (String.length suffix) = suffix
+         && (name_suffix_start = 0
+             || name.[name_suffix_start - 1] = '.'
+             || name.[name_suffix_start] = '.')
+
+(** Check if a call name matches a sink pattern.
+    - Patterns starting with [$] use metavariable matching (receiver wildcard)
+    - All other patterns use substring matching (backward compatible) *)
 let matches_sink ~(pattern : string) ~(name : string) : bool =
-  is_substring ~pattern ~in_:name
+  if String.length pattern > 0 && pattern.[0] = '$' then
+    matches_metavar ~pattern ~name
+  else
+    is_substring ~pattern ~in_:name
 
 (** Check if any sanitizer pattern matches a call name *)
 let matches_sanitizer (patterns : string list) (name : string) : bool =
@@ -75,6 +108,28 @@ let has_sanitized_args (node : Security_node.t) (sanitizers : string list) : boo
     a.Security_node.arg_type = Security_node.ArgCall
     && matches_sanitizer sanitizers a.Security_node.value
   ) node.Security_node.args
+
+(** Check if the arg at a specific position is tainted.
+    When [sink.arg_pos] is [Some n], only arg index [n] is checked for taint.
+    When [None], any tainted arg suffices (backward compatible). *)
+let arg_pos_tainted (node : Security_node.t) (sink : sink_def)
+    (tainted_vars : string list) : bool =
+  match sink.arg_pos with
+  | None -> true  (* No position restriction *)
+  | Some pos ->
+    (* Check that the arg at position [pos] is a tainted variable *)
+    let args = node.Security_node.args in
+    if pos >= List.length args then false
+    else
+      let arg = List.nth args pos in
+      (arg.Security_node.arg_type = Security_node.ArgVar
+       || arg.Security_node.arg_type = Security_node.ArgCall)
+      && List.exists (fun tv ->
+        arg.Security_node.value = tv
+        || (String.length arg.Security_node.value > String.length tv
+            && String.sub arg.Security_node.value 0 (String.length tv) = tv
+            && arg.Security_node.value.[String.length tv] = '.')
+      ) tainted_vars
 
 (** Get variable names from args *)
 let var_names_from_args (args : Security_node.arg list) : string =
@@ -183,17 +238,18 @@ and is_suspect (node : Security_node.t) (ctx : taint_context)
     else
       let tainted = tainted_for_file ctx node.Security_node.file in
       (node.Security_node.taint
-       || List.exists (fun a ->
-            (a.Security_node.arg_type = Security_node.ArgVar
-             || a.Security_node.arg_type = Security_node.ArgCall)
-            && List.exists (fun tainted_var ->
-              (* Exact match or prefix: "uri" matches "uri.request_target" *)
-              a.Security_node.value = tainted_var
-              || (String.length a.Security_node.value > String.length tainted_var
-                  && String.sub a.Security_node.value 0 (String.length tainted_var) = tainted_var
-                  && a.Security_node.value.[String.length tainted_var] = '.')
-            ) tainted
-          ) node.Security_node.args)
+       || (List.exists (fun a ->
+              (a.Security_node.arg_type = Security_node.ArgVar
+               || a.Security_node.arg_type = Security_node.ArgCall)
+              && List.exists (fun tainted_var ->
+                (* Exact match or prefix: "uri" matches "uri.request_target" *)
+                a.Security_node.value = tainted_var
+                || (String.length a.Security_node.value > String.length tainted_var
+                    && String.sub a.Security_node.value 0 (String.length tainted_var) = tainted_var
+                    && a.Security_node.value.[String.length tainted_var] = '.')
+              ) tainted
+            ) node.Security_node.args
+            && arg_pos_tainted node sink tainted))
       && not (all_args_literal node)
 
 (* ── Rule Checking ──────────────────────────────────────────────────── *)

@@ -1,13 +1,13 @@
 rule "SQLInjection" severity="Critical" {
     sinks {
-        sink "db.exec"
-        sink "db.query"
-        sink "db.scalar"
-        sink "db.query_one"
-        sink "db.query_all"
-        sink "db.execute"
-        sink "database.exec"
-        sink "database.query"
+        sink "db.exec" arg=0
+        sink "db.query" arg=0
+        sink "db.scalar" arg=0
+        sink "db.query_one" arg=0
+        sink "db.query_all" arg=0
+        sink "db.execute" arg=0
+        sink "database.exec" arg=0
+        sink "database.query" arg=0
     }
     sources {
         source "params"

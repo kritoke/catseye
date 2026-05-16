@@ -1,6 +1,6 @@
 rule "PathTraversal" severity="High" {
     sinks {
-        sink "File.read" {
+        sink "File.read" arg=0 {
             sanitizer "Path.basename"
             sanitizer "Path.dirname"
             sanitizer "Path.posix"
@@ -8,25 +8,25 @@ rule "PathTraversal" severity="High" {
             sanitizer "Digest::SHA256.hexdigest"
             sanitizer "File.expand_path"
         }
-        sink "File.write" {
+        sink "File.write" arg=0 {
             sanitizer "Path.basename"
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
             sanitizer "File.expand_path"
         }
-        sink "File.delete" {
+        sink "File.delete" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "File.expand_path"
         }
-        sink "File.open" {
+        sink "File.open" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "File.expand_path"
         }
-        sink "Dir.glob"
-        sink "Dir.entries"
-        sink "simplifile.read"
-        sink "simplifile.write"
-        sink "simplifile.delete"
+        sink "Dir.glob" arg=0
+        sink "Dir.entries" arg=0
+        sink "simplifile.read" arg=0
+        sink "simplifile.write" arg=0
+        sink "simplifile.delete" arg=0
     }
     sources {
         source "params" field="path"

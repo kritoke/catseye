@@ -35,6 +35,10 @@ type t = {
   ai_lint : bool;  (* Enable AI linter rules *)
   ast_bridge : bool;  (* Use CatseyeAST.t bridge instead of direct extraction *)
   use_cfg : bool;     (* Use IL/CFG-based taint engine *)
+  no_cfg_use : bool;   (* Override to use flat engine even when --cfg set *)
+  analysis_timeout_ms : int;  (* Timeout for analysis phase in ms *)
+  cfg_max_blocks : int;       (* Max blocks per function CFG (safety limit) *)
+  cfg_timeout_ms : int;       (* Timeout per function CFG build (safety limit) *)
   claws_config : Catseye_claws.Types.claws_config;
 }
 
@@ -61,6 +65,10 @@ let default = {
   ai_lint = false;
   ast_bridge = false;
   use_cfg = false;
+  no_cfg_use = false;
+  analysis_timeout_ms = 0;  (* 0 = no timeout *)
+  cfg_max_blocks = 500;
+  cfg_timeout_ms = 5000;
   claws_config = Catseye_claws.Types.default_config;
 }
 

@@ -1,8 +1,8 @@
 rule "OpenRedirect" severity="Medium" {
     sinks {
-        sink "redirect_to"
-        sink "response.redirect"
-        sink "send_redirect"
+        sink "redirect_to" arg=0
+        sink "response.redirect" arg=0
+        sink "send_redirect" arg=0
     }
     sources {
         source "params" field="url"

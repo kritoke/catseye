@@ -1,49 +1,53 @@
 rule "SSRF" severity="High" {
     sinks {
-        sink "HTTP::Client.get" {
+        sink "HTTP::Client.get" arg=0 {
             sanitizer "URI.parse"
             sanitizer "URI.encode"
         }
-        sink "HTTP::Client.post" {
+        sink "HTTP::Client.post" arg=0 {
             sanitizer "URI.parse"
         }
-        sink "HTTP::Client.put"
-        sink "HTTP::Client.patch"
-        sink "HTTP::Client.delete"
-        sink "HTTP::Client.exec"
-        sink "client.get" {
-            sanitizer "URI.parse"
-            sanitizer "URI.encode"
-        }
-        sink "client.post" {
-            sanitizer "URI.parse"
-        }
-        sink "client.put"
-        sink "client.delete"
-        sink "client.exec"
-        sink "http.get" {
+        sink "HTTP::Client.put" arg=0
+        sink "HTTP::Client.patch" arg=0
+        sink "HTTP::Client.delete" arg=0
+        sink "HTTP::Client.exec" arg=0
+        sink "client.get" arg=0 {
             sanitizer "URI.parse"
             sanitizer "URI.encode"
         }
-        sink "http.post" {
+        sink "client.post" arg=0 {
             sanitizer "URI.parse"
         }
-        sink "http_client.get" {
-            sanitizer "URI.parse"
-            sanitizer "URI.encode"
-        }
-        sink "conn.get" {
-            sanitizer "URI.parse"
-            sanitizer "URI.encode"
-        }
-        sink "connection.get" {
+        sink "client.put" arg=0
+        sink "client.delete" arg=0
+        sink "client.exec" arg=0
+        sink "http.get" arg=0 {
             sanitizer "URI.parse"
             sanitizer "URI.encode"
         }
-        sink "hackney.get"
-        sink "hackney.post"
-        sink "req.get"
-        sink "req.post"
+        sink "http.post" arg=0 {
+            sanitizer "URI.parse"
+        }
+        sink "http_client.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "conn.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "connection.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "http_client.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+        }
+        sink "hackney.get" arg=0
+        sink "hackney.post" arg=0
+        sink "req.get" arg=0
+        sink "req.post" arg=0
     }
     sources {
         source "params" field="url"

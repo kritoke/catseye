@@ -40,70 +40,89 @@ let take_linear (nodes : il_node list) : il_node list * il_node list =
 
 (* ── CFG builder ────────────────────────────────────────────────────── *)
 
-(* Build CFG from an il_block, returning the entry block ID.
-   'cont' is the continuation block ID (what follows this block). *)
-let rec build_block (acc : block_acc) (nodes : il_node list) (cont : int option) : int =
-  let linear, rest = take_linear nodes in
-  match rest with
-  | [] ->
-    (* All linear — single basic block pointing to cont *)
-    let succs = match cont with Some id -> [id] | None -> [] in
-    emit_block acc linear succs
-
-  | [ILBranch (_cond, then_block, else_block, _pos)] ->
-    (* Branch is the last node. Split into then/else, merge at cont. *)
-    let merge_succ = match cont with
-      | Some id -> [id]
-      | None -> []  (* exit block *)
-    in
-    let merge_id = emit_block acc [] merge_succ in
-
-    (* Build then-branch → merge *)
-    let then_id = build_block acc then_block (Some merge_id) in
-
-    (* Build else-branch → merge *)
-    let else_id = match else_block with
-      | Some eb -> build_block acc eb (Some merge_id)
-      | None -> merge_id
-    in
-
-    (* Emit the linear prefix, pointing to both branches *)
-    emit_block acc linear [then_id; else_id]
-
-  | [ILResume (rescue_block, _pos)] ->
-    (* Resume/rescue block. For taint purposes, both paths are possible. *)
-    let inner_id = build_block acc rescue_block cont in
-    let succs = match cont with
-      | Some id -> [id; inner_id]
-      | None -> [inner_id]
-    in
-    emit_block acc linear succs
-
-  | _ ->
-    (* Shouldn't happen — take_linear stops at first branch node *)
-    let succs = match cont with Some id -> [id] | None -> [] in
-    emit_block acc (linear @ rest) succs
+(* NOTE: build_block_bounded and build_block_inner are defined below
+   after the Public API section, using mutual recursion with bounds checking. *)
 
 (* ── Public API ─────────────────────────────────────────────────────── *)
 
-let build_cfg (fn : il_function) : cfg =
-  let acc = make_acc () in
-  let _entry_id = build_block acc fn.fn_body None in
-  let blocks = List.rev acc.blocks in
-  (* The entry block is the first one emitted for the function body *)
-  let entry = match blocks with
-    | { id; _ } :: _ -> id
-    | [] -> 0
-  in
-  { cfg_fn_name = fn.fn_name
-  ; cfg_fn_params = fn.fn_params
-  ; cfg_entry = entry
-  ; cfg_blocks = blocks
-  ; cfg_pos = fn.fn_pos
-  }
+(* ── Public API ─────────────────────────────────────────────────────── *)
 
-let build_cfgs (unit : il_unit) : cfg list =
-  List.map build_cfg unit.il_functions
+let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
+    (fn : il_function) : (cfg, cfg_error) result =
+  let acc = make_acc () in
+  let start_time = Unix.gettimeofday () in
+  let check_bounds () =
+    if acc.next_id > max_blocks then
+      Some (TooManyBlocks { actual = acc.next_id; limit = max_blocks })
+    else if timeout_ms > 0 then
+      let elapsed = (Unix.gettimeofday () -. start_time) *. 1000.0 in
+      if int_of_float elapsed > timeout_ms then
+        Some (Timeout { elapsed_ms = int_of_float elapsed; partial_blocks = acc.next_id })
+      else None
+    else None
+  in
+  (* Wrap build_block with bounds checking *)
+  let error = ref None in
+  let rec build_block_bounded (acc : block_acc) (nodes : il_node list) (cont : int option) : int =
+    (match !error with
+     | Some _ -> emit_block acc [] (match cont with Some id -> [id] | None -> [])  (* bail out *)
+     | None ->
+       (match check_bounds () with
+        | Some e -> error := Some e; 0
+        | None -> build_block_inner acc nodes cont))
+  and build_block_inner (acc : block_acc) (nodes : il_node list) (cont : int option) : int =
+    let linear, rest = take_linear nodes in
+    match rest with
+    | [] ->
+      let succs = match cont with Some id -> [id] | None -> [] in
+      emit_block acc linear succs
+    | [ILBranch (_cond, then_block, else_block, _pos)] ->
+      let merge_succ = match cont with Some id -> [id] | None -> [] in
+      let merge_id = emit_block acc [] merge_succ in
+      let then_id = build_block_bounded acc then_block (Some merge_id) in
+      let else_id = match else_block with
+        | Some eb -> build_block_bounded acc eb (Some merge_id)
+        | None -> merge_id
+      in
+      emit_block acc linear [then_id; else_id]
+    | [ILResume (rescue_block, _pos)] ->
+      let inner_id = build_block_bounded acc rescue_block cont in
+      let succs = match cont with Some id -> [id; inner_id] | None -> [inner_id] in
+      emit_block acc linear succs
+    | _ ->
+      let succs = match cont with Some id -> [id] | None -> [] in
+      emit_block acc (linear @ rest) succs
+  in
+  let _entry_id = build_block_bounded acc fn.fn_body None in
+  match !error with
+  | Some e -> Error e
+  | None ->
+    let blocks = List.rev acc.blocks in
+    let entry = match blocks with
+      | { id; _ } :: _ -> id
+      | [] -> 0
+    in
+    let block_map = List.fold_left (fun m (bb : basic_block) ->
+      IntMap.add bb.id bb m
+    ) IntMap.empty blocks in
+    Ok { cfg_fn_name = fn.fn_name
+       ; cfg_fn_params = fn.fn_params
+       ; cfg_entry = entry
+       ; cfg_blocks = blocks
+       ; cfg_block_map = block_map
+       ; cfg_pos = fn.fn_pos
+       }
+
+let build_cfgs ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
+    (unit : il_unit) : cfg list =
+  (* Filter out functions that hit bounds, keep successful CFGs *)
+  List.filter_map (fun fn ->
+    match build_cfg ~max_blocks ~timeout_ms fn with
+    | Ok cfg -> Some cfg
+    | Error _ -> None
+  ) unit.il_functions
+
+(* ── IntMap re-exported from Il_types ─────────────────────────────────── *)
 
 (* ── Debug printing ─────────────────────────────────────────────────── *)
 

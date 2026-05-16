@@ -44,7 +44,9 @@ let () =
       Printf.printf "  L%d: %s\n" line (Catseye_il.Cfg_builder.string_of_node node)
     ) fn.fn_body;
     let cfg = Catseye_il.Cfg_builder.build_cfg fn in
-    Printf.printf "\n%s\n" (Catseye_il.Cfg_builder.print_cfg cfg)
+    (match cfg with
+     | Error e -> Printf.printf "  CFG build error: %s\n" (match e with TooManyBlocks { actual; limit } -> Printf.sprintf "too many blocks (%d > %d)" actual limit | Timeout { elapsed_ms; _ } -> Printf.sprintf "timeout (%dms)" elapsed_ms)
+     | Ok cfg -> Printf.printf "\n%s\n" (Catseye_il.Cfg_builder.print_cfg cfg))
   ) unit.il_functions;
 
   let test_files = [
@@ -91,6 +93,8 @@ let () =
 
         (* Build and print CFG *)
         let cfg = Catseye_il.Cfg_builder.build_cfg fn in
-        Printf.printf "\n%s\n" (Catseye_il.Cfg_builder.print_cfg cfg)
+        (match cfg with
+         | Error _ -> Printf.printf "  CFG build error!\n"
+         | Ok cfg -> Printf.printf "\n%s\n" (Catseye_il.Cfg_builder.print_cfg cfg))
       ) unit.il_functions
   ) test_files

@@ -4,6 +4,7 @@ type sink_def = {
   pattern : string;
   sanitizers : string list;
   requires_field : string option;
+  arg_pos : int option;  (** When [Some n], only flag if tainted data is in argument position n (0-indexed) *)
 }
 
 type source_def = {

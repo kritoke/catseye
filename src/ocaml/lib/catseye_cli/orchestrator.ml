@@ -277,6 +277,21 @@ let time_phase label f =
   Printf.eprintf "  [timing] %s: %.3fs\n" label (t1 -. t0);
   result
 
+(* ── Timeout helper ─────────────────────────────────────────────────── *)
+
+let with_timeout ~ms f =
+  if ms <= 0 then f ()
+  else
+    let deadline = Unix.gettimeofday () +. (float ms /. 1000.0) in
+    let check_and_run () =
+      if Unix.gettimeofday () > deadline then
+        raise (Failure ("timeout: exceeded " ^ string_of_int ms ^ "ms"))
+    in
+    try (check_and_run (); f ()) with
+    | Failure msg when String.length msg >= 7 && String.sub msg 0 7 = "timeout" ->
+      raise (Failure msg)
+    | e -> raise e
+
 (* ── Main pipeline ──────────────────────────────────────────────────── *)
 
 let run (config : t) : int =
@@ -388,27 +403,62 @@ let run (config : t) : int =
       [])
   in
 
+  (* Apply --no-cfg override: flat engine has more predictable performance *)
+  let config = if config.no_cfg_use then { config with use_cfg = false } else config in
+
   (* Step 4: Analyze *)
   if config.format = Terminal then
     Printf.printf "\n  → Running analysis engine (%d nodes)...\n\n" (List.length nodes);
 
-  let findings = time_phase "analysis" (fun () ->
+  let do_analysis () =
     if config.use_cfg then begin
       (* CFG-based taint analysis *)
+      if config.format = Terminal then
+        Printf.printf "  [cfg] Using IL/CFG-based taint engine\n";
       let all_sources = List.concat_map (fun (r : Catseye_rules.Types.rule_def) ->
         r.sources
       ) rules in
+      let analyzed = ref 0 in
       List.concat_map (fun src ->
+        incr analyzed;
+        if config.format = Terminal && !analyzed mod 10 = 0 then
+          Printf.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
         try
           match Catseye_ast.Parse.parse_file ~path:src.path with
           | Error _ -> []
           | Ok mod_ ->
             let unit = Catseye_il.Of_catseye_ast.translate mod_ in
-            Catseye_il.Cfg_taint.analyze_unit unit all_sources rules
-        with _ -> []
+            let opts : Catseye_il.Cfg_taint.analyze_opts = {
+              cfg_max_blocks = config.cfg_max_blocks;
+              cfg_timeout_ms = config.cfg_timeout_ms;
+            } in
+            let result = Catseye_il.Cfg_taint.analyze_unit ~opts unit all_sources rules in
+            (match result.skipped_functions with
+             | [] -> ()
+             | fns ->
+               Printf.eprintf "  [warn] Skipped %d functions due to CFG bounds in %s\n"
+                 (List.length fns) src.path);
+            result.findings
+        with e ->
+          Printf.eprintf "  [warn] CFG analysis failed for %s: %s\n" src.path (Printexc.to_string e);
+          []
       ) sources
-    end else
+    end else begin
+      (* Flat taint engine — more predictable performance *)
+      if config.format = Terminal then
+        Printf.printf "  [engine] Using flat taint engine\n";
       Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes
+    end
+  in
+  let findings = time_phase "analysis" (fun () ->
+    match config.analysis_timeout_ms with
+    | 0 -> do_analysis ()  (* No timeout *)
+    | ms ->
+      Printf.eprintf "  [timeout] Analysis timeout set to %dms\n" ms;
+      try with_timeout ~ms do_analysis with
+      | Failure msg when String.length msg >= 7 && String.sub msg 0 7 = "timeout" ->
+        Printf.eprintf "\n  [timeout] Analysis exceeded limit. Falling back to flat engine...\n";
+        Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes
   ) in
 
   (* Step 4b: Predator Vision — reachability analysis *)

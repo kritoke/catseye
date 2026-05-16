@@ -1,5 +1,5 @@
 (tests
- (names catseye_ast_test crystal_test il_cfg_test)
- (modules catseye_ast_test crystal_test il_cfg_test)
- (libraries catseye.ast catseye.ai_linter catseye.il)
+ (names catseye_ast_test crystal_test il_cfg_test deep_nest_test cfg_perf_test taint_perf_test kdl_precision_test)
+ (modules catseye_ast_test crystal_test il_cfg_test deep_nest_test cfg_perf_test taint_perf_test kdl_precision_test)
+ (libraries catseye.ast catseye.ai_linter catseye.il catseye.rules catseye.types)
  (package catseye))

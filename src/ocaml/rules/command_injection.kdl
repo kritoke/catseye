@@ -1,13 +1,13 @@
 rule "CommandInjection" severity="Critical" {
     sinks {
-        sink "system"
-        sink "Process.run"
-        sink "os.command"
-        sink "os.cmd"
-        sink "shell.cmd"
-        sink "cmd.run"
-        sink ":os.cmd"
-        sink "erlexec.Shell"
+        sink "system" arg=0
+        sink "Process.run" arg=0
+        sink "os.command" arg=0
+        sink "os.cmd" arg=0
+        sink "shell.cmd" arg=0
+        sink "cmd.run" arg=0
+        sink ":os.cmd" arg=0
+        sink "erlexec.Shell" arg=0
     }
     sources {
         source "params"

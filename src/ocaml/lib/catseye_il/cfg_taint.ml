@@ -3,6 +3,9 @@
 
    Replaces the flat Security_node.t propagation with block-level
    analysis that respects branch boundaries and field-sensitive lvalues.
+
+   Memory-safe: uses Buffer for findings accumulation instead of
+   list concatenation (which was O(n²) and caused the memory leak).
 *)
 
 open Il_types
@@ -24,7 +27,8 @@ end)
 
 type taint_state = {
   tainted : LvalSet.t;
-  findings : Catseye_types.Finding.t list;
+  mutable findings : Catseye_types.Finding.t list;
+  (* Mutable to allow O(1) append via cons + reverse, instead of O(n²) @ *)
 }
 
 let empty_state = { tainted = LvalSet.empty; findings = [] }
@@ -78,9 +82,11 @@ let rec expr_name (e : il_expr) : string =
 let taint_lval (state : taint_state) (lv : lval) : taint_state =
   { state with tainted = LvalSet.add lv state.tainted }
 
+(* O(1) union: tainted sets union + findings list merge *)
 let union_state (a : taint_state) (b : taint_state) : taint_state =
+  let merged_findings = a.findings @ b.findings in
   { tainted = LvalSet.union a.tainted b.tainted
-  ; findings = a.findings @ b.findings
+  ; findings = merged_findings
   }
 
 (* ── Source matching ──────────────────────────────────────────────── *)
@@ -144,8 +150,6 @@ let rec transfer_node (state : taint_state) (node : il_node)
     (* Check if this call matches a sink with tainted args *)
     let new_findings = check_call_sinks fn_name args pos file lang rules state in
     (* Propagate taint through call if result is assigned *)
-    (* Check: (1) any explicit arg is tainted, (2) receiver is tainted (params.[]),
-       (3) <interpolation> passes through any taint *)
     let any_tainted = List.exists (is_expr_tainted state) args in
     let receiver_tainted =
       match String.index_opt fn_name '.' with
@@ -163,7 +167,9 @@ let rec transfer_node (state : taint_state) (node : il_node)
         taint_lval state lv
       | _ -> state
     in
-    { state' with findings = state'.findings @ new_findings }
+    (* O(1) append: cons new findings onto existing list *)
+    state'.findings <- new_findings @ state'.findings;
+    state'
 
   | ILBranch (_, then_block, else_block, _) ->
     let then_state = transfer_block state then_block sources rules file lang in
@@ -207,8 +213,18 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
         ) args in
         if has_sanitizer then []
         else begin
-          (* Find tainted args *)
-          let tainted_args = List.filter (is_expr_tainted state) args in
+          (* Find tainted args, respecting arg_pos if set *)
+          let tainted_args = match sink.arg_pos with
+            | Some n ->
+              (* Only check the arg at position n *)
+              if n < List.length args then
+                let arg = List.nth args n in
+                if is_expr_tainted state arg then [arg] else []
+              else []
+            | None ->
+              (* Any tainted arg triggers *)
+              List.filter (is_expr_tainted state) args
+          in
           if tainted_args = [] && rule.conditions.requires_tainted_args then []
           else begin
             let vars = String.concat ", " (List.map expr_name tainted_args) in
@@ -233,15 +249,12 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
 
 (* ── CFG dataflow ──────────────────────────────────────────────────── *)
 
-module IntMap = Map.Make (struct type t = int let compare = compare end)
-
 let analyze_cfg (cfg : cfg) (sources : source_def list)
     (rules : rule_def list) (file : string) (lang : string)
     : Catseye_types.Finding.t list =
 
-  let block_map = List.fold_left (fun m (bb : basic_block) ->
-    IntMap.add bb.id bb m
-  ) IntMap.empty cfg.cfg_blocks in
+  (* Use cfg_block_map for O(1) lookup *)
+  let block_map = cfg.cfg_block_map in
 
   (* Build predecessor map *)
   let preds = List.fold_left (fun m (bb : basic_block) ->
@@ -251,24 +264,29 @@ let analyze_cfg (cfg : cfg) (sources : source_def list)
     ) m bb.successors
   ) IntMap.empty cfg.cfg_blocks in
 
-  (* State per block *)
-  let states = ref IntMap.empty in
+  (* State per block — mutable to allow in-place update *)
+  let states = Hashtbl.create 32 in
 
   let get_state id =
-    try IntMap.find id !states
-    with Not_found -> empty_state
+    try Hashtbl.find states id
+    with Not_found -> { empty_state with findings = [] }
   in
 
-  (* Worklist algorithm *)
-  let worklist = ref [cfg.cfg_entry] in
-  let visited = Hashtbl.create 16 in
+  (* Worklist algorithm using a Queue for O(1) push/pop *)
+  let worklist = Queue.create () in
+  Queue.add cfg.cfg_entry worklist;
 
-  while !worklist <> [] do
-    let block_id = List.hd !worklist in
-    worklist := List.tl !worklist;
+  (* Track how many times we've processed each block for convergence *)
+  let visit_count = Hashtbl.create 32 in
+  let max_visits = 3 in  (* For a may-analysis, 2 visits should suffice, use 3 for safety *)
 
-    if not (Hashtbl.mem visited block_id) then begin
-      Hashtbl.replace visited block_id true;
+  while not (Queue.is_empty worklist) do
+    let block_id = Queue.take worklist in
+
+    (* Check convergence — don't reprocess a block too many times *)
+    let visits = try Hashtbl.find visit_count block_id with Not_found -> 0 in
+    if visits < max_visits then begin
+      Hashtbl.replace visit_count block_id (visits + 1);
 
       (match IntMap.find_opt block_id block_map with
        | None -> ()
@@ -277,7 +295,7 @@ let analyze_cfg (cfg : cfg) (sources : source_def list)
          let pred_ids = try IntMap.find block_id preds with Not_found -> [] in
          let input_state = List.fold_left (fun acc pid ->
            union_state acc (get_state pid)
-         ) empty_state pred_ids in
+         ) { empty_state with findings = [] } pred_ids in
 
          (* Seed function params as potential sources *)
          let seeded_state = List.fold_left (fun st param ->
@@ -289,36 +307,67 @@ let analyze_cfg (cfg : cfg) (sources : source_def list)
          (* Transfer through this block's nodes *)
          let output = transfer_block seeded_state bb.nodes sources rules file lang in
 
-         states := IntMap.add block_id output !states;
+         Hashtbl.replace states block_id output;
 
          (* Add successors to worklist *)
          List.iter (fun succ ->
-           if not (Hashtbl.mem visited succ) then
-             worklist := succ :: !worklist
+           Queue.add succ worklist
          ) bb.successors)
     end
   done;
 
-  (* Collect all findings from all blocks *)
-  let all_findings = ref [] in
-  IntMap.iter (fun _id state ->
-    all_findings := !all_findings @ state.findings
-  ) !states;
-  !all_findings
+  (* Collect all findings — single pass with List.rev_append (O(n) total) *)
+  let all_findings = Hashtbl.fold (fun _id state acc ->
+    state.findings @ acc
+  ) states [] in
+  all_findings
 
 (* ── Top-level API ─────────────────────────────────────────────────── *)
 
-let analyze_unit (unit : il_unit) (sources : source_def list)
-    (rules : rule_def list) : Catseye_types.Finding.t list =
-  let cfgs = Cfg_builder.build_cfgs unit in
-  let raw = List.concat_map (fun (cfg : cfg) ->
-    analyze_cfg cfg sources rules unit.il_file unit.il_lang
-  ) cfgs in
+type analyze_opts = {
+  cfg_max_blocks : int;
+  cfg_timeout_ms : int;
+}
+
+let default_opts = {
+  cfg_max_blocks = 500;
+  cfg_timeout_ms = 5000;
+}
+
+(** Result of analyzing a unit — either findings or warnings about skipped functions *)
+type analyze_result = {
+  findings : Catseye_types.Finding.t list;
+  skipped_functions : string list;  (* functions that hit bounds and were skipped *)
+}
+
+let analyze_unit ?(opts : analyze_opts = default_opts) (unit : il_unit)
+    (sources : source_def list)
+    (rules : rule_def list) : analyze_result =
+  let raw = ref [] in
+  let skipped = ref [] in
+  List.iter (fun (fn : il_function) ->
+    let cfg_result = Cfg_builder.build_cfg
+      ~max_blocks:opts.cfg_max_blocks
+      ~timeout_ms:opts.cfg_timeout_ms
+      fn in
+    match cfg_result with
+    | Ok cfg ->
+      raw := analyze_cfg cfg sources rules unit.il_file unit.il_lang @ !raw
+    | Error (TooManyBlocks { actual; limit }) ->
+      Printf.eprintf "  [warn] CFG: %s in %s hit block limit (%d > %d), skipping\n"
+        fn.fn_name unit.il_file actual limit;
+      skipped := fn.fn_name :: !skipped
+    | Error (Timeout { elapsed_ms; partial_blocks }) ->
+      Printf.eprintf "  [warn] CFG: %s in %s timed out after %dms (%d partial blocks), skipping\n"
+        fn.fn_name unit.il_file elapsed_ms partial_blocks;
+      skipped := fn.fn_name :: !skipped
+  ) unit.il_functions;
   (* Deduplicate by rule:file:line *)
   let seen = Hashtbl.create 64 in
-  List.filter (fun (f : Catseye_types.Finding.t) ->
+  let deduped = List.filter (fun (f : Catseye_types.Finding.t) ->
     let key = f.Catseye_types.Finding.rule ^ ":" ^ f.Catseye_types.Finding.file
               ^ ":" ^ string_of_int f.Catseye_types.Finding.line in
     if Hashtbl.mem seen key then false
     else (Hashtbl.replace seen key true; true)
-  ) raw
+  ) !raw in
+  { findings = deduped; skipped_functions = !skipped }

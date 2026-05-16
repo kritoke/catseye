@@ -8,6 +8,7 @@ let get_prop (props : Kdl.prop list) (key : string) : string option =
     if k = key then
       match v with
       | `String s -> Some s
+      | #Kdl.Num.t as n -> Some (Kdl.Num.to_string n)
       | _ -> None
     else None
   ) props
@@ -32,7 +33,11 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
     )
   in
   let requires_field = get_prop node.props "requires_field" in
-  [{ pattern; sanitizers; requires_field }]
+  let arg_pos = match get_prop node.props "arg" with
+    | Some s -> (try Some (int_of_string s) with _ -> None)
+    | None -> None
+  in
+  [{ pattern; sanitizers; requires_field; arg_pos }]
 
 let parse_sources_node (node : Kdl.node) : source_def list =
   let name = match get_first_arg node.args with
