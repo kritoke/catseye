@@ -101,6 +101,8 @@ Catches patterns common in AI-generated code: hallucinated method calls, hardcod
 
 ### Code Smells (`--claws`)
 
+All code smell detectors use **AST-native analysis** via `CatseyeAST.t` for accurate, tree-based detection. The flat engine runs as fallback for rules not yet migrated.
+
 | Detector | Rule ID | Threshold |
 |----------|---------|-----------|
 | Cyclomatic complexity | `HighComplexity` | M ≥ 10 |
@@ -116,8 +118,9 @@ Catches patterns common in AI-generated code: hallucinated method calls, hardcod
 | Complex match | `ComplexMatch` | ≥ 5 branches |
 | Dead code | `DeadCode` | unreachable code |
 | Feature envy | `FeatureEnvy` | excessive cross-class calls |
-| Orphaned spawn | `OrphanedSpawn` | untracked `spawn`/`go` |
-| Muted pack | `MutedPack` | unused code blocks |
+| Orphaned spawn | `OrphanedSpawn` | `spawn`/`go` without rescue/ensure |
+| Muted pack | `MutedPack` | `Channel.send` without receive |
+| Dead letter | `DeadLetter` | `Channel.close` before receive |
 
 **Exempt patterns:** Factory methods (`from_*`, `build_*`, `create_*`), constructors (`initialize`, `new`), parsers (`decode*`, `parse_*`), DTO/serialization classes (`include JSON::Serializable`), and files in `/dtos/`, `/types/`, `/entities/` directories are automatically exempted from relevant detectors.
 
@@ -212,6 +215,21 @@ rule "MyRule" severity="Medium" {
 
 Rebuild with `just build` and test.
 
+### Extraction Strategy
+
+**Crystal projects** use two extraction paths:
+
+1. **Flat extraction** (default): Extracts individual AST nodes as a flat list. Fast but loses hierarchy.
+2. **Hierarchical extraction** (`--bridge`): Parses nested AST structure for accurate tree-based analysis.
+
+For Crystal projects with `shard.yml`, scan only the `src/` directory to exclude shard dependencies:
+
+```bash
+./bin/catseye-ocaml --rules src/ocaml/rules --claws path/to/project/src/
+```
+
+The `--include-deps` flag is planned to automatically handle shard dependency exclusion.
+
 ## Configuration
 
 Optional `.catseye.toml` in your project root (walked up from the target directory):
@@ -272,21 +290,37 @@ catseye/
 │   │   ├── lib/
 │   │   │   ├── catseye_engine/          # Flat taint analysis + propagation, extractor registry
 │   │   │   ├── catseye_il/              # IL types, CFG builder (ocamlgraph), CFG taint engine
-│   │   │   ├── catseye_ast/             # Unified AST + Crystal/Gleam mappers + bridge
+│   │   │   ├── catseye_ast/             # Unified AST + Crystal/Gleam mappers
+│   │   │   │   └── crystal_hierarchical_mapper.ml  # Hierarchical AST parsing
 │   │   │   ├── ai_linter/              # AI antipattern rules (73 rules)
-│   │   │   ├── catseye_claws/           # Code smell detection (AST-native + flat)
+│   │   │   ├── catseye_claws/           # Code smell detection (AST-native)
+│   │   │   │   ├── complexity_ast.ml    # Cyclomatic complexity
+│   │   │   │   ├── anatomy_ast.ml       # Long params, deep nesting, god objects
+│   │   │   │   ├── dry_ast.ml           # DRY violation detection
+│   │   │   │   ├── extra_smells_ast.ml  # Long method, message chains, etc.
+│   │   │   │   └── concurrency_ast.ml    # OrphanedSpawn, MutedPack
 │   │   │   ├── catseye_crowsnest/       # Supply chain audit
 │   │   │   ├── catseye_rules/           # KDL rule interpreter (arg, $var)
 │   │   │   ├── catseye_cli/             # CLI, orchestrator, output formats
 │   │   │   └── catseye_types/           # Shared types
 │   │   └── rules/                       # 12 KDL rule files
-│   └── extractor/extractor.cr           # Crystal AST extractors (flat + hierarchical)
+│   └── extractor/extractor.cr           # Crystal AST extractor
 ├── test/samples/                        # Test corpus
 ├── openspec/                            # Spec-driven change tracking
 ├── .github/workflows/                   # CI
 ├── flake.nix                            # Nix dev shell
 └── justfile                             # Build tasks
 ```
+
+## Migration Status
+
+**Claws → CatseyeAST Migration: ✅ Complete**
+
+All 14 code smell detectors now use AST-native analysis:
+- Complexity, Anatomy, DRY, Extra Smells (9 detectors), Concurrency (3 detectors)
+- Flat engine runs as fallback for uncaptured rules
+
+See `openspec/changes/claws-ast-migration/` for details.
 
 ## Performance
 
