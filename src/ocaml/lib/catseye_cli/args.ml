@@ -116,8 +116,26 @@ let parse_args () : t =
     Printf.eprintf "Error: no target directory specified.\nUsage: catseye <directory>\n";
     exit 1
   end;
-  (* Resolve relative defaults against cwd *)
+  (* Resolve relative defaults. First try CWD, then try relative to the
+     binary's own location (so global installs work from any directory). *)
+  let resolve_extractor cwd path =
+    let from_cwd = resolve cwd path in
+    if Sys.file_exists from_cwd then from_cwd
+    else begin
+      let exe_dir = Filename.dirname (Sys.executable_name) in
+      (* Try extractor in the same directory as the binary *)
+      let basename = Filename.basename path in
+      let from_exe = Filename.concat exe_dir basename in
+      if Sys.file_exists from_exe then from_exe
+      else begin
+        (* Global install layout: binary in bin/, extractor in lib/catseye/extractor/ *)
+        let global_path = Filename.concat exe_dir "../lib/catseye/extractor/catseye-crystal-extractor" in
+        if Sys.file_exists global_path then global_path
+        else from_cwd  (* return cwd-relative as fallback *)
+      end
+    end
+  in
   { cfg with
-    crystal_extractor = resolve cwd cfg.crystal_extractor
+    crystal_extractor = resolve_extractor cwd cfg.crystal_extractor
   ; rules_dir = resolve cwd cfg.rules_dir
   }

@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -22,38 +22,56 @@ interface ScanResult {
   findings: Finding[];
 }
 
-function findBinary(): string | null {
-  const candidates = [
-    "catseye-ocaml",
-    join(process.env.HOME || "/root", ".local/bin/catseye-ocaml"),
-    "/usr/local/bin/catseye-ocaml",
-  ];
-
-  for (const cmd of candidates) {
-    try {
-      const which = execSync(`which ${cmd} 2>/dev/null`, { encoding: "utf-8" }).trim();
-      if (which) return which;
-    } catch {}
-  }
-
-  // Check common build locations relative to cwd
+function findBinary(cwd: string): string | null {
+  // Prefer local build in the project (always freshest)
   const localCandidates = [
-    join("bin", "catseye-ocaml"),
-    join("vendor", "catseye", "bin", "catseye-ocaml"),
+    join(cwd, "bin", "catseye-ocaml"),
+    join(cwd, "vendor", "catseye", "bin", "catseye-ocaml"),
   ];
   for (const p of localCandidates) {
     if (existsSync(p)) return resolve(p);
   }
 
+  // Check relative to extension install (pi extensions may be in a catseye project)
+  const extDirCandidates = [
+    join(__dirname, "..", "..", "bin", "catseye-ocaml"),
+    join(__dirname, "..", "..", "..", "catseye", "bin", "catseye-ocaml"),
+  ];
+  for (const p of extDirCandidates) {
+    if (existsSync(p)) return resolve(p);
+  }
+
+  // Fall back to global install locations
+  const globalCandidates = [
+    join(process.env.HOME || "/root", ".local/bin/catseye-ocaml"),
+    "/usr/local/bin/catseye-ocaml",
+  ];
+  for (const p of globalCandidates) {
+    if (existsSync(p)) return p;
+  }
+
+  // Last resort: check PATH
+  const result = spawnSync("which", ["catseye-ocaml"], {
+    encoding: "utf-8",
+    timeout: 5_000,
+  });
+  const which = result.stdout?.trim();
+  if (which) return which;
+
   return null;
 }
 
-function findRules(): string | null {
+function findRules(cwd: string): string | null {
+  // Prefer local rules in the project (matching local binary preference)
   const candidates = [
+    join(cwd, "src", "ocaml", "rules"),
+    join(cwd, "vendor", "catseye", "src/ocaml/rules"),
+    // Check relative to extension install
+    join(__dirname, "..", "..", "src", "ocaml", "rules"),
+    join(__dirname, "..", "..", "..", "catseye", "src", "ocaml", "rules"),
+    // Global install
     join(process.env.HOME || "/root", ".local/lib/catseye/rules"),
     "/usr/local/lib/catseye/rules",
-    join("vendor", "catseye", "src/ocaml/rules"),
-    join("src", "ocaml", "rules"),
   ];
 
   for (const dir of candidates) {
@@ -110,7 +128,7 @@ export default function (pi: ExtensionAPI) {
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const binary = findBinary();
+      const binary = findBinary(ctx.cwd);
       if (!binary) {
         return {
           content: [{
@@ -121,7 +139,7 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const rules = params.rules_dir || findRules();
+      const rules = params.rules_dir || findRules(ctx.cwd);
       if (!rules) {
         return {
           content: [{
@@ -134,29 +152,84 @@ export default function (pi: ExtensionAPI) {
 
       const target = params.directory || findSourceDir(ctx.cwd) || ctx.cwd;
 
-      const flags: string[] = [
-        `--rules '${rules}'`,
-        "--format json",
+      const args: string[] = [
+        "--rules", rules,
+        "--format", "json",
       ];
-      if (params.cfg) flags.push("--cfg");
-      if (params.ai_lint !== false) flags.push("--ai-lint");
-      if (params.claws !== false) flags.push("--claws");
+      if (params.cfg) args.push("--cfg");
+      if (params.ai_lint !== false) args.push("--ai-lint");
+      if (params.claws !== false) args.push("--claws");
+      args.push(target);
 
-      const cmd = `${binary} ${flags.join(" ")} '${target}' 2>/dev/null`;
+      // Use spawnSync (no shell) to avoid shell overhead and SIGPIPE issues.
+      // Catseye exits with code 1 when findings exist — that's not an error.
+      //
+      // The OCaml binary finds the Crystal extractor at bin/catseye-crystal-extractor
+      // relative to CWD. The binary lives in <project>/bin/, so the project root
+      // is two levels up. We set cwd to the project root so the extractor is found.
+      // Target and rules are absolute paths so they work from any cwd.
+      const binaryDir = resolve(binary, "..");
+      const projectRoot = resolve(binaryDir, "..");
+      const extractorPath = join(projectRoot, "bin", "catseye-crystal-extractor");
+      const env = { ...process.env } as Record<string, string>;
+      // Also set env var for the direct-parse code path in crystal_mapper.ml
+      if (existsSync(extractorPath)) {
+        env.CATSEYE_CRYSTAL_EXTRACTOR = extractorPath;
+      }
 
-      let stdout: string;
-      try {
-        stdout = execSync(cmd, {
-          encoding: "utf-8",
-          maxBuffer: 50 * 1024 * 1024,
-          timeout: 120_000,
-          cwd: ctx.cwd,
-        });
-      } catch (err: any) {
+      // Set cwd to the catseye project root if the extractor is there,
+      // otherwise fall back to ctx.cwd
+      const scanCwd = existsSync(extractorPath) ? projectRoot : ctx.cwd;
+
+      const proc = spawnSync(binary, args, {
+        encoding: "utf-8",
+        maxBuffer: 50 * 1024 * 1024,
+        timeout: 120_000,
+        cwd: scanCwd,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      if (proc.error) {
         return {
           content: [{
             type: "text",
-            text: `Scan failed: ${err.message}`,
+            text: `Scan failed: ${proc.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+
+      // Accept exit codes 0 (clean) and 1 (findings found) as success.
+      // Code >1 is a real error.
+      const stdout = proc.stdout || "";
+      const stderr = proc.stderr || "";
+      if (proc.status != null && proc.status > 1) {
+        return {
+          content: [{
+            type: "text",
+            text: `Scan failed (exit ${proc.status}). stderr: ${stderr.slice(0, 1000)}`,
+          }],
+          isError: true,
+        };
+      }
+
+      if (proc.signal) {
+        return {
+          content: [{
+            type: "text",
+            text: `Scan killed by signal ${proc.signal}.`,
+          }],
+          isError: true,
+        };
+      }
+
+      // Empty output is likely a stale/broken binary — give a helpful message
+      if (!stdout.trim()) {
+        return {
+          content: [{
+            type: "text",
+            text: `Scan produced no output. Binary: ${binary} | Rules: ${rules}\nThis usually means a stale global install. Run: just install`,
           }],
           isError: true,
         };
