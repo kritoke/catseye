@@ -41,6 +41,7 @@ type t = {
   cfg_timeout_ms : int;       (* Timeout per function CFG build (safety limit) *)
   claws_config : Catseye_claws.Types.claws_config;
   taint_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress taint findings *)
+  include_deps : bool;  (* Include shard dependencies in scan (Crystal only) *)
 }
 
 let default = {
@@ -65,6 +66,7 @@ let default = {
   claws = false;
   ai_lint = false;
   ast_bridge = false;
+  include_deps = false;
   use_cfg = false;
   no_cfg_use = false;
   analysis_timeout_ms = 0;  (* 0 = no timeout *)

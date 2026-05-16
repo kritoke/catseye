@@ -58,6 +58,8 @@ let parse_args () : t =
       go { acc with ai_lint = true } rest
     | "--bridge" :: rest ->
       go { acc with ast_bridge = true } rest
+    | "--include-deps" :: rest ->
+      go { acc with include_deps = true } rest
     | "--cfg" :: rest ->
       go { acc with use_cfg = true } rest
     | "--no-cfg" :: rest ->
@@ -92,6 +94,7 @@ let parse_args () : t =
       Printf.printf "  --ai-lint            Enable AI antipattern detection (Gleam & Crystal)\n";
       Printf.printf "  --cfg                 Use IL/CFG-based taint engine (faster, fewer FPs)\n";
       Printf.printf "  --no-cfg              Use flat taint engine (more predictable performance)\n";
+      Printf.printf "  --include-deps        Include shard dependencies in scan (Crystal only)\n";
       Printf.printf "  --analysis-timeout <ms>  Timeout for analysis phase (0=disabled)\n";
       Printf.printf "  --cfg-max-blocks <n>    Max blocks per function CFG (default: 500)\n";
       Printf.printf "  --cfg-timeout-ms <ms>   Timeout per function CFG build (default: 5000)\n";

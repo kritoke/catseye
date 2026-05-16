@@ -308,7 +308,7 @@ let run (config : t) : int =
 
   (* Step 1: Discover sources *)
   let sources = time_phase "discovery" (fun () ->
-    discover_sources config.target_dir config.lang_filter config.exclude_dirs) in
+    discover_sources ~include_deps:config.include_deps ~lang_filter:config.lang_filter config.target_dir config.exclude_dirs) in
   if sources = [] then begin
     (* Still print Crow's Nest if we have results *)
     (match crows_nest_results with
