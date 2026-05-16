@@ -1,9 +1,17 @@
 rule "WeakCryptography" severity="Medium" {
     sinks {
-        sink "Digest::MD5"
-        sink "Digest::SHA1"
-        sink "hashlib.md5"
-        sink "hashlib.sha1"
+        sink "Digest::MD5" {
+            fix "Use Digest::SHA256.hexdigest or OpenSSL::Digest.new(\"sha256\")"
+        }
+        sink "Digest::SHA1" {
+            fix "Use Digest::SHA256.hexdigest or OpenSSL::Digest.new(\"sha256\")"
+        }
+        sink "hashlib.md5" {
+            fix "hashlib.sha256({arg0}) instead of hashlib.md5"
+        }
+        sink "hashlib.sha1" {
+            fix "hashlib.sha256({arg0}) instead of hashlib.sha1"
+        }
     }
     conditions {
         skip_taint_check
@@ -13,15 +21,26 @@ rule "WeakCryptography" severity="Medium" {
 
 rule "InsecureRandom" severity="Low" {
     sinks {
-        sink "int.random"
-        sink "float.random"
-        sink "list.random"
-        sink "Math.random"
-        sink "Random.rand"
+        sink "int.random" {
+            fix "Use a CSPRNG for security contexts"
+        }
+        sink "float.random" {
+            fix "Use a CSPRNG for security contexts"
+        }
+        sink "list.random" {
+            fix "Use a CSPRNG for security contexts"
+        }
+        sink "Math.random" {
+            fix "Use crypto.getRandomValues() or a CSPRNG for security contexts"
+        }
+        sink "Random.rand" {
+            fix "Use SecureRandom.rand for security contexts"
+        }
         sink "random" {
             sanitizer "SecureRandom"
             sanitizer "Secure"
             sanitizer "Crypto"
+            fix "Use SecureRandom or a CSPRNG for security contexts"
         }
     }
     conditions {

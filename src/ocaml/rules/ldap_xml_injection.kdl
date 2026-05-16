@@ -1,9 +1,17 @@
 rule "LDAPInjection" severity="High" {
     sinks {
-        sink "LDAP.search"
-        sink "LDAP.query"
-        sink "ldap.search"
-        sink "ldap.bind"
+        sink "LDAP.search" {
+            fix "LDAP.search(filter: LDAP.escape({arg0}))"
+        }
+        sink "LDAP.query" {
+            fix "LDAP.query(filter: LDAP.escape({arg0}))"
+        }
+        sink "ldap.search" {
+            fix "ldap.search(filter: ldap.escape({arg0}))"
+        }
+        sink "ldap.bind" {
+            fix "Validate and sanitize DN components before binding"
+        }
     }
     sources {
         source "params"

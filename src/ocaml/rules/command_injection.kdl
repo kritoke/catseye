@@ -42,12 +42,24 @@ rule "CommandInjection" severity="Critical" {
 
 rule "EnvInjection" severity="High" {
     sinks {
-        sink "ENV[]="
-        sink "ENV.[]="
-        sink "putenv"
-        sink "os.setenv"
-        sink "os.putenv"
-        sink "system.putenv"
+        sink "ENV[]=" {
+            fix "Whitelist allowed env var names before setting: ENV[allowed_key] = validated_value"
+        }
+        sink "ENV.[]=" {
+            fix "Whitelist allowed env var names before setting: ENV[allowed_key] = validated_value"
+        }
+        sink "putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "os.setenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "os.putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "system.putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
     }
     sources {
         source "params"

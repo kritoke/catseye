@@ -1,7 +1,11 @@
 rule "MissingTimeout" severity="Medium" {
     sinks {
-        sink "HTTP::Client.new"
-        sink "HTTP::Client.start"
+        sink "HTTP::Client.new" {
+            fix "HTTP::Client.new(uri, connect_timeout: 5.seconds, read_timeout: 10.seconds)"
+        }
+        sink "HTTP::Client.start" {
+            fix "HTTP::Client.start(uri, connect_timeout: 5.seconds, read_timeout: 10.seconds)"
+        }
     }
     conditions {
         check_args_missing "timeout"

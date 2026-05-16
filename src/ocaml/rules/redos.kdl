@@ -1,9 +1,17 @@
 rule "ReDoS" severity="Medium" {
     sinks {
-        sink "Regex.new"
-        sink "Regex.compile"
-        sink "re.compile"
-        sink "regexp.compile"
+        sink "Regex.new" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
+        sink "Regex.compile" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
+        sink "re.compile" {
+            fix "re.compile(regex, timeout=1) or simplify nested quantifiers"
+        }
+        sink "regexp.compile" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
     }
     conditions {
         check_args_contain "+)+"
