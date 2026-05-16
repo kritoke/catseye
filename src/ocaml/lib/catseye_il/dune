@@ -2,5 +2,5 @@
 (library
  (name catseye_il)
  (public_name catseye.il)
- (modules il_types of_catseye_ast cfg_builder cfg_taint cfg_graph)
+ (modules il_types of_catseye_ast cfg_builder cfg_taint cfg_graph cfg_dominator)
  (libraries catseye.ast catseye.rules catseye.types ocamlgraph))

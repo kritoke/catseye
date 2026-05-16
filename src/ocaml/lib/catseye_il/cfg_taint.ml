@@ -6,7 +6,21 @@
 
    Memory-safe: uses Buffer for findings accumulation instead of
    list concatenation (which was O(n²) and caused the memory leak).
+
+   Dominator-based FP suppression: if a sanitizer call dominates
+   the block containing a sink, the finding is suppressed because
+   every path to the sink passes through the sanitizer.
 *)
+
+(* ── Dominator context (threaded via refs) ──────────────────────────── *)
+
+(** Current dominator analysis, set per analyze_cfg call.
+    Used by check_call_sinks to suppress guarded findings. *)
+let current_dom_data : Cfg_dominator.t option ref = ref None
+
+(** Current block ID being analyzed, set per worklist iteration.
+    Used by check_call_sinks to query dominance for the current block. *)
+let current_block_id : int ref = ref (-1)
 
 open Il_types
 open Catseye_rules.Types
@@ -213,6 +227,16 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
         ) args in
         if has_sanitizer then []
         else begin
+          (* Dominator-based suppression: if a sanitizer dominates this block,
+             the sink is guarded on all paths from entry. Suppress the finding. *)
+          let dominated_by_sanitizer = match !current_dom_data with
+            | None -> false
+            | Some dom ->
+              let bid = !current_block_id in
+              Cfg_dominator.is_sanitized_by dom bid sink.sanitizers
+          in
+          if dominated_by_sanitizer then []
+          else begin
           (* Find tainted args, respecting arg_pos if set *)
           let tainted_args = match sink.arg_pos with
             | Some n ->
@@ -251,6 +275,7 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
              ; suggestion
             }]
           end
+          end
         end
       end
     ) rule.sinks
@@ -280,6 +305,13 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
     (rules : rule_def list) (file : string) (lang : string)
     : Catseye_types.Finding.t list =
 
+  (* Compute dominator analysis for sanitizer-guarded path detection *)
+  let dom =
+    try Some (Cfg_dominator.compute cfg)
+    with _ -> None
+  in
+  current_dom_data := dom;
+
   (* State per block *)
   let states = Hashtbl.create 32 in
 
@@ -304,6 +336,7 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
 
       let nodes = Cfg_graph.block_nodes cfg block_id in
       if nodes <> [] then begin
+        current_block_id := block_id;
         (* Input state = union of predecessor outputs *)
         let pred_ids = Cfg_graph.G.pred cfg.Cfg_graph.graph block_id in
         let input_state = List.fold_left (fun acc pid ->
