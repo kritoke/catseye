@@ -59,8 +59,26 @@ let decode_response (json_str : string) : (int * Security_node.t list option) =
 let spawn_worker (extractor_path : string) (worker_id : int) : worker =
   let cmd = Printf.sprintf "%s --serve 2>/dev/null"
     (Filename.quote extractor_path) in
-  let (proc_stdout, proc_stdin, _) =
-    Unix.open_process_full cmd (Unix.environment ()) in
+  (* Use pipe + fork instead of open_process_full to avoid stderr pipe deadlock.
+     open_process_full creates a stderr pipe that must be drained; if the child
+     writes enough to stderr, the pipe buffer fills and the child blocks forever.
+     By using fork+execv and closing stderr ourselves, we eliminate this entirely. *)
+  let stdin_r, stdin_w = Unix.pipe () in
+  let stdout_r, stdout_w = Unix.pipe () in
+  let pid = Unix.fork () in
+  if pid = 0 then begin
+    (* Child process *)
+    Unix.dup2 stdin_r Unix.stdin;
+    Unix.dup2 stdout_w Unix.stdout;
+    Unix.close Unix.stderr;  (* Close stderr → /dev/null *)
+    Unix.close stdin_r; Unix.close stdin_w;
+    Unix.close stdout_r; Unix.close stdout_w;
+    Unix.execv "/bin/sh" [| "/bin/sh"; "-c"; cmd |]
+  end;
+  (* Parent *)
+  Unix.close stdin_r; Unix.close stdout_w;
+  let proc_stdin = Unix.out_channel_of_descr stdin_w in
+  let proc_stdout = Unix.in_channel_of_descr stdout_r in
   { id = worker_id; worker_stdin = proc_stdin; worker_stdout = proc_stdout }
 
 (** Create a pool of N workers. *)

@@ -64,3 +64,5 @@ planning/
 
 # OpenSpec (local only)
 openspec/
+bin/catseye-crystal-extractor
+bin/catseye-hierarchical-extractor
