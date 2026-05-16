@@ -18,6 +18,7 @@ interface ScanResult {
   target: string;
   files_scanned: number;
   nodes_extracted: number;
+  findings_count: number;
   findings: Finding[];
 }
 
@@ -28,7 +29,6 @@ function findBinary(): string | null {
     "/usr/local/bin/catseye-ocaml",
   ];
 
-  // Check PATH
   for (const cmd of candidates) {
     try {
       const which = execSync(`which ${cmd} 2>/dev/null`, { encoding: "utf-8" }).trim();
@@ -64,14 +64,8 @@ function findRules(): string | null {
 }
 
 function findSourceDir(cwd: string): string | null {
-  // Check for Crystal src/
-  if (existsSync(join(cwd, "src"))) {
-    return join(cwd, "src");
-  }
-  // Check for Gleam project with client/src/
-  if (existsSync(join(cwd, "client", "src"))) {
-    return join(cwd, "client", "src");
-  }
+  if (existsSync(join(cwd, "src"))) return join(cwd, "src");
+  if (existsSync(join(cwd, "client", "src"))) return join(cwd, "client", "src");
   return null;
 }
 
@@ -80,12 +74,14 @@ export default function (pi: ExtensionAPI) {
     name: "catseye_scan",
     label: "Catseye Security Scan",
     description:
-      "Run Catseye security scanner on the project. Returns structured JSON with security findings (SSRF, injection, etc.), code smells (deep nesting, long methods, god objects), and AI antipatterns. Use when asked to scan for vulnerabilities or code quality issues.",
+      "Run Catseye static security scanner on the project. Detects SSRF, injection (SQL/command/path/LDAP), open redirects, hardcoded secrets, weak crypto, missing timeouts, ReDoS, and more via taint analysis on Crystal and Gleam code. Also detects code smells (complexity, god objects, deep nesting, long parameter lists) and AI antipatterns (hallucinated methods, hardcoded URLs). Returns structured findings with taint flow traces.",
     promptSnippet: "Scan for security vulnerabilities and code smells",
     promptGuidelines: [
       "Use catseye_scan when the user asks to scan for security issues, code quality, or antipatterns.",
       "After scanning, triage findings as Real/False Positive/Won't Fix before proposing fixes.",
+      "The flat taint engine is used by default. Use cfg=true for branch-aware analysis (more findings).",
       "Common false positives: DeadCode on early-return guards, SSRF on hardcoded URLs, GodObject on cohesive domain classes.",
+      "Sanitizer calls (File.expand_path, URI.parse, validate_*) automatically suppress downstream findings.",
     ],
     parameters: Type.Object({
       directory: Type.Optional(Type.String({
@@ -93,6 +89,10 @@ export default function (pi: ExtensionAPI) {
       })),
       rules_dir: Type.Optional(Type.String({
         description: "Path to KDL rules directory (auto-detected if omitted)",
+      })),
+      cfg: Type.Optional(Type.Boolean({
+        description: "Use IL/CFG-based taint engine — more sensitive, branch-aware analysis (default: false)",
+        default: false,
       })),
       ai_lint: Type.Optional(Type.Boolean({
         description: "Enable AI antipattern detection (default: true)",
@@ -102,6 +102,11 @@ export default function (pi: ExtensionAPI) {
         description: "Enable code smell detection (default: true)",
         default: true,
       })),
+      claws_suppress: Type.Optional(Type.Array(Type.String({
+        description: "Glob patterns for directories to suppress in Claws findings",
+      })), {
+        description: "Claws suppression patterns",
+      }),
     }),
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -133,6 +138,7 @@ export default function (pi: ExtensionAPI) {
         `--rules '${rules}'`,
         "--format json",
       ];
+      if (params.cfg) flags.push("--cfg");
       if (params.ai_lint !== false) flags.push("--ai-lint");
       if (params.claws !== false) flags.push("--claws");
 
@@ -158,7 +164,17 @@ export default function (pi: ExtensionAPI) {
 
       let result: ScanResult;
       try {
-        result = JSON.parse(stdout);
+        // Extract first valid JSON object from output
+        const start = stdout.indexOf("{");
+        if (start === -1) throw new Error("No JSON found");
+        let depth = 0;
+        let end = start;
+        for (let i = start; i < stdout.length; i++) {
+          if (stdout[i] === "{") depth++;
+          else if (stdout[i] === "}") depth--;
+          if (depth === 0) { end = i + 1; break; }
+        }
+        result = JSON.parse(stdout.slice(start, end));
       } catch {
         return {
           content: [{
@@ -183,6 +199,7 @@ export default function (pi: ExtensionAPI) {
         `**Catseye v${result.version} scan complete**`,
         `Files: ${result.files_scanned} | Nodes: ${result.nodes_extracted}`,
         `Findings: ${errors} errors, ${warnings} warnings`,
+        params.cfg ? "Engine: CFG (branch-aware)" : "Engine: flat (default)",
         "",
         "By rule:",
         ...Object.entries(byRule)
@@ -196,7 +213,10 @@ export default function (pi: ExtensionAPI) {
         ...findings.map((f) => {
           const icon = f.severity === "High" || f.severity === "Critical" ? "🔴" : "⚠️";
           const file = f.file.replace(ctx.cwd + "/", "");
-          return `${icon} **${f.rule}** \`${file}:${f.line}\` — ${f.message}`;
+          const flow = f.flow && f.flow.length > 0
+            ? `\n  ← ${f.flow.map((s) => `${s.message} (${file}:${s.line})`).join(" ← ")}`
+            : "";
+          return `${icon} **${f.rule}** \`${file}:${f.line}\` — ${f.message}${flow}`;
         }),
       ].join("\n");
 
@@ -207,6 +227,7 @@ export default function (pi: ExtensionAPI) {
           files_scanned: result.files_scanned,
           errors,
           warnings,
+          engine: params.cfg ? "cfg" : "flat",
           findings: findings.map((f) => ({
             rule: f.rule,
             severity: f.severity,

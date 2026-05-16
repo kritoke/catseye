@@ -118,6 +118,18 @@ install prefix="/usr/local": build
     install -m 755 bin/catseye-crystal-extractor {{prefix}}/lib/catseye/extractor/catseye-crystal-extractor
     @echo "✓ Installed to {{prefix}}"
 
+# Install pi extension (project-local)
+install-pi:
+    @mkdir -p .pi/extensions/catseye-scan
+    @cp extensions/pi-catseye-scan/index.ts .pi/extensions/catseye-scan/
+    @echo "✓ Pi extension installed locally → .pi/extensions/catseye-scan/"
+
+# Install pi extension globally
+install-pi-global:
+    @mkdir -p ~/.pi/agent/extensions/catseye-scan
+    @cp extensions/pi-catseye-scan/index.ts ~/.pi/agent/extensions/catseye-scan/
+    @echo "✓ Pi extension installed globally → ~/.pi/agent/extensions/catseye-scan/"
+
 uninstall prefix="/usr/local":
     rm -f {{prefix}}/bin/catseye-ocaml
     rm -rf {{prefix}}/lib/catseye
