@@ -111,6 +111,10 @@ let analyze_ast (modules : Catseye_ast.Types.t list) (config : Types.claws_confi
     if config.dry_enabled then Dry_ast.analyze modules config
     else []
   in
-  (complexity_findings @ anatomy_findings @ dry_findings)
+  let extra_findings =
+    if config.extra_smells_enabled then Extra_smells_ast.analyze modules config
+    else []
+  in
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))
