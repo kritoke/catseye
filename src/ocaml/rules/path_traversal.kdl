@@ -7,26 +7,40 @@ rule "PathTraversal" severity="High" {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
             sanitizer "File.expand_path"
+            fix "File.read(File.expand_path({arg0}))"
         }
         sink "File.write" arg=0 {
             sanitizer "Path.basename"
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
             sanitizer "File.expand_path"
+            fix "File.write(File.expand_path({arg0}))"
         }
         sink "File.delete" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "File.expand_path"
+            fix "File.delete(File.expand_path({arg0}))"
         }
         sink "File.open" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "File.expand_path"
+            fix "File.open(File.expand_path({arg0}))"
         }
-        sink "Dir.glob" arg=0
-        sink "Dir.entries" arg=0
-        sink "simplifile.read" arg=0
-        sink "simplifile.write" arg=0
-        sink "simplifile.delete" arg=0
+        sink "Dir.glob" arg=0 {
+            fix "Validate path components before globbing: Dir.glob(validate_path({arg0}))"
+        }
+        sink "Dir.entries" arg=0 {
+            fix "Validate path before listing: Dir.entries(validate_path({arg0}))"
+        }
+        sink "simplifile.read" arg=0 {
+            fix "Validate path before reading"
+        }
+        sink "simplifile.write" arg=0 {
+            fix "Validate path before writing"
+        }
+        sink "simplifile.delete" arg=0 {
+            fix "Validate path before deleting"
+        }
     }
     sources {
         source "params" field="path"
@@ -44,10 +58,12 @@ rule "PathTraversal" severity="Medium" {
         sink "File.join" {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            fix "Validate path components before joining"
         }
         sink "Path.join" {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            fix "Validate path components before joining"
         }
     }
     sources {

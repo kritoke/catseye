@@ -1,13 +1,29 @@
 rule "CommandInjection" severity="Critical" {
     sinks {
-        sink "system" arg=0
-        sink "Process.run" arg=0
-        sink "os.command" arg=0
-        sink "os.cmd" arg=0
-        sink "shell.cmd" arg=0
-        sink "cmd.run" arg=0
-        sink ":os.cmd" arg=0
-        sink "erlexec.Shell" arg=0
+        sink "system" arg=0 {
+            fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
+        }
+        sink "Process.run" arg=0 {
+            fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
+        }
+        sink "os.command" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "os.cmd" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "shell.cmd" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "cmd.run" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink ":os.cmd" arg=0 {
+            fix "Use :os.cmd/2 with a charlist, not a string with interpolation"
+        }
+        sink "erlexec.Shell" arg=0 {
+            fix "Validate and sanitize command arguments"
+        }
     }
     sources {
         source "params"

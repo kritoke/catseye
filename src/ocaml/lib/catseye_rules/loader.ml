@@ -37,7 +37,15 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
     | Some s -> (try Some (int_of_string s) with _ -> None)
     | None -> None
   in
-  [{ pattern; sanitizers; requires_field; arg_pos }]
+  let fix_template = match get_prop node.props "fix" with
+    | Some f -> Some f
+    | None ->
+      (* Also check child nodes: fix "value" syntax *)
+      node.children
+      |> List.find_map (fun (child : Kdl.node) ->
+        if child.name = "fix" then get_first_arg child.args else None)
+  in
+  [{ pattern; sanitizers; requires_field; arg_pos; fix_template }]
 
 let parse_sources_node (node : Kdl.node) : source_def list =
   let name = match get_first_arg node.args with

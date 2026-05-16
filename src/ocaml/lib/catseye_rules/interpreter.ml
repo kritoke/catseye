@@ -90,7 +90,59 @@ let matches_sink ~(pattern : string) ~(name : string) : bool =
 let matches_sanitizer (patterns : string list) (name : string) : bool =
   List.exists (fun p -> is_substring ~pattern:p ~in_:name) patterns
 
-(* ── Arg Analysis ───────────────────────────────────────────────────── *)
+(* ── Autofix Template Instantiation ──────────────────────────────────── *)
+
+(** Instantiate a fix template by replacing {arg0}, {arg1}, ... with the
+    corresponding tainted argument values, and {sink} with the sink name.
+    Returns [None] if the template is [None] or has no placeholders. *)
+let instantiate_fix (template : string) ~(sink_name : string)
+    (tainted_args : Security_node.arg list) : string =
+  let tainted_arr = Array.of_list (
+    tainted_args
+    |> List.filter (fun a -> a.Security_node.arg_type = Security_node.ArgVar
+                             || a.Security_node.arg_type = Security_node.ArgCall)
+    |> List.map (fun a -> a.Security_node.value)
+  ) in
+  let result = Buffer.create (String.length template + 64) in
+  let i = ref 0 in
+  let len = String.length template in
+  while !i < len do
+    if template.[!i] = '{' then begin
+      (* Try to parse {argN} or {sink} *)
+      let j = ref (!i + 1) in
+      let found_end = ref false in
+      while !j < len && template.[!j] <> '}' do incr j done;
+      if !j < len && template.[!j] = '}' then begin
+        found_end := true;
+        let placeholder = String.sub template (!i + 1) (!j - !i - 1) in
+        if placeholder = "sink" then
+          Buffer.add_string result sink_name
+        else if String.length placeholder >= 4
+                && String.sub placeholder 0 3 = "arg"
+        then
+          let idx_str = String.sub placeholder 3 (String.length placeholder - 3) in
+          (try
+            let idx = int_of_string idx_str in
+            if idx < Array.length tainted_arr then
+              Buffer.add_string result tainted_arr.(idx)
+            else
+              Buffer.add_string result ("{arg" ^ idx_str ^ "}")
+          with _ ->
+            Buffer.add_string result ("{" ^ placeholder ^ "}"))
+        else
+          Buffer.add_string result ("{" ^ placeholder ^ "}");
+        i := !j + 1
+      end;
+      if not !found_end then begin
+        Buffer.add_char result template.[!i];
+        incr i
+      end
+    end else begin
+      Buffer.add_char result template.[!i];
+      incr i
+    end
+  done;
+  Buffer.contents result
 
 (** Check if any arg is a variable (not literal) *)
 let has_var_args (node : Security_node.t) : bool =
@@ -280,6 +332,10 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
     |> List.map (fun n ->
       let vars = var_names_from_args n.Security_node.args in
       let msg = substitute_template rule.message_template ~sink:n.Security_node.name ~vars in
+      let suggestion = match sink.fix_template with
+        | Some tmpl -> Some (instantiate_fix tmpl ~sink_name:n.Security_node.name n.Security_node.args)
+        | None -> None
+      in
       { Finding.rule = rule.id
       ; severity = rule.severity
       ; file = n.Security_node.file
@@ -289,7 +345,7 @@ let check_rule (rule : rule_def) (nodes : Security_node.t list)
       ; language = n.Security_node.language
       ; dependency = None
       ; reachability = None
-      ; suggestion = None
+      ; suggestion
       }
     )
   ) rule.sinks

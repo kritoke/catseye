@@ -1,8 +1,14 @@
 rule "OpenRedirect" severity="Medium" {
     sinks {
-        sink "redirect_to" arg=0
-        sink "response.redirect" arg=0
-        sink "send_redirect" arg=0
+        sink "redirect_to" arg=0 {
+            fix "redirect_to(validate_url({arg0}))"
+        }
+        sink "response.redirect" arg=0 {
+            fix "response.redirect(validate_url({arg0}))"
+        }
+        sink "send_redirect" arg=0 {
+            fix "Validate URL is relative or allowlisted: send_redirect(validate_url({arg0}))"
+        }
     }
     sources {
         source "params" field="url"

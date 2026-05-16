@@ -5,6 +5,7 @@ type sink_def = {
   sanitizers : string list;
   requires_field : string option;
   arg_pos : int option;  (** When [Some n], only flag if tainted data is in argument position n (0-indexed) *)
+  fix_template : string option;  (** Optional autofix template with {arg0}, {arg1}, {sink} placeholders *)
 }
 
 type source_def = {

@@ -119,7 +119,17 @@ let finding_to_result f =
       ]) :: with_code_flows
     | None -> with_code_flows
   in
-  `Assoc with_reachability
+  let with_suggestion = match f.Finding.suggestion with
+    | Some s ->
+      (match List.assoc_opt "properties" with_reachability with
+       | Some (`Assoc props) ->
+         ("properties", `Assoc (("suggestion", `String s) :: props)) ::
+         (List.filter (fun (k, _) -> k <> "properties") with_reachability)
+       | _ ->
+         ("properties", `Assoc [("suggestion", `String s)]) :: with_reachability)
+    | None -> with_reachability
+  in
+  `Assoc with_suggestion
 
 (** Build a supply chain SCA result for a dependency vulnerability. *)
 let sca_result (name : string) (version : string option) (ecosystem : string)

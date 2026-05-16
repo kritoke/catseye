@@ -141,6 +141,11 @@ let print_finding (config : t) (f : Finding.t) =
     Printf.printf "%s    ← %s%s%s\n"
       (styled dim config "") sm loc (styled reset config "")
   ) f.flow;
+  (match f.Finding.suggestion with
+   | Some fix ->
+     Printf.printf "%s  💡 Suggestion: %s%s%s\n"
+       (styled green config "") fix (styled reset config "") ""
+   | None -> ());
   Printf.printf "\n"
 
 (* ── Summary helpers ────────────────────────────────────────────────── *)

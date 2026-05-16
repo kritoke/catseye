@@ -1,0 +1,1 @@
+(tests (names fix_debug_test) (modules fix_debug_test) (libraries kdl))

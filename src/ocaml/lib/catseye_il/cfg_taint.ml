@@ -230,6 +230,15 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
             let vars = String.concat ", " (List.map expr_name tainted_args) in
             let msg = Catseye_rules.Interpreter.substitute_template
               rule.message_template ~sink:fn_name ~vars in
+            (* Build fake Security_node.arg list for autofix instantiation *)
+            let fake_args = List.map (fun e ->
+              Catseye_types.Security_node.{ arg_type = ArgVar; value = expr_name e; field = "" }
+            ) args in
+            let suggestion = match sink.fix_template with
+              | Some tmpl -> Some (Catseye_rules.Interpreter.instantiate_fix
+                                    tmpl ~sink_name:fn_name fake_args)
+              | None -> None
+            in
             [{ Catseye_types.Finding.rule = rule.id
              ; severity = rule.severity
              ; file
@@ -239,7 +248,7 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
              ; language = lang
              ; dependency = None
              ; reachability = None
-             ; suggestion = None
+             ; suggestion
             }]
           end
         end

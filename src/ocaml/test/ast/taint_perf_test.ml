@@ -88,7 +88,7 @@ let test_rules = [
   { Catseye_rules.Types.id = "SSRF"
   ; severity = "High"
   ; sinks = [
-      { Catseye_rules.Types.pattern = "HTTP::Client.get"; sanitizers = []; requires_field = None; arg_pos = None }
+      { Catseye_rules.Types.pattern = "HTTP::Client.get"; sanitizers = []; requires_field = None; arg_pos = None; fix_template = None }
     ]
   ; sources = test_sources
   ; conditions = { (default_conditions ()) with requires_tainted_args = true }

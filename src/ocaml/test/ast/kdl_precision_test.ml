@@ -22,7 +22,7 @@ let arg_lit v = { Security_node.arg_type = Security_node.ArgLiteral; Security_no
 let _arg_call v = { Security_node.arg_type = Security_node.ArgCall; Security_node.value = v; Security_node.field = "" }
 
 let sink ?arg_pos pattern =
-  { pattern; sanitizers = []; requires_field = None; arg_pos }
+  { pattern; sanitizers = []; requires_field = None; arg_pos; fix_template = None }
 
 let check label condition =
   if condition then Printf.printf "  ✓ %s\n" label
@@ -205,6 +205,33 @@ rule "NoArg" severity="Medium" {
        let sink = List.hd (List.hd rules).sinks in
        check "sink without arg has arg_pos=None" (sink.arg_pos = None)
      | Error _ -> Printf.printf "  ✗ FAIL: KDL parse error for no-arg rule\n")
+
+(* ── Test 3b: KDL parsing of fix property ──────────────────────────── *)
+
+let () =
+  Printf.printf "\n=== Test 3b: KDL parsing of fix property ===\n\n";
+  let kdl_with_fix = {|
+rule "TestFix" severity="High" {
+    sinks {
+        sink "HTTP::Client.get" arg=0 fix="HTTP::Client.get(URI.parse({arg0}))"
+    }
+    sources {
+        source "url"
+    }
+    message "SSRF via {sink}"
+}
+|} in
+  (match Catseye_rules.Loader.parse_string kdl_with_fix with
+   | Ok rules ->
+     let rule = List.hd rules in
+     let sink = List.hd rule.sinks in
+     check "sink has fix_template" (sink.fix_template = Some "HTTP::Client.get(URI.parse({arg0}))");
+     let instantiated = Catseye_rules.Interpreter.instantiate_fix
+       (Option.get sink.fix_template) ~sink_name:"HTTP::Client.get"
+       [Catseye_types.Security_node.{ arg_type = ArgVar; value = "url"; field = "" }] in
+     check "instantiate_fix replaces {arg0}" (instantiated = "HTTP::Client.get(URI.parse(url))")
+   | Error (`Msg msg) ->
+     Printf.printf "  ✗ FAIL: KDL parse error: %s\n" msg)
 
 (* ── Test 4: Combined $var + arg_pos ────────────────────────────────── *)
 
