@@ -325,31 +325,7 @@ let parse_items (json : Yojson.Safe.t) : item list =
     ) items
   | _ -> []
 
-let resolve_hierarchical_extractor () =
-  (* 1. Explicit override via env var *)
-  try Some (Sys.getenv "CATSEYE_CRYSTAL_EXTRACTOR")
-  with Not_found ->
-    (* 2. Look for hierarchical_extractor.cr relative to project root *)
-    let candidates = [
-      "src/extractor/hierarchical_extractor.cr";
-      "../src/extractor/hierarchical_extractor.cr";
-      "../../src/extractor/hierarchical_extractor.cr";
-    ] in
-    let found = List.find_opt Sys.file_exists candidates in
-    match found with
-    | Some p -> Some ("crystal run " ^ p ^ " --")
-    | None ->
-      (* 3. Check if running as installed binary *)
-      let exe_dir = Filename.dirname (Sys.executable_name) in
-      let installed = Filename.concat exe_dir "catseye-crystal-hierarchical-extractor" in
-      if Sys.file_exists installed then Some installed
-      else None
-
-let parse_file ~(path : string) : (t, parse_error) result =
-  let extractor_cmd = match resolve_hierarchical_extractor () with
-    | Some cmd -> cmd
-    | None -> "crystal run src/extractor/hierarchical_extractor.cr --" (* fallback, may fail *)
-  in
+let parse_file ~(extractor_cmd : string) ~(path : string) : (t, parse_error) result =
   let cmd = Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
   let ic = Unix.open_process_in cmd in
   let json_str = Buffer.create 8192 in

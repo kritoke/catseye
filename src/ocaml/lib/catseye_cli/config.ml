@@ -18,7 +18,7 @@ type t = {
   lang_filter : lang_filter;
   output_path : string;
   color : bool;
-  crystal_extractor : string;
+  extractor_registry : Catseye_engine.Extractor_registry.t;
   rules_dir : string;
   extra_sources : string list;
   extra_sanitizers : string list;
@@ -48,7 +48,7 @@ let default = {
   lang_filter = All;
   output_path = "";
   color = true;
-  crystal_extractor = "bin/catseye-crystal-extractor";
+  extractor_registry = Catseye_engine.Extractor_registry.create ();
   rules_dir = "rules";
   extra_sources = [];
   extra_sanitizers = [];
@@ -174,7 +174,7 @@ let load_toml (path : string) (cfg : t) : t =
     ; extra_sources = (match get_string_list table "analysis.extra_sources" with Some l -> l | None -> [])
     ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
     ; parallelism = get_int table "analysis.parallelism" cfg.parallelism
-    ; crystal_extractor = get_string table "scan.crystal_extractor" cfg.crystal_extractor
+    ; extractor_registry = cfg.extractor_registry  (* resolved at startup, not from TOML *)
     ; rules_dir = get_string table "scan.rules_dir" cfg.rules_dir
     ; predator_vision = get_bool table "predator_vision.enabled" cfg.predator_vision
     ; crows_nest = get_bool table "crows_nest.enabled" cfg.crows_nest

@@ -277,21 +277,7 @@ let build_items (nodes : security_node list) : item list =
 
 (* ── Parse via Crystal extractor ───────────────────────────────────── *)
 
-let parse_file ~(path : string) : (t, parse_error) result =
-  let extractor_cmd =
-    try Sys.getenv "CATSEYE_CRYSTAL_EXTRACTOR"
-    with Not_found ->
-      (* Try relative to CWD first, then relative to the binary's location,
-         then the global install layout, then fall back to crystal run *)
-      let candidates = [
-        Filename.concat (Sys.getcwd ()) "bin/catseye-crystal-extractor";
-        Filename.concat (Filename.dirname (Sys.executable_name)) "catseye-crystal-extractor";
-        Filename.concat (Filename.dirname (Sys.executable_name)) "../lib/catseye/extractor/catseye-crystal-extractor";
-      ] in
-      match List.find_opt Sys.file_exists candidates with
-      | Some p -> p
-      | None -> "crystal run src/extractor/extractor.cr --"
-  in
+let parse_file ~(extractor_cmd : string) ~(path : string) : (t, parse_error) result =
   let cmd = Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
   let ic = Unix.open_process_in cmd in
   let json_str = Buffer.create 8192 in

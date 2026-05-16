@@ -13,22 +13,34 @@ alias s := scan
 # ── Build ─────────────────────────────────────────────────────────────
 
 build:
-    cd src/ocaml && dune build
     @mkdir -p bin
+    @if [ ! -f bin/catseye-crystal-extractor ]; then \
+        echo "  Compiling Crystal extractors (first build)..."; \
+        crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true; \
+    fi
+    @if [ ! -f bin/catseye-hierarchical-extractor ]; then \
+        crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true; \
+    fi
+    cd src/ocaml && dune build
     cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
     @echo "✓ Built → bin/catseye-ocaml"
 
 nix-build:
-    nix develop --command bash -c "cd src/ocaml && dune build"
-    @mkdir -p bin
-    cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
-    @echo "✓ Built → bin/catseye-ocaml"
+    nix develop --command bash -c "just build"
 
 build-release:
-    cd src/ocaml && dune build --profile release
     @mkdir -p bin
+    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "  ⚠ Crystal not found, extractor will use crystal run (slow)"
+    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
+    cd src/ocaml && dune build --profile release
     cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
     @echo "✓ Built (release) → bin/catseye-ocaml"
+
+build-extractors:
+    @mkdir -p bin
+    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release
+    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release
+    @echo "✓ Built extractors → bin/catseye-crystal-extractor, bin/catseye-hierarchical-extractor"
 
 # ── Test ──────────────────────────────────────────────────────────────
 
@@ -106,7 +118,7 @@ extract file:
 
 clean:
     rm -rf src/ocaml/_build bin/
-    @echo "✓ Cleaned"
+    @echo "✓ Cleaned (run 'just build-extractors' to rebuild Crystal extractors)"
 
 # Install to PREFIX (default /usr/local)
 # Install to PREFIX (default /usr/local). Use $HOME not ~ for home dir.

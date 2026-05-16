@@ -3,4 +3,4 @@
  (name catseye_ast)
  (public_name catseye.ast)
  (modules types error parse gleam_mapper crystal_mapper crystal_hierarchical_mapper to_security_node)
- (libraries unix yojson catseye.types))
+ (libraries unix yojson catseye.types catseye.engine))

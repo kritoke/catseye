@@ -73,8 +73,8 @@ let crystal_finding_to_finding (f : Types.finding) : ai_finding =
     suggestion = f.suggestion; }
 
 (** Parse and analyze a file *)
-let analyze_file ~(path : string) : ai_finding list =
-  match parse_file ~path with
+let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option) ~(path : string) : ai_finding list =
+  match parse_file ~extractor_registry ~path with
   | Error err -> [error_to_finding err]
   | Ok mod_ ->
       let lang_findings = match mod_.mod_lang with

@@ -8,6 +8,10 @@ open Catseye_il.Il_types
 let () =
   Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
   Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye";
+  let registry = Catseye_engine.Extractor_registry.create
+    ~flat_env:(Some "crystal run /workspaces/catseye/src/extractor/extractor.cr --")
+    ~hier_env:(Some "crystal run /workspaces/catseye/src/extractor/extractor.cr --")
+    () in
 
   (* Test with synthetic AST that has real branching *)
   let synthetic_mod = {
@@ -63,7 +67,7 @@ let () =
 
   List.iter (fun (path, _expected_lang) ->
     Printf.printf "\n=== IL/CFG for %s ===\n" path;
-    match parse_file ~path with
+    match parse_file ~extractor_registry:(Some registry) ~path with
     | Error err ->
       Printf.printf "PARSE ERROR: %s\n" err.message
     | Ok mod_ ->
