@@ -258,22 +258,20 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
 
 (* ── CFG dataflow ──────────────────────────────────────────────────── *)
 
-let analyze_cfg (cfg : cfg) (sources : source_def list)
+let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
     (rules : rule_def list) (file : string) (lang : string)
     : Catseye_types.Finding.t list =
 
-  (* Use cfg_block_map for O(1) lookup *)
-  let block_map = cfg.cfg_block_map in
+  (* Build predecessor map using ocamlgraph edge iteration *)
+  let preds = Hashtbl.create 32 in
+  Cfg_graph.iter_vertices cfg (fun vid ->
+    Cfg_graph.iter_succ cfg (fun sid ->
+      let existing = try Hashtbl.find preds sid with Not_found -> [] in
+      Hashtbl.replace preds sid (vid :: existing)
+    ) vid
+  );
 
-  (* Build predecessor map *)
-  let preds = List.fold_left (fun m (bb : basic_block) ->
-    List.fold_left (fun m succ ->
-      let existing = try IntMap.find succ m with Not_found -> [] in
-      IntMap.add succ (bb.id :: existing) m
-    ) m bb.successors
-  ) IntMap.empty cfg.cfg_blocks in
-
-  (* State per block — mutable to allow in-place update *)
+  (* State per block *)
   let states = Hashtbl.create 32 in
 
   let get_state id =
@@ -283,49 +281,46 @@ let analyze_cfg (cfg : cfg) (sources : source_def list)
 
   (* Worklist algorithm using a Queue for O(1) push/pop *)
   let worklist = Queue.create () in
-  Queue.add cfg.cfg_entry worklist;
+  Queue.add cfg.Cfg_graph.entry worklist;
 
-  (* Track how many times we've processed each block for convergence *)
+  let max_visits = 3 in
   let visit_count = Hashtbl.create 32 in
-  let max_visits = 3 in  (* For a may-analysis, 2 visits should suffice, use 3 for safety *)
 
   while not (Queue.is_empty worklist) do
     let block_id = Queue.take worklist in
 
-    (* Check convergence — don't reprocess a block too many times *)
     let visits = try Hashtbl.find visit_count block_id with Not_found -> 0 in
     if visits < max_visits then begin
       Hashtbl.replace visit_count block_id (visits + 1);
 
-      (match IntMap.find_opt block_id block_map with
-       | None -> ()
-       | Some bb ->
-         (* Input state = union of predecessor outputs *)
-         let pred_ids = try IntMap.find block_id preds with Not_found -> [] in
-         let input_state = List.fold_left (fun acc pid ->
-           union_state acc (get_state pid)
-         ) { empty_state with findings = [] } pred_ids in
+      let nodes = Cfg_graph.block_nodes cfg block_id in
+      if nodes <> [] then begin
+        (* Input state = union of predecessor outputs *)
+        let pred_ids = try Hashtbl.find preds block_id with Not_found -> [] in
+        let input_state = List.fold_left (fun acc pid ->
+          union_state acc (get_state pid)
+        ) { empty_state with findings = [] } pred_ids in
 
-         (* Seed function params as potential sources *)
-         let seeded_state = List.fold_left (fun st param ->
-           let lv = LVVar param in
-           if matches_source lv sources then taint_lval st lv
-           else st
-         ) input_state cfg.cfg_fn_params in
+        (* Seed function params as potential sources *)
+        let seeded_state = List.fold_left (fun st param ->
+          let lv = LVVar param in
+          if matches_source lv sources then taint_lval st lv
+          else st
+        ) input_state cfg.Cfg_graph.fn_params in
 
-         (* Transfer through this block's nodes *)
-         let output = transfer_block seeded_state bb.nodes sources rules file lang in
+        (* Transfer through this block's nodes *)
+        let output = transfer_block seeded_state nodes sources rules file lang in
 
-         Hashtbl.replace states block_id output;
+        Hashtbl.replace states block_id output;
 
-         (* Add successors to worklist *)
-         List.iter (fun succ ->
-           Queue.add succ worklist
-         ) bb.successors)
+        (* Add successors to worklist *)
+        Cfg_graph.iter_succ cfg (fun succ ->
+          Queue.add succ worklist
+        ) block_id
+      end
     end
   done;
 
-  (* Collect all findings — single pass with List.rev_append (O(n) total) *)
   let all_findings = Hashtbl.fold (fun _id state acc ->
     state.findings @ acc
   ) states [] in

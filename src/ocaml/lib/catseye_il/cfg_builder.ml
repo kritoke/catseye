@@ -8,25 +8,6 @@
 
 open Il_types
 
-(* ── Block accumulator ──────────────────────────────────────────────── *)
-
-type block_acc = {
-  mutable blocks : basic_block list;
-  mutable next_id : int;
-}
-
-let make_acc () = { blocks = []; next_id = 0 }
-
-let alloc_id (acc : block_acc) : int =
-  let id = acc.next_id in
-  acc.next_id <- id + 1;
-  id
-
-let emit_block (acc : block_acc) (nodes : il_node list) (successors : int list) : int =
-  let id = alloc_id acc in
-  acc.blocks <- { id; nodes; successors } :: acc.blocks;
-  id
-
 (* ── Split block at branch points ───────────────────────────────────── *)
 
 (* Take all linear (non-branch) nodes from the front of the list *)
@@ -48,73 +29,77 @@ let take_linear (nodes : il_node list) : il_node list * il_node list =
 (* ── Public API ─────────────────────────────────────────────────────── *)
 
 let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
-    (fn : il_function) : (cfg, cfg_error) result =
-  let acc = make_acc () in
+    (fn : il_function) : (Cfg_graph.t, cfg_error) result =
+  let cfg = Cfg_graph.create fn in
+  let next_id = ref 0 in
   let start_time = Unix.gettimeofday () in
+  let alloc_id () =
+    let id = !next_id in
+    incr next_id;
+    id
+  in
   let check_bounds () =
-    if acc.next_id > max_blocks then
-      Some (TooManyBlocks { actual = acc.next_id; limit = max_blocks })
+    if !next_id > max_blocks then
+      Some (TooManyBlocks { actual = !next_id; limit = max_blocks })
     else if timeout_ms > 0 then
       let elapsed = (Unix.gettimeofday () -. start_time) *. 1000.0 in
       if int_of_float elapsed > timeout_ms then
-        Some (Timeout { elapsed_ms = int_of_float elapsed; partial_blocks = acc.next_id })
+        Some (Timeout { elapsed_ms = int_of_float elapsed; partial_blocks = !next_id })
       else None
     else None
   in
-  (* Wrap build_block with bounds checking *)
   let error = ref None in
-  let rec build_block_bounded (acc : block_acc) (nodes : il_node list) (cont : int option) : int =
+  (* emit: create a block with the given nodes, return its ID *)
+  let emit nodes =
+    let id = alloc_id () in
+    let _ = Cfg_graph.add_block cfg id nodes in
+    id
+  in
+  let rec build_block_bounded nodes cont =
     (match !error with
-     | Some _ -> emit_block acc [] (match cont with Some id -> [id] | None -> [])  (* bail out *)
+     | Some _ -> emit []  (* bail out *)
      | None ->
        (match check_bounds () with
         | Some e -> error := Some e; 0
-        | None -> build_block_inner acc nodes cont))
-  and build_block_inner (acc : block_acc) (nodes : il_node list) (cont : int option) : int =
+        | None -> build_block_inner nodes cont))
+  and build_block_inner nodes cont : int =
     let linear, rest = take_linear nodes in
     match rest with
     | [] ->
-      let succs = match cont with Some id -> [id] | None -> [] in
-      emit_block acc linear succs
+      let id = emit linear in
+      (match cont with Some cid -> Cfg_graph.add_edge cfg id cid | None -> ());
+      id
     | [ILBranch (_cond, then_block, else_block, _pos)] ->
-      let merge_succ = match cont with Some id -> [id] | None -> [] in
-      let merge_id = emit_block acc [] merge_succ in
-      let then_id = build_block_bounded acc then_block (Some merge_id) in
+      let merge_id = emit [] in
+      (match cont with Some cid -> Cfg_graph.add_edge cfg merge_id cid | None -> ());
+      let then_id = build_block_bounded then_block (Some merge_id) in
       let else_id = match else_block with
-        | Some eb -> build_block_bounded acc eb (Some merge_id)
+        | Some eb -> build_block_bounded eb (Some merge_id)
         | None -> merge_id
       in
-      emit_block acc linear [then_id; else_id]
+      let id = emit linear in
+      Cfg_graph.add_edge cfg id then_id;
+      Cfg_graph.add_edge cfg id else_id;
+      id
     | [ILResume (rescue_block, _pos)] ->
-      let inner_id = build_block_bounded acc rescue_block cont in
-      let succs = match cont with Some id -> [id; inner_id] | None -> [inner_id] in
-      emit_block acc linear succs
+      let inner_id = build_block_bounded rescue_block cont in
+      let id = emit linear in
+      Cfg_graph.add_edge cfg id inner_id;
+      (match cont with Some cid -> Cfg_graph.add_edge cfg id cid | None -> ());
+      id
     | _ ->
-      let succs = match cont with Some id -> [id] | None -> [] in
-      emit_block acc (linear @ rest) succs
+      let id = emit (linear @ rest) in
+      (match cont with Some cid -> Cfg_graph.add_edge cfg id cid | None -> ());
+      id
   in
-  let _entry_id = build_block_bounded acc fn.fn_body None in
+  let entry_id = build_block_bounded fn.fn_body None in
+  Cfg_graph.set_entry cfg entry_id;
   match !error with
   | Some e -> Error e
-  | None ->
-    let blocks = List.rev acc.blocks in
-    let entry = match blocks with
-      | { id; _ } :: _ -> id
-      | [] -> 0
-    in
-    let block_map = List.fold_left (fun m (bb : basic_block) ->
-      IntMap.add bb.id bb m
-    ) IntMap.empty blocks in
-    Ok { cfg_fn_name = fn.fn_name
-       ; cfg_fn_params = fn.fn_params
-       ; cfg_entry = entry
-       ; cfg_blocks = blocks
-       ; cfg_block_map = block_map
-       ; cfg_pos = fn.fn_pos
-       }
+  | None -> Ok cfg
 
 let build_cfgs ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
-    (unit : il_unit) : cfg list =
+    (unit : il_unit) : Cfg_graph.t list =
   (* Filter out functions that hit bounds, keep successful CFGs *)
   List.filter_map (fun fn ->
     match build_cfg ~max_blocks ~timeout_ms fn with
@@ -154,16 +139,17 @@ let string_of_node = function
   | ILThrow (expr, _) -> "throw " ^ string_of_expr expr
   | ILResume (block, _) -> "rescue [" ^ string_of_int (List.length block) ^ " nodes]"
 
-let print_cfg (cfg : cfg) : string =
+let print_cfg (cfg : Cfg_graph.t) : string =
   let buf = Buffer.create 256 in
-  Buffer.add_string buf (Printf.sprintf "CFG for %s (entry: %d)\n" cfg.cfg_fn_name cfg.cfg_entry);
-  List.iter (fun bb ->
-    Buffer.add_string buf (Printf.sprintf "  Block %d:\n" bb.id);
+  let pr fmt = Printf.bprintf buf fmt in
+  pr "CFG for %s (entry: %d)\n" cfg.Cfg_graph.fn_name cfg.Cfg_graph.entry;
+  Cfg_graph.iter_vertices cfg (fun vid ->
+    pr "  Block %d:\n" vid;
     List.iter (fun n ->
-      Buffer.add_string buf (Printf.sprintf "    %s\n" (string_of_node n))
-    ) bb.nodes;
-    if bb.successors <> [] then
-      Buffer.add_string buf (Printf.sprintf "    → %s\n"
-        (String.concat ", " (List.map string_of_int bb.successors)))
-  ) cfg.cfg_blocks;
+      pr "    %s\n" (string_of_node n)
+    ) (Cfg_graph.block_nodes cfg vid);
+    let succs = Cfg_graph.succ_list cfg vid in
+    if succs <> [] then
+      pr "    → %s\n" (String.concat ", " (List.map string_of_int succs))
+  );
   Buffer.contents buf

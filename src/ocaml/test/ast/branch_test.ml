@@ -135,7 +135,7 @@ let () =
       let il_nodes = List.length fn.fn_body in
       let cfg = build_cfg fn in
       let elapsed = Unix.gettimeofday () -. start_time in
-      let block_count = List.length cfg.cfg_blocks in
+      let block_count = Catseye_il.Cfg_graph.v_count cfg in
       Printf.printf "Count %3d: %4d IL nodes, %4d blocks, %8.3fms\n" 
         count il_nodes block_count (elapsed *. 1000.0)
   ) counts;
@@ -153,7 +153,7 @@ let () =
       let il_nodes = List.length fn.fn_body in
       let cfg = build_cfg fn in
       let elapsed = Unix.gettimeofday () -. start_time in
-      let block_count = List.length cfg.cfg_blocks in
+      let block_count = Catseye_il.Cfg_graph.v_count cfg in
       Printf.printf "Depth %3d: %4d IL nodes, %4d blocks, %8.3fms\n"
         depth il_nodes block_count (elapsed *. 1000.0)
   ) depths;

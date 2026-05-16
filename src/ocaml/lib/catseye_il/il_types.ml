@@ -55,27 +55,9 @@ type il_unit = {
   il_functions : il_function list;
 }
 
-(** CFG basic block *)
-type basic_block = {
-  id : int;
-  nodes : il_node list;
-  successors : int list;        (* block IDs *)
-}
-
-(** IntMap for block lookups *)
-module IntMap = Map.Make (struct type t = int let compare = compare end)
-
 (** CFG construction error — returned when bounds are exceeded *)
 type cfg_error =
   | TooManyBlocks of { actual : int; limit : int }
   | Timeout of { elapsed_ms : int; partial_blocks : int }
 
-(** Control flow graph — built from il_function *)
-type cfg = {
-  cfg_fn_name : string;
-  cfg_fn_params : string list;
-  cfg_entry : int;              (* entry block ID *)
-  cfg_blocks : basic_block list;
-  cfg_block_map : basic_block IntMap.t;  (* O(1) lookup by block ID *)
-  cfg_pos : pos;
-}
+

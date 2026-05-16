@@ -48,10 +48,9 @@ let create (fn : il_function) : t = {
   block_count = ref 0;
 }
 
-(** Add a basic block (vertex) to the graph.
+(** Add a basic block (vertex) to the graph with a given ID.
     Returns the block ID. *)
-let add_block (cfg : t) (nodes : il_node list) : int =
-  let id = !(cfg.block_count) in
+let add_block (cfg : t) (id : int) (nodes : il_node list) : int =
   incr cfg.block_count;
   G.add_vertex cfg.graph id;
   Hashtbl.add cfg.blocks id nodes;

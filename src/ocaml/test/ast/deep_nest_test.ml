@@ -66,7 +66,7 @@ let () =
          Printf.printf "FAIL: CFG build error for depth %d\n" depth
        | Ok cfg ->
          let elapsed = Unix.gettimeofday () -. start_time in
-         let block_count = List.length cfg.cfg_blocks in
+         let block_count = Catseye_il.Cfg_graph.v_count cfg in
          Printf.printf "Depth %2d: %d blocks, %7.3fms\n" depth block_count (elapsed *. 1000.0))
   ) depths;
   
