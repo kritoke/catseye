@@ -646,8 +646,29 @@ let check_data_classes (nodes : Security_node.t list)
     let non_init_defs = List.filter (fun (d : Security_node.t) ->
       d.Security_node.name <> "initialize"
     ) defs in
-    (* Data Class: has getters, no non-initialize methods *)
-    if List.length getters >= 2 && List.length non_init_defs = 0 then
+    (* Check for Crystal DTO/serialization patterns that make DataClass acceptable *)
+    let has_serializable = List.exists (fun n ->
+      n.Security_node.node_type = Security_node.Call
+      && n.Security_node.name = "include"
+      && List.exists (fun (a : Security_node.arg) ->
+        List.mem a.Security_node.value
+          ["JSON::Serializable"; "JSON::Serializable::Unmapped";
+           "JSON::Mappings"; "YAML::Serializable";
+           "DB::Serializable"; "OAuth2::Serializable"]
+      ) n.Security_node.args
+    ) class_nodes in
+    let is_dto_file =
+      let lower = String.lowercase_ascii file in
+      List.exists (fun pat ->
+        let rec contains_sub s start =
+          if start + String.length pat > String.length s then false
+          else if String.sub s start (String.length pat) = pat then true
+          else contains_sub s (start + 1)
+        in contains_sub lower 0
+      ) ["/dtos/"; "/dto/"; "/types/"; "/entities/"; "/models/"] in
+    (* Data Class: has getters, no non-initialize methods, not a DTO/serializable *)
+    if List.length getters >= 2 && List.length non_init_defs = 0
+       && not has_serializable && not is_dto_file then
       Some {
         Finding.rule = "DataClass";
         severity = "Medium";

@@ -21,16 +21,21 @@ open Catseye_types
 let is_exempt_method (name : string) : bool =
   name = "initialize" ||
   name = "new" ||
-  name = "from_" ||
+  (* from_* — factory/constructor methods like from_entity, from_string, from_json *)
+  String.length name >= 5 &&
+  String.sub name 0 5 = "from_" ||
   String.length name >= 6 &&
   (let prefix = String.sub name 0 6 in
-   prefix = "decode" || prefix = "parse_") ||
+   prefix = "decode" || prefix = "parse_" || prefix = "to_json" || prefix = "to_hash") ||
   (String.length name >= 5 &&
    let suffix = String.sub name (String.length name - 5) 5 in
    suffix = "_core") ||
   (String.length name >= 5 &&
    let prefix = String.sub name 0 5 in
    prefix = "build" || prefix = "creat") ||
+  (* handle_* — event/action handlers with domain context *)
+  String.length name >= 7 &&
+  String.sub name 0 7 = "handle_" ||
   String.length name >= 9 &&
   (let prefix = String.sub name 0 9 in
    prefix = "benchmark") ||

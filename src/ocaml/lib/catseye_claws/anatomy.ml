@@ -36,11 +36,13 @@ let is_exempt_method (name : string) : bool =
   (* Constructors *)
   name = "initialize" ||
   name = "new" ||
-  name = "from_" ||
+  (* from_* — factory/constructor methods like from_entity, from_string, from_json *)
+  String.length name >= 5 &&
+  String.sub name 0 5 = "from_" ||
   (* Binary format parsers — params map to format fields *)
   String.length name >= 6 &&
   (let prefix = String.sub name 0 6 in
-   prefix = "decode" || prefix = "parse_") ||
+   prefix = "decode" || prefix = "parse_" || prefix = "to_json" || prefix = "to_hash") ||
   (* Private helpers — extracted for dedup, params are required *)
   (String.length name >= 5 &&
    let suffix = String.sub name (String.length name - 5) 5 in
@@ -49,6 +51,9 @@ let is_exempt_method (name : string) : bool =
   (String.length name >= 5 &&
    let prefix = String.sub name 0 5 in
    prefix = "build" || prefix = "creat") ||
+  (* Event/action handlers — domain context requires many params *)
+  String.length name >= 7 &&
+  String.sub name 0 7 = "handle_" ||
   (* Benchmark methods — self-contained harnesses *)
   String.length name >= 9 &&
   (let prefix = String.sub name 0 9 in
