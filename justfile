@@ -124,6 +124,17 @@ clean:
 # Install to PREFIX (default /usr/local). Use $HOME not ~ for home dir.
 # Usage: just install /usr/local  OR  just install "$HOME/.local"
 install prefix="/usr/local": build
+    @# Check if installing to system location without root/sudo
+    @if [ "{{prefix}}" = "/usr/local" ] && [ "$(id -u)" != "0" ]; then \
+        echo "⚠️  Warning: Installing to /usr/local requires root/sudo."; \
+        echo "   Run 'sudo just install' or use a local prefix like 'just install ~/.local'"; \
+        exit 1; \
+    fi
+    @# Warn if using sudo with home directory (misunderstands the flag)
+    @if [ "$(id -u)" = "0" ] && echo "{{prefix}}" | grep -q "^$HOME"; then \
+        echo "⚠️  Warning: Using sudo with home directory prefix ({{prefix}})."; \
+        echo "   This may install files owned by root. Consider 'just install {{prefix}}' without sudo."; \
+    fi
     install -d {{prefix}}/bin
     install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
     install -d {{prefix}}/lib/catseye/rules
