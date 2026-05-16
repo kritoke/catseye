@@ -101,12 +101,25 @@ Catches patterns common in AI-generated code: hallucinated method calls, hardcod
 
 ### Code Smells (`--claws`)
 
-| Detector | Threshold |
-|----------|-----------|
-| Cyclomatic complexity | M ≥ 10 |
-| Long parameter list | ≥ 5 params |
-| Deep nesting | ≥ 4 levels |
-| God objects | ≥ 20 definitions per file |
+| Detector | Rule ID | Threshold |
+|----------|---------|-----------|
+| Cyclomatic complexity | `HighComplexity` | M ≥ 10 |
+| Long parameter list | `LongParameterList` | ≥ 5 params |
+| Deep nesting | `DeepNesting` | ≥ 4 levels |
+| God objects | `GodObject` | ≥ 20 defs/file |
+| DRY violations | `DRYViolation` | 4+ duplicates |
+| Long method | `LongMethod` | ≥ 30 nodes |
+| Message chain | `MessageChain` | ≥ 5 links |
+| Data class | `DataClass` | 2+ props, no behavior |
+| Data clump | `DataClump` | 3+ params always together |
+| Flag argument | `FlagArgument` | bool params |
+| Complex match | `ComplexMatch` | ≥ 5 branches |
+| Dead code | `DeadCode` | unreachable code |
+| Feature envy | `FeatureEnvy` | excessive cross-class calls |
+| Orphaned spawn | `OrphanedSpawn` | untracked `spawn`/`go` |
+| Muted pack | `MutedPack` | unused code blocks |
+
+**Exempt patterns:** Factory methods (`from_*`, `build_*`, `create_*`), constructors (`initialize`, `new`), parsers (`decode*`, `parse_*`), DTO/serialization classes (`include JSON::Serializable`), and files in `/dtos/`, `/types/`, `/entities/` directories are automatically exempted from relevant detectors.
 
 ### Supply Chain Audit (`--crows-nest`)
 
@@ -201,7 +214,7 @@ Rebuild with `just build` and test.
 
 ## Configuration
 
-Optional `.catseye.toml` in your project root:
+Optional `.catseye.toml` in your project root (walked up from the target directory):
 
 ```toml
 [scan]
@@ -216,11 +229,22 @@ parallelism = 4
 complexity_warning = 10
 max_params = 5
 
+# Suppress code smell rules by file glob
 [claws.suppress]
-# Suppress specific rules by file glob pattern
 DataClump = ["**"]
 LongParameterList = ["**/repositories/**"]
+
+# Suppress security/taint findings by file glob
+[taint.suppress]
+SSRF = ["**/validated_http_client.cr"]
+PathTraversal = ["**/safe_io.cr"]
 ```
+
+### Glob Patterns
+
+- `*` matches any characters except `/`
+- `**` matches any characters including `/` (cross-directory)
+- `?` matches a single character
 
 ## Justfile Recipes
 
@@ -246,17 +270,17 @@ catseye/
 │   ├── ocaml/
 │   │   ├── bin/main.ml                 # CLI entry point
 │   │   ├── lib/
-│   │   │   ├── catseye_engine/          # Flat taint analysis + propagation
-│   │   │   ├── catseye_il/              # IL types, CFG builder, CFG taint engine
-│   │   │   ├── catseye_ast/             # Unified AST + mappers + bridge
+│   │   │   ├── catseye_engine/          # Flat taint analysis + propagation, extractor registry
+│   │   │   ├── catseye_il/              # IL types, CFG builder (ocamlgraph), CFG taint engine
+│   │   │   ├── catseye_ast/             # Unified AST + Crystal/Gleam mappers + bridge
 │   │   │   ├── ai_linter/              # AI antipattern rules (73 rules)
-│   │   │   ├── catseye_claws/           # Code smell detection
+│   │   │   ├── catseye_claws/           # Code smell detection (AST-native + flat)
 │   │   │   ├── catseye_crowsnest/       # Supply chain audit
 │   │   │   ├── catseye_rules/           # KDL rule interpreter (arg, $var)
 │   │   │   ├── catseye_cli/             # CLI, orchestrator, output formats
 │   │   │   └── catseye_types/           # Shared types
 │   │   └── rules/                       # 12 KDL rule files
-│   └── extractor/extractor.cr           # Crystal AST extractor
+│   └── extractor/extractor.cr           # Crystal AST extractors (flat + hierarchical)
 ├── test/samples/                        # Test corpus
 ├── openspec/                            # Spec-driven change tracking
 ├── .github/workflows/                   # CI
