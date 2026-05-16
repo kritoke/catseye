@@ -109,6 +109,8 @@ clean:
     @echo "✓ Cleaned"
 
 # Install to PREFIX (default /usr/local)
+# Install to PREFIX (default /usr/local). Use $HOME not ~ for home dir.
+# Usage: just install /usr/local  OR  just install "$HOME/.local"
 install prefix="/usr/local": build
     install -d {{prefix}}/bin
     install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
