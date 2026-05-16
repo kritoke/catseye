@@ -14,8 +14,11 @@ let lang_of_extension path =
 (** Parse a Gleam file using tree-sitter *)
 let parse_gleam = Gleam_mapper.parse_file
 
-(** Parse a Crystal file using extractor *)
-let parse_crystal = Crystal_mapper.parse_file
+(** Parse a Crystal file using hierarchical extractor (preferred) *)
+let parse_crystal = Crystal_hierarchical_mapper.parse_file
+
+(** Parse a Crystal file using flat extractor (fallback) *)
+let parse_crystal_flat = Crystal_mapper.parse_file
 
 (** Parse a file, inferring language from extension *)
 let parse_file ~(path : string) : (t, parse_error) result =
@@ -24,4 +27,8 @@ let parse_file ~(path : string) : (t, parse_error) result =
   | Some lang ->
       match lang with
       | Gleam -> parse_gleam ~path
-      | Crystal -> parse_crystal ~path
+      | Crystal ->
+        (* Try hierarchical first, fall back to flat on failure *)
+        match parse_crystal ~path with
+        | Ok _ as result -> result
+        | Error _ -> parse_crystal_flat ~path
