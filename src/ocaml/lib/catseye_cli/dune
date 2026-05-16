@@ -2,4 +2,4 @@
  (name catseye_cli)
  (public_name catseye.cli)
  (modules args config discovery orchestrator sarif markdown heatmap crowsnest_format dot ai_linter_integration)
- (libraries catseye.types catseye.engine catseye.rules catseye.crowsnest catseye.claws catseye.ai_linter catseye.il yojson cmdliner bos rresult logs fmt toml))
+ (libraries catseye.types catseye.engine catseye.rules catseye.crowsnest catseye.claws catseye.ai_linter catseye.il yojson cmdliner bos rresult logs fmt toml ocamlgraph))
