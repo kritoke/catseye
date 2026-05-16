@@ -40,6 +40,7 @@ type t = {
   cfg_max_blocks : int;       (* Max blocks per function CFG (safety limit) *)
   cfg_timeout_ms : int;       (* Timeout per function CFG build (safety limit) *)
   claws_config : Catseye_claws.Types.claws_config;
+  taint_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress taint findings *)
 }
 
 let default = {
@@ -70,6 +71,7 @@ let default = {
   cfg_max_blocks = 500;
   cfg_timeout_ms = 5000;
   claws_config = Catseye_claws.Types.default_config;
+  taint_suppress = Hashtbl.create 0;
 }
 
 (** Walk up from [dir] looking for .catseye.toml. *)
@@ -215,13 +217,15 @@ let load_toml (path : string) (cfg : t) : t =
             close_in ic;
             let raw = Bytes.to_string buf in
             let lines = String.split_on_char '\n' raw in
-            let in_suppress = ref false in
+            let current_section = ref "" in
             List.iter (fun line ->
               let trimmed = String.trim line in
-              if trimmed = "[claws.suppress]" then in_suppress := true
-              else if !in_suppress && String.length trimmed > 0 && trimmed.[0] = '[' then
-                in_suppress := false
-              else if !in_suppress then begin
+              if String.length trimmed > 0 && trimmed.[0] = '[' then
+                (let close = String.index_opt trimmed ']' in
+                 match close with
+                 | Some i -> current_section := String.sub trimmed 1 (i - 1)
+                 | None -> ())
+              else if !current_section = "claws.suppress" then begin
                 match String.index_opt trimmed '=' with
                 | Some eq_pos ->
                     let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
@@ -242,7 +246,46 @@ let load_toml (path : string) (cfg : t) : t =
           with _ -> ());
           sup;
       }
-    }
+    ;
+    taint_suppress =
+      let sup = Hashtbl.create 8 in
+      (try
+        let ic = open_in path in
+        let len = in_channel_length ic in
+        let buf = Bytes.create len in
+        really_input ic buf 0 len;
+        close_in ic;
+        let raw = Bytes.to_string buf in
+        let lines = String.split_on_char '\n' raw in
+        let current_section = ref "" in
+        List.iter (fun line ->
+          let trimmed = String.trim line in
+          if String.length trimmed > 0 && trimmed.[0] = '[' then
+            (let close = String.index_opt trimmed ']' in
+             match close with
+             | Some i -> current_section := String.sub trimmed 1 (i - 1)
+             | None -> ())
+          else if !current_section = "taint.suppress" then begin
+            match String.index_opt trimmed '=' with
+            | Some eq_pos ->
+                let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
+                let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
+                if String.length rest >= 2 && rest.[0] = '[' then begin
+                  let inner = String.sub rest 1 (String.length rest - 2) in
+                  let pats = List.map (fun s ->
+                    let s = String.trim s in
+                    if String.length s >= 2 && s.[0] = '\"' && s.[String.length s - 1] = '\"' then
+                      String.sub s 1 (String.length s - 2)
+                    else s
+                  ) (String.split_on_char ',' inner) in
+                  Hashtbl.replace sup rule_name pats
+                end
+            | None -> ()
+          end
+        ) lines
+      with _ -> ());
+      sup
+  }
   with _ -> cfg
 
 (** Load config: CLI args → TOML overlay → final config. *)

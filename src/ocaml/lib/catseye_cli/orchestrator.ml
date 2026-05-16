@@ -596,6 +596,20 @@ let run (config : t) : int =
     reachability @ all_claws @ ai_findings
   end else reachability @ ai_findings in
 
+  (* Apply taint suppression from [taint.suppress] in .catseye.toml *)
+  let all_findings =
+    let sup = config.taint_suppress in
+    if Hashtbl.length sup = 0 then all_findings
+    else List.filter (fun (f : Finding.t) ->
+      match Hashtbl.find_opt sup f.Finding.rule with
+      | None -> true
+      | Some patterns ->
+        not (List.exists (fun pat ->
+          Catseye_claws.Smells.glob_match pat f.Finding.file
+        ) patterns)
+    ) all_findings
+  in
+
   (* Step 5: Report *)
   Catseye_engine.Cache.close cache;
   match config.format with
