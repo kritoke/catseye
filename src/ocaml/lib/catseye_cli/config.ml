@@ -17,7 +17,8 @@ type t = {
   lang_filter : lang_filter;
   output_path : string;
   color : bool;
-  extractor_registry : Catseye_engine.Extractor_registry.t;
+  extractor_registry : Catseye_engine.Extractor_registry.t option;
+  crystal_available : bool;  (* Whether Crystal toolchain was detected *)
   rules_dir : string;
   extra_sources : string list;
   extra_sanitizers : string list;
@@ -49,7 +50,8 @@ let default = {
   lang_filter = All;
   output_path = "";
   color = true;
-  extractor_registry = Catseye_engine.Extractor_registry.create ();
+  extractor_registry = None;
+  crystal_available = false;
   rules_dir = "rules";
   extra_sources = [];
   extra_sanitizers = [];
@@ -170,7 +172,20 @@ let load_toml (path : string) (cfg : t) : t =
       | _ -> default
     in
     { cfg with
-      exclude_dirs =
+      lang_filter =
+        (match get_string_list table "languages.enabled" with
+         | Some langs -> Only langs
+         | None ->
+           (match get_string_list table "languages.disabled" with
+            | Some disabled ->
+              (* Filter out disabled languages from All *)
+              let all_langs = match cfg.lang_filter with
+                | All -> ["crystal"; "gleam"]
+                | Only langs -> langs
+              in
+              Only (List.filter (fun l -> not (List.mem l disabled)) all_langs)
+            | None -> cfg.lang_filter))
+    ; exclude_dirs =
         (match get_string_list table "scan.exclude" with
          | Some extra -> List.sort_uniq String.compare (cfg.exclude_dirs @ extra)
          | None -> cfg.exclude_dirs)
@@ -178,6 +193,7 @@ let load_toml (path : string) (cfg : t) : t =
     ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
     ; parallelism = get_int table "analysis.parallelism" cfg.parallelism
     ; extractor_registry = cfg.extractor_registry  (* resolved at startup, not from TOML *)
+    ; crystal_available = cfg.crystal_available
     ; rules_dir = get_string table "scan.rules_dir" cfg.rules_dir
     ; predator_vision = get_bool table "predator_vision.enabled" cfg.predator_vision
     ; crows_nest = get_bool table "crows_nest.enabled" cfg.crows_nest
@@ -289,8 +305,38 @@ let load_toml (path : string) (cfg : t) : t =
   }
   with _ -> cfg
 
-(** Load config: CLI args → TOML overlay → final config. *)
+(** Check if Crystal toolchain is available.
+    Looks for the crystal binary on PATH, or a pre-compiled extractor binary. *)
+let detect_crystal () : bool =
+  (* Check for pre-compiled extractor binary next to the executable *)
+  let exe_dir = Filename.dirname (Sys.executable_name) in
+  let flat_bin = exe_dir ^ "/catseye-crystal-extractor" in
+  let hier_bin = exe_dir ^ "/catseye-hierarchical-extractor" in
+  if Sys.file_exists flat_bin || Sys.file_exists hier_bin then true
+  else
+    (* Check for crystal compiler on PATH *)
+    try
+      let ic = Unix.open_process_in "which crystal 2>/dev/null" in
+      let buf = Buffer.create 256 in
+      (try while true do Buffer.add_channel buf ic 1 done
+       with End_of_file -> ());
+      let _ = Unix.close_process_in ic in
+      Buffer.length buf > 0
+    with _ -> false
+
+(** Initialize Crystal extractor registry if toolchain is available.
+    Sets extractor_registry and crystal_available fields. *)
+let init_crystal (cfg : t) : t =
+  if detect_crystal () then begin
+    let reg = Catseye_engine.Extractor_registry.create () in
+    { cfg with extractor_registry = Some reg; crystal_available = true }
+  end else
+    { cfg with extractor_registry = None; crystal_available = false }
+
+(** Load config: CLI args → TOML overlay → Crystal detection → final config. *)
 let load (cli : t) : t =
-  match find_config cli.target_dir with
-  | None -> cli
-  | Some path -> load_toml path cli
+  let with_toml = match find_config cli.target_dir with
+    | None -> cli
+    | Some path -> load_toml path cli
+  in
+  init_crystal with_toml

@@ -52,7 +52,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
   if config.ast_bridge then begin
     (* Bridge path: parse → CatseyeAST.t → Security_node.t *)
     try
-      match Catseye_ast.Parse.parse_file ~extractor_registry:(Some config.extractor_registry) ~path:src.path with
+      match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
       | Ok mod_ ->
           let nodes = Catseye_ast.To_security_node.derive mod_ in
           Some nodes
@@ -66,20 +66,23 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
   end else
   match src.lang with
   | "crystal" ->
-    let cmd = Printf.sprintf "%s %s 2>/dev/null"
-      (Filename.quote (Catseye_engine.Extractor_registry.flat_cmd config.extractor_registry))
-      (Filename.quote src.path)
-    in
-    let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full cmd (Unix.environment ()) in
-    let output = Buffer.create 4096 in
-    (try while true do Buffer.add_channel output stdout_ch 4096 done
-     with End_of_file -> ());
-    let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
-    let json_str = Buffer.contents output in
-    if json_str <> "" then
-      try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
-      with _ -> None
-    else None
+    (match config.extractor_registry with
+     | None -> None  (* Crystal not available *)
+     | Some reg ->
+       let cmd = Printf.sprintf "%s %s 2>/dev/null"
+         (Filename.quote (Catseye_engine.Extractor_registry.flat_cmd reg))
+         (Filename.quote src.path)
+       in
+       let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full cmd (Unix.environment ()) in
+       let output = Buffer.create 4096 in
+       (try while true do Buffer.add_channel output stdout_ch 4096 done
+        with End_of_file -> ());
+       let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
+       let json_str = Buffer.contents output in
+       if json_str <> "" then
+         try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
+         with _ -> None
+       else None)
   | "gleam" ->
     (try
       let nodes = Catseye_engine.Gleam.extract src.path in
@@ -323,6 +326,8 @@ let run (config : t) : int =
   let gleam_count = List.length (List.filter (fun s -> s.lang = "gleam") sources) in
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
   if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
+  if config.format = Terminal && not config.crystal_available then
+    Printf.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
 
   (* Step 1b: Handle --clear-cache *)
   if config.clear_cache then begin
@@ -354,8 +359,11 @@ let run (config : t) : int =
     let uncached_other = List.filter (fun s -> s.lang <> "crystal") !uncached in
     (* Phase 2a: Extract Crystal files via worker pool if configured *)
     if config.crystal_workers > 1 && uncached_crystal <> [] then begin
-      let pool = Catseye_engine.Worker_pool.create
-        (Catseye_engine.Extractor_registry.flat_cmd config.extractor_registry) config.crystal_workers in
+      (match config.extractor_registry with
+       | None -> ()  (* Crystal not available *)
+       | Some reg ->
+       let pool = Catseye_engine.Worker_pool.create
+        (Catseye_engine.Extractor_registry.flat_cmd reg) config.crystal_workers in
       List.iter (fun src ->
         match Catseye_engine.Worker_pool.extract_with_recovery pool src.path with
         | Some ns ->
@@ -363,7 +371,7 @@ let run (config : t) : int =
           List.iter (fun n -> all_nodes := n :: !all_nodes) ns
         | None -> ()
       ) uncached_crystal;
-      Catseye_engine.Worker_pool.shutdown pool
+      Catseye_engine.Worker_pool.shutdown pool)
     end else
       (* No worker pool — extract Crystal files normally *)
       List.iter (fun src ->
@@ -429,7 +437,7 @@ let run (config : t) : int =
         if config.format = Terminal && !analyzed mod 10 = 0 then
           Printf.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
         try
-          match Catseye_ast.Parse.parse_file ~extractor_registry:(Some config.extractor_registry) ~path:src.path with
+          match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
           | Error _ -> []
           | Ok mod_ ->
             let unit = Catseye_il.Of_catseye_ast.translate mod_ in
@@ -538,7 +546,7 @@ let run (config : t) : int =
       Printf.printf "\n  → AI antipattern detection:\n\n";
     let ai_lint_findings = List.concat_map (fun src ->
       (try
-        match Catseye_ast.Parse.parse_file ~extractor_registry:(Some config.extractor_registry) ~path:src.path with
+        match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
         | Error err -> [Catseye_types.Finding.{ rule = "parse-error"; severity = "error"; file = err.file;
             line = Option.value err.line ~default:0; message = err.message;
             flow = []; language = ""; dependency = None; reachability = None; suggestion = None; }]
@@ -570,7 +578,7 @@ let run (config : t) : int =
   let all_findings = if config.claws then begin
     (* Parse ASTs for files that support it (Gleam always, Crystal via bridge) *)
     let ast_modules = List.filter_map (fun src ->
-      try match Catseye_ast.Parse.parse_file ~extractor_registry:(Some config.extractor_registry) ~path:src.path with
+      try match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
         | Ok mod_ -> Some mod_
         | Error _ -> None
       with _ -> None
