@@ -27,7 +27,13 @@ let skip_calls =
   ; "string.replace"; "string.lowercase"; "string.uppercase"
   ; "int.to_string"; "int.parse"; "float.to_string"
   ; "dict.new"; "dict.insert"; "dict.get"; "dict.values"
-  ; "tuple.first"; "tuple.second" ]
+  ; "tuple.first"; "tuple.second"
+  (* Safe crypto: Erlang crypto module uses strong_rand_bytes *)
+  ; "crypto.strong_rand_bytes"
+  ; "crypto.rand_bytes"
+  (* External function patterns (BIFs that are safe) *)
+  ; "random_suffix"; "secure_random"
+  ; "facet_pi_server_util.random_suffix" ]
 
 (* ── XML tree ──────────────────────────────────────────────────────── *)
 
