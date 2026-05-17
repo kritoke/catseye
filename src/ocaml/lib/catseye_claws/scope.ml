@@ -127,10 +127,7 @@ let build_class_scopes (nodes : Security_node.t list) : class_scope list =
       class_scopes := { class_node = td; methods = method_scopes; loc } :: !class_scopes
     ) type_defs
   ) by_file;
-  let all_scopes = List.rev !class_scopes in
-  (* Filter out absurdly large class scopes (likely using fallback end_line) *)
-  let reasonable_max = 50000 in
-  List.filter (fun cs -> cs.loc < reasonable_max) all_scopes
+  List.rev !class_scopes
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 

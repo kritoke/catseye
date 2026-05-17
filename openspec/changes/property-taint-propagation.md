@@ -118,11 +118,11 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
 
 ## Files Modified
 
-| File                              | Change                                               |
-| --------------------------------- | ---------------------------------------------------- |
-| `lib/catseye_engine/propagate.ml` | Added string op taint, enhanced alias, cross-file    |
-| `lib/catseye_engine/db.ml`        | Added `get_tainted_records`, `is_tainted_anywhere`   |
-| `lib/catseye_engine/seed.ml`      | Always seed params matching known sources            |
+| File                              | Change                                             |
+| --------------------------------- | -------------------------------------------------- |
+| `lib/catseye_engine/propagate.ml` | Added string op taint, enhanced alias, cross-file  |
+| `lib/catseye_engine/db.ml`        | Added `get_tainted_records`, `is_tainted_anywhere` |
+| `lib/catseye_engine/seed.ml`      | Always seed params matching known sources          |
 
 ---
 
