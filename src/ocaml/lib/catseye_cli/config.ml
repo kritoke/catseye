@@ -13,6 +13,7 @@ type lang_filter =
 
 type t = {
   target_dir : string;
+  config_path : string option;  (* explicit --config path, None = auto-discover *)
   format : output_format;
   lang_filter : lang_filter;
   output_path : string;
@@ -47,6 +48,7 @@ type t = {
 
 let default = {
   target_dir = "";
+  config_path = None;
   format = Terminal;
   lang_filter = All;
   output_path = "";
@@ -343,7 +345,11 @@ let init_crystal (cfg : t) : t =
 
 (** Load config: CLI args → TOML overlay → Crystal detection → final config. *)
 let load (cli : t) : t =
-  let with_toml = match find_config cli.target_dir with
+  let toml_path = match cli.config_path with
+    | Some p -> Some p
+    | None -> find_config cli.target_dir
+  in
+  let with_toml = match toml_path with
     | None -> cli
     | Some path -> load_toml path cli
   in

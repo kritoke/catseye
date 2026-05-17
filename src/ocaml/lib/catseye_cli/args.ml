@@ -32,8 +32,8 @@ let parse_args () : t =
       go { acc with lang_filter = lang_of_string lang } rest
     | ("--output" | "-o") :: path :: rest ->
       go { acc with output_path = resolve cwd path } rest
-    | "--config" :: _ :: rest ->
-      go acc rest  (* TODO: handle config path *)
+    | "--config" :: path :: rest ->
+      go { acc with config_path = Some (resolve cwd path) } rest
     | "--crystal-extractor" :: _ :: rest ->
       go acc rest  (* deprecated: registry resolves automatically *)
     | ("--rules" | "-r") :: path :: rest ->
@@ -83,6 +83,7 @@ let parse_args () : t =
       Printf.printf "  --format <fmt>       Output: terminal (default), json, sarif, markdown, dot\n";
       Printf.printf "  --lang <langs>       Language filter: all (default), crystal, gleam, or comma-separated list\n";
       Printf.printf "  --output <path>      Write results to file\n";
+      Printf.printf "  --config <path>      Config file path (default: .catseye.toml in target or parents)\n";
       Printf.printf "  --rules <path>       Rules directory (default: rules/)\n";
       Printf.printf "  --crystal-extractor  Crystal extractor path\n";
       Printf.printf "  --no-color           Disable colored output\n";

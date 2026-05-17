@@ -60,7 +60,11 @@ let rec walk_expr (n : xml) (file : string) : expr =
           (match key_nodes, val_nodes with
            | [k], [v] -> [(k.text, walk_expr v file)]
            | _ -> [])
-        | "spread_element" -> []  (* TODO: handle spread *)
+        | "spread_element" ->
+          (* Skip spread elements ({...obj}) in object analysis.
+             These contribute runtime properties but don't have static key-value pairs.
+             For taint tracking, the spread itself (the argument) should be handled separately. *)
+          []
         | _ -> []
       ) n.children in
       ERecord pairs
