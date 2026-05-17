@@ -29,12 +29,15 @@ jobs:
       - name: Run Security Scan
         run: |
           nix develop --command bash -c '
-            bin/catseye-ocaml --rules src/ocaml/rules --format sarif . > catseye-results.sarif
+            bin/catseye-ocaml --rules src/ocaml/rules --format sarif . > "$GITHUB_WORKSPACE/catseye-results.sarif"
           '
 
+      - name: Verify SARIF exists
+        run: ls -la "$GITHUB_WORKSPACE/catseye-results.sarif"
+
       - name: Upload SARIF Results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: catseye-results.sarif
+          sarif_file: ${{ github.workspace }}/catseye-results.sarif
           category: catseye

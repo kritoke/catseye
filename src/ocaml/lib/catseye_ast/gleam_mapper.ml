@@ -1,128 +1,28 @@
 (* src/ocaml/lib/catseye_ast/gleam_mapper.ml
    Bridge from tree-sitter Gleam XML output to CatseyeAST.t
    
-   Part of the JSON Bridge - tree-sitter XML → CatseyeAST.t
-   Inline XML parsing to avoid circular dependencies.
+   Uses shared Tree_sitter_xml module for XML parsing.
 *)
 
 open Types
 open Error
 
-(* ── XML Parsing (from catseye_engine/gleam.ml) ─────────────────────── *)
+(* Import shared tree-sitter XML types and functions *)
+module Tsx = Tree_sitter_xml
 
-type xml = {
+type xml = Tsx.xml = {
   tag : string;
   attrs : (string * string) list;
   children : xml list;
   text : string;
 }
 
-let attr (n : xml) (k : string) : string =
-  try List.assoc k n.attrs with Not_found -> ""
-
-let text (n : xml) = n.text
-
-let line_of (n : xml) : int =
-  match attr n "srow" with "" -> 0 | s -> (try int_of_string s + 1 with _ -> 0)
-
-let rec find (n : xml) ~tag : xml list =
-  (if n.tag = tag then [n] else []) @ List.concat_map (find ~tag) n.children
-
-let children_where (n : xml) ~f : xml list =
-  List.filter f n.children
-
-(* Tokenizer *)
-type tok = Open of string * (string * string) list | Close of string | Text of string
-
-let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
-
-let skip_until s pos pred =
-  let len = String.length s in
-  let start = pos in
-  let rec go i = if i < len && not (pred s.[i]) then go (i + 1) else i in
-  let stop = go start in
-  (String.sub s start (stop - start), stop)
-
-let parse_attrs s =
-  let rec go i acc =
-    let len = String.length s in
-    let i = let rec skip j = if j < len && is_ws s.[j] then skip (j + 1) else j in skip i in
-    if i >= len || s.[i] = '/' || s.[i] = '>' then List.rev acc
-    else
-      let (name, i) = skip_until s i (fun c -> c = '=' || is_ws c || c = '>' || c = '/') in
-      if name = "" then go i acc
-      else
-        let i = let rec find_eq j = if j < len && s.[j] <> '=' then find_eq (j + 1) else j in find_eq i in
-        if i >= len || s.[i] <> '=' then go i acc
-        else
-          let i = let rec skip_ws j = if j < len && is_ws s.[j] then skip_ws (j + 1) else j in skip_ws (i + 1) in
-          if i < len && s.[i] = '"' then
-            let (value, i) = skip_until s (i + 1) (fun c -> c = '"') in
-            go (i + 1) ((name, value) :: acc)
-          else go i acc
-  in
-  go 0 []
-
-let tokenize s =
-  let len = String.length s in
-  let rec go pos acc =
-    if pos >= len then List.rev acc
-    else if s.[pos] <> '<' then begin
-      let (txt, next) = skip_until s pos (fun c -> c = '<') in
-      let trimmed = String.trim txt in
-      if trimmed = "" then go next acc
-      else go next (Text trimmed :: acc)
-    end else if pos + 1 < len && s.[pos + 1] = '?' then begin
-      let (_, next) = skip_until s pos (fun c -> c = '>') in
-      go (next + 1) acc
-    end else if pos + 1 < len && s.[pos + 1] = '/' then begin
-      let (name, next) = skip_until s (pos + 2) (fun c -> c = '>') in
-      go (next + 1) (Close (String.trim name) :: acc)
-    end else if pos + 3 < len && s.[pos + 1] = '!' && s.[pos + 2] = '-' && s.[pos + 3] = '-' then begin
-      let rec find_end i = if i + 2 >= len then len else if s.[i] = '-' && s.[i + 1] = '-' && s.[i + 2] = '>' then i + 3 else find_end (i + 1) in
-      go (find_end (pos + 4)) acc
-    end else begin
-      let (tag, i) = skip_until s (pos + 1) (fun c -> is_ws c || c = '>' || c = '/') in
-      if tag = "" then go (pos + 1) acc
-      else begin
-        let (raw_attrs, i) = skip_until s i (fun c -> c = '>') in
-        let self_close = let alen = String.length raw_attrs in alen > 0 && raw_attrs.[alen - 1] = '/' in
-        let attrs = parse_attrs raw_attrs in
-        go (i + 1) ((if self_close then Open (tag, attrs) :: Close tag :: acc else Open (tag, attrs) :: acc))
-      end
-    end
-  in
-  go 0 []
-
-let parse_xml s =
-  let arr = Array.of_list (tokenize s) in
-  let len = Array.length arr in
-  let rec build pos =
-    if pos >= len then ([], pos)
-    else match arr.(pos) with
-    | Text _ -> build (pos + 1)
-    | Close _ -> ([], pos)
-    | Open (tag, attrs) ->
-      let (children, text, pos') = collect (pos + 1) tag in
-      let (rest, pos'') = build pos' in
-      ({ tag; attrs; children; text } :: rest, pos'')
-  and collect pos close_tag =
-    let rec go pos acc last_text =
-      if pos >= len then (List.rev acc, last_text, pos)
-      else match arr.(pos) with
-      | Text t -> go (pos + 1) acc t
-      | Close ct when ct = close_tag -> (List.rev acc, last_text, pos + 1)
-      | Close _ -> (List.rev acc, last_text, pos)
-      | Open _ ->
-        let (rest, pos') = build pos in
-        go pos' (rest @ acc) last_text
-    in
-    go pos [] ""
-  in
-  match build 0 with
-  | ([], _) -> { tag = ""; attrs = []; children = []; text = "" }
-  | (root :: _, _) -> root
-
+let attr = Tsx.attr
+let text = Tsx.text
+let line_of = Tsx.line_of
+let find = Tsx.find
+let children_where = Tsx.children_where
+let parse_xml = Tsx.parse_xml
 
 (* ── Position helpers ─────────────────────────────────────────────── *)
 
@@ -136,11 +36,9 @@ let range_of_xml (n : xml) =
 
 (* ── XML child helpers (non-recursive, direct children only) ─────── *)
 
-(** Find direct children with a specific field attribute *)
 let children_with_field (n : xml) ~(field : string) : xml list =
   List.filter (fun c -> attr c "field" = field) n.children
 
-(** Find direct children with a specific tag *)
 let children_with_tag (n : xml) ~(tag : string) : xml list =
   List.filter (fun c -> c.tag = tag) n.children
 
@@ -393,41 +291,9 @@ and item_of_xml (n : xml) : item =
 (* ── Parse via tree-sitter CLI ─────────────────────────────────────── *)
 
 (** Resolve the Gleam tree-sitter grammar path.
-    Search order:
-    1. TREE_SITTER_GLEAM_GRAMMAR env var (explicit override)
-    2. Standard nix-store locations (auto-discover)
-    3. tree-sitter's default grammar search paths
-*)
+    Delegates to shared Tree_sitter_xml.resolve_grammar. *)
 let resolve_gleam_grammar () : string option =
-  (* 1. Explicit env var *)
-  match Sys.getenv "TREE_SITTER_GLEAM_GRAMMAR" with
-  | exception Not_found ->
-    (* 2. Use find to locate tree-sitter-gleam in nix store (fast) *)
-    let discovered =
-      try
-        let ic = Unix.open_process_in
-          "find /nix/store -maxdepth 2 -name parser -path '*tree-sitter-gleam*' 2>/dev/null | head -1"
-        in
-        let line = try Some (input_line ic) with End_of_file -> None in
-        let _ = Unix.close_process_in ic in
-        (match line with
-         | Some p when Sys.file_exists p -> Some p
-         | _ -> None)
-      with _ -> None
-    in
-    (match discovered with
-     | Some p -> Some p
-     | None ->
-       (* 3. Check common paths, including bundled gleam_parser.so *)
-       let bundled = Filename.concat (Sys.getcwd ()) "gleam_parser.so" in
-       let common = [
-         bundled;  (* Bundled parser — works without nix *)
-         "/usr/lib/tree-sitter-gleam/parser";
-         "/usr/local/lib/tree-sitter-gleam/parser";
-         Filename.concat (Sys.getcwd ()) "third_party/tree-sitter-gleam/parser";
-       ] in
-       List.find_opt Sys.file_exists common)
-  | path -> Some path
+  Tree_sitter_xml.resolve_grammar ~lang:"gleam" ~env_var:"TREE_SITTER_GLEAM_GRAMMAR"
 
 let parse_file ~(path : string) : (t, parse_error) result =
   let grammar_path = resolve_gleam_grammar () in
