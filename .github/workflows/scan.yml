@@ -16,28 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opam sqlite3 libsqlite3-dev pkg-config
+
+      - name: Setup OCaml
+        run: |
+          opam init --disable-sandboxing --yes
+          opam switch create 5.2.0 5.2.0 --yes
+          eval $(opam env)
+
+      - name: Install OCaml Packages
+        run: |
+          eval $(opam env)
+          opam install -y dune yojson cmdliner bos rresult logs fmt toml kdl ocamlgraph sqlite3 alcotest --yes
 
       - name: Build Catseye
         run: |
-          nix develop --command bash -c '
-            cd src/ocaml && dune build
-            cp _build/default/bin/main.exe ../../bin/catseye-ocaml
-          '
+          eval $(opam env)
+          cd src/ocaml
+          dune build --profile release
+          cp _build/default/bin/main.exe ../../bin/catseye
 
       - name: Run Security Scan
         run: |
-          nix develop --command bash -c '
-            bin/catseye-ocaml --rules src/ocaml/rules --format sarif . > "$GITHUB_WORKSPACE/catseye-results.sarif"
-          '
-
-      - name: Verify SARIF exists
-        run: ls -la "$GITHUB_WORKSPACE/catseye-results.sarif"
+          ./bin/catseye --rules src/ocaml/rules --format sarif . > catseye-results.sarif
 
       - name: Upload SARIF Results
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: ${{ github.workspace }}/catseye-results.sarif
+          sarif_file: catseye-results.sarif
           category: catseye
