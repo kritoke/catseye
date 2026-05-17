@@ -16,6 +16,10 @@ open Types
 let lang_to_string = function
   | Gleam -> "gleam"
   | Crystal -> "crystal"
+  | Svelte -> "svelte"
+  | TypeScript -> "typescript"
+  | JavaScript -> "javascript"
+  | Other s -> s
 
 (* ── Helpers ────────────────────────────────────────────────────────── *)
 

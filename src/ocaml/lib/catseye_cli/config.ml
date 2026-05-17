@@ -9,8 +9,7 @@ type output_format =
 
 type lang_filter =
   | All
-  | Crystal
-  | Gleam
+  | Only of string list
 
 type t = {
   target_dir : string;

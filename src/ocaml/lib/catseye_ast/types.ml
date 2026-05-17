@@ -3,7 +3,7 @@
 *)
 
 (** Supported languages *)
-type lang = Gleam | Crystal
+type lang = Gleam | Crystal | Svelte | TypeScript | JavaScript | Other of string
 
 (** Source position *)
 module Position : sig

@@ -44,6 +44,10 @@ let build (modules : Catseye_ast.Types.t list) : ast_scope list =
     let lang = match mod_.mod_lang with
       | Gleam -> "gleam"
       | Crystal -> "crystal"
+      | Svelte -> "svelte"
+      | TypeScript -> "typescript"
+      | JavaScript -> "javascript"
+      | Other s -> s
     in
     collect_scopes mod_.mod_items mod_.mod_path lang None
   ) modules

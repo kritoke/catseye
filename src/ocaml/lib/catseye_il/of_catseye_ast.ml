@@ -247,6 +247,10 @@ let translate (mod_ : Catseye_ast.Types.t) : il_unit =
   let lang = match mod_.mod_lang with
     | Gleam -> "gleam"
     | Crystal -> "crystal"
+    | Svelte -> "svelte"
+    | TypeScript -> "typescript"
+    | JavaScript -> "javascript"
+    | Other s -> s
   in
   let fns = List.concat_map walk_item mod_.mod_items in
   { il_file = mod_.mod_path; il_lang = lang; il_functions = fns }

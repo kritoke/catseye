@@ -435,7 +435,7 @@ let rec check_data_classes_in_items (items : item list) (file : string) (lang : 
 
 let check_data_classes (modules : Catseye_ast.Types.t list) : Finding.t list =
   List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
-    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" in
+    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Other s -> s in
     check_data_classes_in_items mod_.mod_items mod_.mod_path lang
   ) modules
 

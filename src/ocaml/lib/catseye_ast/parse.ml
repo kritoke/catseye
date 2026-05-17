@@ -1,11 +1,11 @@
 (* src/ocaml/lib/catseye_ast/parse.ml
-   Unified parsing interface - JSON Bridge for Gleam and Crystal
+   Unified parsing interface - dispatches through plugin registry.
 *)
 
 open Types
 open Error
 
-(** Language from file extension *)
+(** Language from file extension — legacy API, prefer plugin_registry. *)
 let lang_of_extension path =
   if Filename.check_suffix path ".gleam" then Some Gleam
   else if Filename.check_suffix path ".cr" then Some Crystal
@@ -20,9 +20,26 @@ let parse_crystal = Crystal_hierarchical_mapper.parse_file
 (** Parse a Crystal file using flat extractor (fallback) *)
 let parse_crystal_flat = Crystal_mapper.parse_file
 
+(** Parse a file using the plugin registry.
+    Looks up the plugin by file extension and calls its parse_file function. *)
+let parse_via_registry ~(registry : Plugin_registry.registry) ~(path : string)
+    : (t, parse_error) result =
+  (* Find the extension — check all registered extensions *)
+  let exts = Plugin_registry.all_extensions registry in
+  let matching_plugin = List.find_map (fun ext ->
+    if Filename.check_suffix path ext then
+      Plugin_registry.for_extension registry ext
+    else None
+  ) exts in
+  match matching_plugin with
+  | None -> Error (make_error ~file:path ~message:"No plugin for file type")
+  | Some plugin -> plugin.Language_plugin.parse_file ~path
+
 (** Parse a file, inferring language from extension.
-    Uses the extractor_cmd from the registry for Crystal files. *)
-let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option) ~(path : string)
+    Uses the extractor_cmd from the registry for Crystal files.
+    Falls back to legacy dispatch if no plugin registry is provided. *)
+let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option)
+    ~(path : string)
     : (t, parse_error) result =
   match lang_of_extension path with
   | None -> Error (make_error ~file:path ~message:"Unknown file type")
@@ -30,7 +47,7 @@ let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option
       match lang with
       | Gleam -> parse_gleam ~path
       | Crystal ->
-        let hier_cmd = match extractor_registry with
+        (let hier_cmd = match extractor_registry with
           | Some r -> Catseye_engine.Extractor_registry.hier_cmd r
           | None -> "crystal run src/extractor/hierarchical_extractor.cr --"
         in
@@ -41,4 +58,6 @@ let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option
         (* Try hierarchical first, fall back to flat on failure *)
         match parse_crystal ~extractor_cmd:hier_cmd ~path with
         | Ok _ as result -> result
-        | Error _ -> parse_crystal_flat ~extractor_cmd:flat_cmd ~path
+        | Error _ -> parse_crystal_flat ~extractor_cmd:flat_cmd ~path)
+      | Svelte | TypeScript | JavaScript | Other _ ->
+        assert false  (* lang_of_extension only returns Gleam or Crystal *)

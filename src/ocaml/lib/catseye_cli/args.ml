@@ -11,10 +11,8 @@ let format_of_string = function
   | s -> failwith (Printf.sprintf "Unknown format: %s" s)
 
 let lang_of_string = function
-  | "crystal" | "cr" -> Crystal
-  | "gleam" -> Gleam
   | "all" -> All
-  | s -> failwith (Printf.sprintf "Unknown language: %s" s)
+  | s -> Only (String.split_on_char ',' s)
 
 (** Resolve a path to absolute, using [base] as the reference directory.
     If already absolute, return as-is. *)
@@ -80,7 +78,7 @@ let parse_args () : t =
       Printf.printf "Usage: catseye [options] <directory>\n\n";
       Printf.printf "Options:\n";
       Printf.printf "  --format <fmt>       Output: terminal (default), json, sarif, markdown, dot\n";
-      Printf.printf "  --lang <lang>        Language filter: all (default), crystal, gleam\n";
+      Printf.printf "  --lang <langs>       Language filter: all (default), crystal, gleam, or comma-separated list\n";
       Printf.printf "  --output <path>      Write results to file\n";
       Printf.printf "  --rules <path>       Rules directory (default: rules/)\n";
       Printf.printf "  --crystal-extractor  Crystal extractor path\n";

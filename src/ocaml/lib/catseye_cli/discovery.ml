@@ -105,7 +105,7 @@ let parse_shard_yml (dir : string) : (string * string list) =
     with _ -> ("", [])
   end
 
-let discover_sources ?(include_deps=false) ?(lang_filter=All) (dir : string) (exclude : string list) : source_file list =
+let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Sys.file_exists (Filename.concat dir "shard.yml") in
   let shard_deps = 
@@ -164,10 +164,27 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) (dir : string) (ex
       else begin
         let is_lib = is_lib_path path in
         let dep_name = if is_lib then extract_dep_name path else "" in
-        if Filename.check_suffix path ".cr" && lang_filter <> Gleam then
-          results := { path; lang = "crystal"; is_dependency = is_lib && not (List.mem path shard_deps); dependency_name = dep_name } :: !results
-        else if Filename.check_suffix path ".gleam" && lang_filter <> Crystal then
-          results := { path; lang = "gleam"; is_dependency = false; dependency_name = "" } :: !results
+        (* Match against configured extensions *)
+        let matched_ext = List.find_opt (fun ext -> Filename.check_suffix path ext) extensions in
+        match matched_ext with
+        | None -> ()  (* Not a recognized source file *)
+        | Some ext ->
+          (* Determine language from extension *)
+          let lang_name = match ext with
+            | ".cr" -> "crystal"
+            | ".gleam" -> "gleam"
+            | ".ts" | ".tsx" -> "typescript"
+            | ".js" | ".jsx" -> "javascript"
+            | ".svelte" -> "svelte"
+            | _ -> "unknown"
+          in
+          (* Apply lang_filter *)
+          let include_file = match lang_filter with
+            | All -> true
+            | Only langs -> List.mem lang_name langs
+          in
+          if include_file then
+            results := { path; lang = lang_name; is_dependency = is_lib && not (List.mem path shard_deps); dependency_name = dep_name } :: !results
       end
     end
     with Sys_error _ -> ()

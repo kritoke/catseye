@@ -554,7 +554,8 @@ let run (config : t) : int =
                 suggestion = f.suggestion; }
             in
             List.map convert_finding (Ai_linter.Gleam_rules.analyze_module mod_)
-           | Crystal -> [])
+           | Crystal -> []
+           | _ -> [])
       with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
     ) sources in
     if config.format = Terminal && ai_lint_findings <> [] then begin

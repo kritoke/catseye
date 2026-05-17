@@ -15,7 +15,8 @@ let () =
         (List.length mod_.Catseye_ast.Types.mod_items)
         (match mod_.Catseye_ast.Types.mod_lang with
          | Catseye_ast.Types.Crystal -> "Crystal"
-         | Catseye_ast.Types.Gleam -> "Gleam");
+         | Catseye_ast.Types.Gleam -> "Gleam"
+         | _ -> "Other");
       List.iter (fun item ->
         let line = item.Catseye_ast.Types.item_location.start.line in
         match item.Catseye_ast.Types.item_value with

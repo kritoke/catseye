@@ -80,6 +80,7 @@ let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t opti
       let lang_findings = match mod_.mod_lang with
         | Gleam -> List.map gleam_finding_to_finding (Gleam_rules.analyze_module mod_)
         | Crystal -> List.map crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
+        | _ -> []  (* Future: Svelte, TypeScript, JavaScript rules *)
       in
       let ast_findings = List.map (fun v ->
         let base = violation_to_finding v in
