@@ -94,6 +94,20 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
      with e ->
        Printf.eprintf "Gleam extraction error: %s\n" (Printexc.to_string e);
        None)
+  | "javascript" | "typescript" ->
+    (* New languages: parse via tree-sitter → CatseyeAST → Security_node *)
+    (try
+      match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with
+      | Ok mod_ ->
+        let nodes = Catseye_ast.To_security_node.derive mod_ in
+        Some nodes
+      | Error err ->
+        Printf.eprintf "Parse error: %s:%d: %s\n" err.file
+          (Option.value err.line ~default:0) err.message;
+        None
+     with e ->
+      Printf.eprintf "Extraction error: %s\n" (Printexc.to_string e);
+      None)
   | _ -> None
 
 (** Extract nodes from a source file, handling logging and caching.
@@ -107,15 +121,24 @@ let extract_with_log (config : t) (src : source_file)
 
 (* ── Banner ─────────────────────────────────────────────────────────── *)
 
-let print_banner (config : t) (cr_count : int) (gleam_count : int) (dep_count : int) =
+let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (dep_count : int) =
   Printf.printf "
   %sCatseye v%s%s
 " (styled (bold ^ cyan) config "") version (styled reset config "");
   Printf.printf "  Target:   %s
 " (styled green config config.target_dir);
-  Printf.printf "  Files:    %d Crystal, %d Gleam%s
+  let lang_parts = [] in
+  let lang_parts = if cr_count > 0 then (Printf.sprintf "%d Crystal" cr_count) :: lang_parts else lang_parts in
+  let lang_parts = if gleam_count > 0 then (Printf.sprintf "%d Gleam" gleam_count) :: lang_parts else lang_parts in
+  let lang_parts = if js_count > 0 then (Printf.sprintf "%d JavaScript" js_count) :: lang_parts else lang_parts in
+  let lang_parts = if ts_count > 0 then (Printf.sprintf "%d TypeScript" ts_count) :: lang_parts else lang_parts in
+  let files_str = match lang_parts with
+    | [] -> "0 files"
+    | parts -> String.concat ", " (List.rev parts)
+  in
+  Printf.printf "  Files:    %s%s
 "
-    cr_count gleam_count
+    files_str
     (if dep_count > 0 then Printf.sprintf " (%d dependencies)" dep_count else "");
   Printf.printf "
 "
@@ -324,8 +347,10 @@ let run (config : t) : int =
   end;
   let cr_count = List.length (List.filter (fun s -> s.lang = "crystal") sources) in
   let gleam_count = List.length (List.filter (fun s -> s.lang = "gleam") sources) in
+  let js_count = List.length (List.filter (fun s -> s.lang = "javascript") sources) in
+  let ts_count = List.length (List.filter (fun s -> s.lang = "typescript") sources) in
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
-  if config.format = Terminal then print_banner config cr_count gleam_count dep_count;
+  if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count dep_count;
   if config.format = Terminal && not config.crystal_available then
     Printf.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
 

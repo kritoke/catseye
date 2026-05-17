@@ -82,6 +82,9 @@
       treeSitterLibs = [
         pkgs.tree-sitter
         pkgs.tree-sitter-grammars.tree-sitter-gleam
+        pkgs.tree-sitter-grammars.tree-sitter-javascript
+        pkgs.tree-sitter-grammars.tree-sitter-typescript
+        pkgs.tree-sitter-grammars.tree-sitter-svelte
       ];
 
       # ── Private config ────────────────────────────────────────────────
@@ -132,6 +135,9 @@
           export PATH="$PATH:${ticket}/bin"
           export TICKET_DIR="$PWD/.tickets"
           export TREE_SITTER_GLEAM_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-gleam}/parser"
+          export TREE_SITTER_JAVASCRIPT_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-javascript}/parser"
+          export TREE_SITTER_TYPESCRIPT_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-typescript}/parser"
+          export TREE_SITTER_SVELTE_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-svelte}/parser"
 
           # OCaml environment
           export OCAMLFIND_DESTDIR="$PWD/src/ocaml/_opam/lib"

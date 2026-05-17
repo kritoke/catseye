@@ -9,6 +9,8 @@ open Error
 let lang_of_extension path =
   if Filename.check_suffix path ".gleam" then Some Gleam
   else if Filename.check_suffix path ".cr" then Some Crystal
+  else if Filename.check_suffix path ".ts" || Filename.check_suffix path ".tsx" then Some TypeScript
+  else if Filename.check_suffix path ".js" || Filename.check_suffix path ".jsx" then Some JavaScript
   else None
 
 (** Parse a Gleam file using tree-sitter *)
@@ -59,5 +61,9 @@ let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option
         match parse_crystal ~extractor_cmd:hier_cmd ~path with
         | Ok _ as result -> result
         | Error _ -> parse_crystal_flat ~extractor_cmd:flat_cmd ~path)
-      | Svelte | TypeScript | JavaScript | Other _ ->
-        assert false  (* lang_of_extension only returns Gleam or Crystal *)
+      | JavaScript -> Javascript_mapper.parse_file ~path
+      | TypeScript -> Typescript_mapper.parse_file ~path
+      | Svelte ->
+        Error (make_error ~file:path ~message:"Svelte parsing not yet implemented")
+      | Other _ ->
+        Error (make_error ~file:path ~message:"Unsupported language")
