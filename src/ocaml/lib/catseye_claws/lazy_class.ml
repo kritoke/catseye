@@ -38,7 +38,10 @@ let is_config_file (file : string) : bool =
   contains lower "_config.cr" ||
   contains lower "/settings/" ||
   contains lower "/structures/" ||
-  contains lower "/types/"
+  contains lower "/types/" ||
+  contains lower "/dtos/" ||
+  contains lower "/entities/" ||
+  contains lower "/models/"
 
 (** Check if a class name suggests it's a data/struct type *)
 let is_data_class_name (name : string) : bool =
@@ -50,7 +53,10 @@ let is_data_class_name (name : string) : bool =
   contains lower "constants" ||
   contains lower "defaults" ||
   contains lower "options" ||
-  contains lower "params"
+  contains lower "params" ||
+  contains lower "dto" ||
+  contains lower "entity" ||
+  contains lower "model"
 
 (** Check if a class is a data-only class (only has getters/properties) *)
 let is_data_only_class (methods : Scope.scope list) : bool =
