@@ -9,62 +9,7 @@
 *)
 
 open Catseye_types
-
-(* ── Helpers ────────────────────────────────────────────────────────── *)
-
-let find_substring (haystack : string) (needle : string) : int =
-  let hlen = String.length haystack in
-  let nlen = String.length needle in
-  if nlen > hlen then -1
-  else begin
-    let result = ref (-1) in
-    (try
-      for i = 0 to hlen - nlen do
-        if String.sub haystack i nlen = needle then begin
-          result := i; raise Exit
-        end
-      done
-    with Exit -> ());
-    !result
-  end
-
-(* ── Scope building (shared pattern) ────────────────────────────────── *)
-
-type scope = {
-  def : Security_node.t;
-  body : Security_node.t list;
-}
-
-let build_scopes (nodes : Security_node.t list) : scope list =
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
-  ) nodes;
-  let scopes = ref [] in
-  Hashtbl.iter (fun _file file_nodes ->
-    let sorted = List.sort (fun a b ->
-      compare a.Security_node.line b.Security_node.line
-    ) file_nodes in
-    let defs = List.filter (fun n ->
-      n.Security_node.node_type = Security_node.Def
-    ) sorted in
-    List.iteri (fun i (def : Security_node.t) ->
-      let start_line = def.Security_node.line in
-      let end_line =
-        if i + 1 < List.length defs then
-          (List.nth defs (i + 1)).Security_node.line
-        else max_int
-      in
-      let body = List.filter (fun (n : Security_node.t) ->
-        n.Security_node.node_type <> Security_node.Def
-        && n.Security_node.line >= start_line
-        && n.Security_node.line < end_line
-      ) sorted in
-      scopes := { def; body } :: !scopes
-    ) defs
-  ) by_file;
-  List.rev !scopes
+open Scope
 
 (* ── Long Method ────────────────────────────────────────────────────── *)
 

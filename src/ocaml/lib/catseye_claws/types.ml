@@ -18,6 +18,9 @@ type claws_config = {
   dry_enabled : bool;           (** default: true *)
   ameba_enabled : bool;         (** default: false *)
   extra_smells_enabled : bool;  (** default: true *)
+  anti_singleton_enabled : bool; (** default: true *)
+  lazy_class_enabled : bool;     (** default: true *)
+  large_class_enabled : bool;     (** default: true *)
 
   (* Complexity thresholds *)
   complexity_warning : int;     (** default: 10 *)
@@ -48,6 +51,11 @@ type claws_config = {
   complex_match_critical : int; (** default: 10 when branches *)
   concurrency_enabled : bool;  (** default: true *)
 
+  (* Class smells *)
+  lazy_class_method_threshold : int;  (** default: 3 *)
+  large_class_loc_warning : int;     (** default: 200 lines *)
+  large_class_loc_critical : int;    (** default: 500 lines *)
+
   (* Per-rule suppression: rule name -> glob patterns for files to suppress *)
   suppress : (string, string list) Hashtbl.t;  (** default: empty *)
 }
@@ -58,6 +66,7 @@ let default_config = {
   dry_enabled = true;
   ameba_enabled = false;
   extra_smells_enabled = true;
+  anti_singleton_enabled = true;
   complexity_warning = 10;
   complexity_critical = 20;
   max_params = 5;
@@ -77,5 +86,10 @@ let default_config = {
   complex_match_warning = 5;
   complex_match_critical = 10;
   concurrency_enabled = true;
+  lazy_class_enabled = true;
+  large_class_enabled = true;
+  lazy_class_method_threshold = 3;
+  large_class_loc_warning = 200;
+  large_class_loc_critical = 500;
   suppress = Hashtbl.create 0;
 }

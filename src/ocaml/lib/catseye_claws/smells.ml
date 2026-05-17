@@ -85,12 +85,24 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
     if config.extra_smells_enabled then Extra_smells.analyze nodes config
     else []
   in
+  let anti_singleton_findings =
+    if config.anti_singleton_enabled then Anti_singleton.analyze nodes config
+    else []
+  in
+  let lazy_class_findings =
+    if config.lazy_class_enabled then Lazy_class.analyze nodes config
+    else []
+  in
+  let large_class_findings =
+    if config.large_class_enabled then Large_class.analyze nodes config
+    else []
+  in
   let concurrency_findings =
     if config.concurrency_enabled then Concurrency.analyze nodes config
     else []
   in
   let ameba_findings = Ameba_hook.run config nodes in
-  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings @ ameba_findings)
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ anti_singleton_findings @ lazy_class_findings @ large_class_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))
 
