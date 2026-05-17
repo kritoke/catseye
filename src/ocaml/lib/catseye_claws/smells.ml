@@ -111,12 +111,16 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
     if config.large_class_enabled then Hub_like_module.analyze nodes config
     else []
   in
+  let shotgun_findings =
+    if config.large_class_enabled then Shotgun_surgery.analyze nodes config
+    else []
+  in
   let concurrency_findings =
     if config.concurrency_enabled then Concurrency.analyze nodes config
     else []
   in
   let ameba_findings = Ameba_hook.run config nodes in
-  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ anti_singleton_findings @ lazy_class_findings @ large_class_findings @ blob_findings @ spaghetti_code_findings @ hierarchy_findings @ hub_like_findings @ concurrency_findings @ ameba_findings)
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ anti_singleton_findings @ lazy_class_findings @ large_class_findings @ blob_findings @ spaghetti_code_findings @ hierarchy_findings @ hub_like_findings @ shotgun_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))
 
