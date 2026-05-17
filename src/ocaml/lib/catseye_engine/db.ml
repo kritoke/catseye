@@ -88,6 +88,12 @@ let has_record_in_file (db : t) (var : string) (file : string) : bool =
 let db_size (db : t) : int =
   StringMap.fold (fun _ records acc -> acc + List.length records) db 0
 
+(** Get all taint records for a variable in a specific file. *)
+let get_tainted_records (db : t) (var : string) (file : string) : taint_record list =
+  match StringMap.find_opt file db with
+  | Some records -> List.filter (fun r -> r.var_name = var) records
+  | None -> []
+
 (** Remove a tainted var from a specific file. Used for guard processing:
     when a guard node validates a variable, it should no longer be tainted
     for sinks at lines after the guard. *)

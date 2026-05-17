@@ -112,14 +112,50 @@ let cleanse_sanitized_assigns (nodes : Security_node.t list) (db : Db.t)
       else acc
   ) db nodes
 
-(* ── Property Taint Propagation ────────────────────────────────────────
+(* ── String Operation Taint Propagation ───────────────────────────────
+
+   When a tainted string is used in string operations, the result inherits taint:
+   - Method chains: result = tainted.upcase, result = tainted.split(",")
+   - Interpolations: result = "#{tainted} suffix"
+   - Gsub/replace: result = tainted.gsub("a", "b")
+
+   For method chains, we look for assignments where:
+   - The RHS is a method call on a tainted variable (receiver is tainted)
+   - The assign target inherits the tainted receiver's properties
+*)
+
+(* String methods that preserve/propagate taint when called on a tainted string *)
+let string_taint_methods = [
+  "upcase"; "downcase"; "capitalize"; "strip"; "lstrip"; "rstrip";
+  "reverse"; "chomp"; "chop"; "squeeze"; "squeeze!";
+  "gsub"; "gsub!"; "sub"; "sub!"; "replace";
+  "split"; "lines"; "chars"; "bytes";
+  "strip_margin"; "indent";
+  "tr"; "tr!"; "delete"; "delete!";
+  "prepend"; "concat";
+  "encode"; "decode";
+]
+
+let is_string_taint_method (method_name : string) : bool =
+  List.exists (fun m -> method_name = m || method_name = m ^ "!") string_taint_methods
+
+(* Extract method name from "receiver.method" format *)
+let extract_method_name (full_name : string) : string option =
+  match String.rindex_opt full_name '.' with
+  | Some idx -> Some (String.sub full_name (idx + 1) (String.length full_name - idx - 1))
+  | None -> None
+
+(* Get the receiver variable from a call node *)
+let get_call_receiver (call_node : Security_node.t) : string option =
+  let name = call_node.Security_node.name in
+  match String.index_opt name '.' with
+  | Some idx -> Some (String.sub name 0 idx)
+  | None -> None
+
+(* ── URI Constructor Taint Propagation ────────────────────────────────
 
    When URI.parse(tainted_var) is called, the resulting URI object's
    properties (host, request_target, etc.) inherit the taint.
-
-   Also handles aliases:
-     uri = URI.parse(url)
-     other = uri  # alias - should also inherit tainted properties
 *)
 
 let uri_constructors = [
@@ -198,22 +234,124 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
           if Db.is_tainted_in_file !db_ref rhs_var node.Security_node.file then
             let var_name = node.Security_node.name in
             let file = node.Security_node.file in
-            List.iter (fun prop ->
-              let record = {
-                Db.var_name = var_name;
-                Db.file = file;
-                Db.line = node.Security_node.line;
-                Db.description = var_name ^ "." ^ prop ^ " tainted via alias of " ^ rhs_var;
-                Db.source_var = rhs_var;
-                Db.field = Some prop;
-                Db.status = Db.Tainted {
-                  source = rhs_var;
-                  field = Some prop;
-                  origin = Db.From_var rhs_var
-                }
-              } in
-              db_ref := Db.add_record !db_ref record
-            ) uri_tainted_properties
+            let source_taints = Db.get_tainted_records !db_ref rhs_var file in
+            List.iter (fun record ->
+              match record.Db.field with
+              | Some fld ->
+                  let new_record = {
+                    Db.var_name = var_name;
+                    Db.file = file;
+                    Db.line = node.Security_node.line;
+                    Db.description = var_name ^ "." ^ fld ^ " tainted via alias of " ^ rhs_var;
+                    Db.source_var = rhs_var;
+                    Db.field = Some fld;
+                    Db.status = Db.Tainted {
+                      source = rhs_var;
+                      field = Some fld;
+                      origin = Db.From_var rhs_var
+                    }
+                  } in
+                  db_ref := Db.add_record !db_ref new_record
+              | None -> ()
+            ) source_taints
+      | [{ arg_type = Security_node.ArgCall; value = _; field = "" }] ->
+          let _key = node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line in
+          (match List.find_opt (fun n ->
+             n.Security_node.node_type = Security_node.Call
+             && n.Security_node.file = node.Security_node.file
+             && n.Security_node.line = node.Security_node.line
+           ) nodes with
+           | Some call_node ->
+               let receiver_opt = get_call_receiver call_node in
+               (match receiver_opt with
+                | Some receiver when Db.is_tainted_in_file !db_ref receiver node.Security_node.file ->
+                    let var_name = node.Security_node.name in
+                    let file = node.Security_node.file in
+                    let source_taints = Db.get_tainted_records !db_ref receiver file in
+                    List.iter (fun record ->
+                      match record.Db.field with
+                      | Some fld ->
+                          let new_record = {
+                            Db.var_name = var_name;
+                            Db.file = file;
+                            Db.line = node.Security_node.line;
+                            Db.description = var_name ^ "." ^ fld ^ " tainted via method call";
+                            Db.source_var = receiver;
+                            Db.field = Some fld;
+                            Db.status = Db.Tainted {
+                              source = receiver;
+                              field = Some fld;
+                              origin = Db.From_var receiver
+                            }
+                          } in
+                          db_ref := Db.add_record !db_ref new_record
+                      | None -> ()
+                    ) source_taints
+                | _ -> ())
+           | None -> ())
+      | _ -> ()
+  ) nodes;
+  !db_ref
+
+(* Propagate taint through string operations.
+   When x = tainted_string.upcase, mark x as tainted (variable-level).
+   When x = tainted_string.split(","), mark x as tainted.
+   This handles both variable-level and field-level taint propagation. *)
+let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
+    ~(call_at : (string, Security_node.t) Hashtbl.t) : Db.t =
+  let db_ref = ref db in
+  List.iter (fun node ->
+    if node.Security_node.node_type = Security_node.Assign then
+      (* Check if this is a method call on a variable *)
+      match node.Security_node.args with
+      | [{ arg_type = Security_node.ArgCall; value = _; field = "" }] ->
+          (* Look up the call node to get the full method name *)
+          let key = node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line in
+          (match Hashtbl.find_opt call_at key with
+           | Some call_node ->
+               let receiver_opt = get_call_receiver call_node in
+               let method_opt = extract_method_name call_node.Security_node.name in
+               (match receiver_opt, method_opt with
+                | Some receiver, Some method_name when is_string_taint_method method_name ->
+                    (* Check if receiver is tainted at variable level *)
+                    let is_tainted = Db.is_tainted_in_file !db_ref receiver node.Security_node.file in
+                    if is_tainted then
+                      let var_name = node.Security_node.name in
+                      let file = node.Security_node.file in
+                      (* Mark the assign target as tainted *)
+                      let record = {
+                        Db.var_name = var_name;
+                        Db.file = file;
+                        Db.line = node.Security_node.line;
+                        Db.description = var_name ^ " tainted via string operation on " ^ receiver;
+                        Db.source_var = receiver;
+                        Db.field = None;
+                        Db.status = Db.Tainted {
+                          source = receiver;
+                          field = None;
+                          origin = Db.From_var receiver
+                        }
+                      } in
+                      db_ref := Db.add_record !db_ref record;
+                      (* Also mark all string property fields as tainted *)
+                      List.iter (fun prop ->
+                        let prop_record = {
+                          Db.var_name = var_name;
+                          Db.file = file;
+                          Db.line = node.Security_node.line;
+                          Db.description = var_name ^ "." ^ prop ^ " tainted via " ^ method_name;
+                          Db.source_var = receiver;
+                          Db.field = Some prop;
+                          Db.status = Db.Tainted {
+                            source = receiver;
+                            field = Some prop;
+                            origin = Db.From_var receiver
+                          }
+                        } in
+                        db_ref := Db.add_record !db_ref prop_record
+                      ) ["length"; "size"; "empty"; "bytesize"]
+                | _ -> ())
+           | None -> ())
       | _ -> ()
   ) nodes;
   !db_ref
@@ -222,16 +360,27 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
 let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let call_at = build_call_lookup nodes in
   
-  let rec loop_uri db count =
+  let rec loop_string_ops db count =
     if count >= 100 then db
     else
       let size_before = Db.db_size db in
       let db1 = cleanse_sanitized_assigns nodes db ~call_at in
       let db2 = do_propagate nodes db1 ~call_at in
-      let db3 = propagate_uri_properties nodes db2 ~call_at in
+      let db3 = propagate_string_ops nodes db2 ~call_at in
       let size_after = Db.db_size db3 in
-      if size_after > size_before then loop_uri db3 (count + 1)
+      if size_after > size_before then loop_string_ops db3 (count + 1)
       else db3
+  in
+  
+  let rec loop_uri db count =
+    if count >= 100 then db
+    else
+      let size_before = Db.db_size db in
+      let db1 = cleanse_sanitized_assigns nodes db ~call_at in
+      let db2 = propagate_uri_properties nodes db1 ~call_at in
+      let size_after = Db.db_size db2 in
+      if size_after > size_before then loop_uri db2 (count + 1)
+      else db2
   in
   
   let rec loop_alias db count =
@@ -244,6 +393,7 @@ let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
       else db1
   in
   
-  let after_uri = loop_uri db 0 in
+  let after_string = loop_string_ops db 0 in
+  let after_uri = loop_uri after_string 0 in
   let after_alias = loop_alias after_uri 0 in
   after_alias

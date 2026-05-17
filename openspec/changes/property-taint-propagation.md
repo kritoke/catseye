@@ -4,7 +4,7 @@
 **Priority:** P1  
 **Size:** L (1 week)  
 **Created:** 2026-05-17  
-**Status:** Phase 1 Implemented ✓
+**Status:** Phase 1 & 2 Implemented ✓
 
 ## Context
 
@@ -49,7 +49,34 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
    - Changed dedup from `var_name` only to `(var_name, field)` pair
    - Allows recording both `uri` (variable-level) and `uri.request_target` (field-level)
 
-### ✅ Phase 1 Testing
+### ✅ Phase 2: String Operation Taint (DONE 2026-05-17)
+
+**Files Modified:**
+
+- `lib/catseye_engine/propagate.ml` - Added `propagate_string_ops` and related helpers
+- `lib/catseye_engine/db.ml` - Added `get_tainted_records` function
+
+**Key Changes:**
+
+1. **String method taint propagation** (`propagate_string_ops`)
+   - Detects assignments like `result = tainted.upcase`, `result = tainted.split(",")`
+   - Marks the assign target as tainted at variable level
+   - Also marks common string property fields (`length`, `size`, `empty`, `bytesize`)
+
+2. **Enhanced alias propagation** (`propagate_aliases`)
+   - Now propagates ALL tainted properties from source to target
+   - Handles method call results (e.g., `parts[0]` inherits from `parts`)
+   - Uses `Db.get_tainted_records` to find all field-level taints
+
+3. **Helper functions**
+   - `is_string_taint_method`: checks if method is in taint-propagating list
+   - `extract_method_name`: extracts method name from "receiver.method" format
+   - `get_call_receiver`: extracts receiver variable from call node
+
+**Supported string methods:**
+`upcase`, `downcase`, `capitalize`, `strip`, `lstrip`, `rstrip`, `reverse`, `chomp`, `chop`, `squeeze`, `gsub`, `sub`, `replace`, `split`, `lines`, `chars`, `bytes`, `tr`, `delete`, `prepend`, `concat`, `encode`, `decode`
+
+### ✅ Phase 1 & 2 Testing
 
 ```bash
 # All test cases now pass:
@@ -57,31 +84,19 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
 # Test 2: params["url"] pattern → SSRF detected ✓
 # Test 3: Aliasing (other = uri) → SSRF detected ✓
 # Test 4: real codebase (quickheadlines) → 2 SSRFs detected ✓
+# Test 5: url.split("/") + parts[0] → SSRF detected ✓
+# Test 6: url.upcase, url.gsub, url.strip → SSRF detected ✓
 ```
 
 ---
 
-## Remaining: Phase 2 & 3
+## Remaining: Phase 3
 
-### Phase 2: String Operation Taint (TODO)
+### Phase 3: Advanced Taint Patterns (TODO)
 
-Propagate taint through common string methods:
-
-```crystal
-# These should propagate taint:
-tainted = params["input"]
-result = tainted.upcase          # tainted -> result
-result = tainted.split(",")     # tainted -> result[0], result[1], etc.
-result = tainted.gsub("a", "b") # tainted -> result
-result = "#{tainted} suffix"    # tainted -> result
-```
-
-### Phase 3: Object Aliasing (TODO)
-
-Partially done via `propagate_aliases`. May need enhancement for:
-
-- Method call chains: `uri = URI.parse(url); client = HTTP::Client.new(uri.host)`
-- Multiple levels of aliasing
+- **Cross-file taint propagation**: Track taint across file boundaries
+- **Hub-like Module detection**: Classes with high fan-out to many other classes
+- **Shotgun Surgery detection**: Single responsibility violation (one change affects many classes)
 
 ---
 
@@ -89,8 +104,8 @@ Partially done via `propagate_aliases`. May need enhancement for:
 
 | File                              | Change                                                   |
 | --------------------------------- | -------------------------------------------------------- |
-| `lib/catseye_engine/propagate.ml` | Added `propagate_uri_properties` and `propagate_aliases` |
-| `lib/catseye_engine/db.ml`        | Fixed dedup to allow field-level records                 |
+| `lib/catseye_engine/propagate.ml` | Added string op taint, enhanced alias propagation         |
+| `lib/catseye_engine/db.ml`        | Added `get_tainted_records`, fixed field-level dedup      |
 | `lib/catseye_engine/seed.ml`      | Always seed params matching known sources                |
 
 ---
@@ -103,4 +118,4 @@ Partially done via `propagate_aliases`. May need enhancement for:
 
 ---
 
-_Updated: 2026-05-17 (Phase 1 completed)_
+_Updated: 2026-05-17 (Phase 1 & 2 completed)_
