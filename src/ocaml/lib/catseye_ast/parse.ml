@@ -12,6 +12,7 @@ let lang_of_extension path =
   else if Filename.check_suffix path ".ts" || Filename.check_suffix path ".tsx" then Some TypeScript
   else if Filename.check_suffix path ".js" || Filename.check_suffix path ".jsx" then Some JavaScript
   else if Filename.check_suffix path ".svelte" then Some Svelte
+  else if Filename.check_suffix path ".ml" || Filename.check_suffix path ".mli" then Some (Other "ocaml")
   else None
 
 (** Parse a Gleam file using tree-sitter *)
@@ -65,5 +66,6 @@ let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option
       | JavaScript -> Javascript_mapper.parse_file ~path
       | TypeScript -> Typescript_mapper.parse_file ~path
       | Svelte -> Svelte_mapper.parse_file ~path
+      | Other "ocaml" -> Ocaml_mapper.parse_file ~path
       | Other _ ->
         Error (make_error ~file:path ~message:"Unsupported language")

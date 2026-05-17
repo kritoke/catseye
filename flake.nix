@@ -85,6 +85,7 @@
         pkgs.tree-sitter-grammars.tree-sitter-javascript
         pkgs.tree-sitter-grammars.tree-sitter-typescript
         pkgs.tree-sitter-grammars.tree-sitter-svelte
+        pkgs.tree-sitter-grammars.tree-sitter-ocaml
       ];
 
       # ── Private config ────────────────────────────────────────────────
@@ -138,6 +139,7 @@
           export TREE_SITTER_JAVASCRIPT_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-javascript}/parser"
           export TREE_SITTER_TYPESCRIPT_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-typescript}/parser"
           export TREE_SITTER_SVELTE_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-svelte}/parser"
+          export TREE_SITTER_OCAML_GRAMMAR="${pkgs.tree-sitter-grammars.tree-sitter-ocaml}/parser"
 
           # OCaml environment
           export OCAMLFIND_DESTDIR="$PWD/src/ocaml/_opam/lib"

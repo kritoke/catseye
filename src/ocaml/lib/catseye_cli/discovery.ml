@@ -105,7 +105,7 @@ let parse_shard_yml (dir : string) : (string * string list) =
     with _ -> ("", [])
   end
 
-let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".ts"; ".tsx"; ".svelte"]) (dir : string) (exclude : string list) : source_file list =
+let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".ts"; ".tsx"; ".svelte"; ".ml"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Sys.file_exists (Filename.concat dir "shard.yml") in
   let shard_deps = 
@@ -160,9 +160,9 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
         ) entries
       end
     end else begin
-      if not include_deps && is_shard_dep path then ()
+      if not include_deps && has_shard && is_shard_dep path then ()
       else begin
-        let is_lib = is_lib_path path in
+        let is_lib = has_shard && is_lib_path path in
         let dep_name = if is_lib then extract_dep_name path else "" in
         (* Match against configured extensions *)
         let matched_ext = List.find_opt (fun ext -> Filename.check_suffix path ext) extensions in
@@ -176,6 +176,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
             | ".ts" | ".tsx" -> "typescript"
             | ".js" | ".jsx" -> "javascript"
             | ".svelte" -> "svelte"
+            | ".ml" | ".mli" -> "ocaml"
             | _ -> "unknown"
           in
           (* Apply lang_filter *)

@@ -95,7 +95,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
      with e ->
        Printf.eprintf "Gleam extraction error: %s\n" (Printexc.to_string e);
        None)
-  | "javascript" | "typescript" | "svelte" ->
+  | "javascript" | "typescript" | "svelte" | "ocaml" ->
     (* New languages: parse via tree-sitter → CatseyeAST → Security_node *)
     (try
       match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with
@@ -122,7 +122,7 @@ let extract_with_log (config : t) (src : source_file)
 
 (* ── Banner ─────────────────────────────────────────────────────────── *)
 
-let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (svelte_count : int) (dep_count : int) =
+let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (svelte_count : int) (ocaml_count : int) (dep_count : int) =
   Printf.printf "
   %sCatseye v%s%s
 " (styled (bold ^ cyan) config "") version (styled reset config "");
@@ -134,6 +134,7 @@ let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : i
   let lang_parts = if js_count > 0 then (Printf.sprintf "%d JavaScript" js_count) :: lang_parts else lang_parts in
   let lang_parts = if ts_count > 0 then (Printf.sprintf "%d TypeScript" ts_count) :: lang_parts else lang_parts in
   let lang_parts = if svelte_count > 0 then (Printf.sprintf "%d Svelte" svelte_count) :: lang_parts else lang_parts in
+  let lang_parts = if ocaml_count > 0 then (Printf.sprintf "%d OCaml" ocaml_count) :: lang_parts else lang_parts in
   let files_str = match lang_parts with
     | [] -> "0 files"
     | parts -> String.concat ", " (List.rev parts)
@@ -352,8 +353,9 @@ let run (config : t) : int =
   let js_count = List.length (List.filter (fun s -> s.lang = "javascript") sources) in
   let ts_count = List.length (List.filter (fun s -> s.lang = "typescript") sources) in
   let svelte_count = List.length (List.filter (fun s -> s.lang = "svelte") sources) in
+  let ocaml_count = List.length (List.filter (fun s -> s.lang = "ocaml") sources) in
   let dep_count = List.length (List.filter (fun s -> s.is_dependency) sources) in
-  if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count svelte_count dep_count;
+  if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count svelte_count ocaml_count dep_count;
   if config.format = Terminal && not config.crystal_available then
     Printf.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
 
