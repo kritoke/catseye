@@ -151,31 +151,31 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 
 All 16 code smell detectors use **AST-native analysis** via `CatseyeAST.t` — they work across all supported languages.
 
-| Detector              | Rule ID             | Threshold                          |
-| --------------------- | ------------------- | ---------------------------------- |
-| Cyclomatic complexity | `HighComplexity`    | M ≥ 10                             |
-| Long parameter list   | `LongParameterList` | ≥ 5 params                         |
-| Deep nesting          | `DeepNesting`       | ≥ 4 levels                         |
-| God objects           | `GodObject`         | ≥ 20 defs/file                     |
-| DRY violations        | `DRYViolation`      | 4+ duplicates                      |
-| Long method           | `LongMethod`        | ≥ 30 nodes                         |
-| Message chain         | `MessageChain`      | ≥ 5 links                          |
-| Data class            | `DataClass`         | 2+ props, no behavior              |
-| Data clump            | `DataClump`         | 3+ params always together          |
-| Flag argument         | `FlagArgument`      | bool params                        |
-| Complex match         | `ComplexMatch`      | ≥ 5 branches                       |
-| Dead code             | `DeadCode`          | unreachable code                   |
-| Feature envy          | `FeatureEnvy`       | excessive cross-class calls        |
-| Orphaned spawn        | `OrphanedSpawn`     | `spawn`/`go` without rescue/ensure |
-| Muted pack            | `MutedPack`         | `Channel.send` without receive     |
-| Dead letter           | `DeadLetter`        | `Channel.close` before receive      |
-| Spaghetti code        | `SpaghettiCode`     | ≥ 60 body nodes                     |
-| Large class           | `LargeClass`        | > 500 LOC                          |
-| Blob                  | `Blob`              | large + data clumps                |
-| Lazy class            | `LazyClass`         | < 3 methods                        |
-| Hub-like module       | `HubLikeModule`     | > 12 dependencies                  |
-| Shotgun surgery       | `ShotgunSurgery`    | 5+ calls to same module            |
-| Parallel inheritance  | `ParallelInheritance`| same-prefix class hierarchies     |
+| Detector              | Rule ID               | Threshold                          |
+| --------------------- | --------------------- | ---------------------------------- |
+| Cyclomatic complexity | `HighComplexity`      | M ≥ 10                             |
+| Long parameter list   | `LongParameterList`   | ≥ 5 params                         |
+| Deep nesting          | `DeepNesting`         | ≥ 4 levels                         |
+| God objects           | `GodObject`           | ≥ 20 defs/file                     |
+| DRY violations        | `DRYViolation`        | 4+ duplicates                      |
+| Long method           | `LongMethod`          | ≥ 30 nodes                         |
+| Message chain         | `MessageChain`        | ≥ 5 links                          |
+| Data class            | `DataClass`           | 2+ props, no behavior              |
+| Data clump            | `DataClump`           | 3+ params always together          |
+| Flag argument         | `FlagArgument`        | bool params                        |
+| Complex match         | `ComplexMatch`        | ≥ 5 branches                       |
+| Dead code             | `DeadCode`            | unreachable code                   |
+| Feature envy          | `FeatureEnvy`         | excessive cross-class calls        |
+| Orphaned spawn        | `OrphanedSpawn`       | `spawn`/`go` without rescue/ensure |
+| Muted pack            | `MutedPack`           | `Channel.send` without receive     |
+| Dead letter           | `DeadLetter`          | `Channel.close` before receive     |
+| Spaghetti code        | `SpaghettiCode`       | ≥ 60 body nodes                    |
+| Large class           | `LargeClass`          | > 500 LOC                          |
+| Blob                  | `Blob`                | large + data clumps                |
+| Lazy class            | `LazyClass`           | < 3 methods                        |
+| Hub-like module       | `HubLikeModule`       | > 12 dependencies                  |
+| Shotgun surgery       | `ShotgunSurgery`      | 5+ calls to same module            |
+| Parallel inheritance  | `ParallelInheritance` | same-prefix class hierarchies      |
 
 ### Supply Chain Audit (`--crows-nest`)
 
@@ -256,6 +256,7 @@ Source files
 6. **Rules** — KDL rules match sinks against tainted variables, with `arg=N` position matching
 
 **Path sensitivity** reduces false positives by tracking validation guards:
+
 - `starts_with?`, `end_with?` → suppress path traversal
 - `valid_url?`, `check_*`, `sanitize_*` → suppress SSRF
 - Validation scope: 50 lines or to next function boundary
@@ -320,7 +321,26 @@ LongParameterList = ["**/repositories/**"]
 [taint.suppress]
 SSRF = ["**/validated_http_client.cr"]
 PathTraversal = ["**/safe_io.cr"]
+
+# Suppress specific rules by ID (CLI --suppress flag)
+[suppress]
+# unused-let: Gleam OTP bindings appear unused but are used by runtime
+unused-let = true
+guard-after-wildcard = true
 ```
+
+### CLI Suppress Flag
+
+Use `--suppress` to disable specific rules without a config file:
+
+```bash
+catseye ./src --suppress unused-let,guard-after-wildcard
+
+# Suppress security rules
+catseye ./src --suppress InsecureRandom,WeakCryptography
+```
+
+This suppresses rules in both the taint/security engine and AI lint detectors.
 
 ### Glob Patterns
 
