@@ -435,6 +435,66 @@ let detect_base_class_knows_derived
   
   List.rev !findings
 
+(** 7. Parallel Inheritance
+    Two sibling hierarchies that evolve together but share no code.
+    When a change is needed in one hierarchy, parallel changes are needed in the other.
+    
+    Detection: Look for compound class names that combine two base class names.
+    e.g., CircleRenderer combines Circle and Renderer, suggesting parallel hierarchies.
+    
+    Only flag when a class name is a concatenation of two OTHER class names. *)
+let detect_parallel_inheritance
+    (infos : Class_graph.class_info list)
+    (_parent_to_children : string list Class_graph.StringMap.t)
+    : Finding.t list =
+  let findings = ref [] in
+  
+  (* Build set of all class names for quick lookup *)
+  let all_class_names = List.fold_left (fun acc info ->
+    Class_graph.StringSet.add info.Class_graph.name acc
+  ) Class_graph.StringSet.empty infos in
+  
+  (* For each class, check if its name is a compound of two existing class names *)
+  List.iter (fun info ->
+    let name = info.Class_graph.name in
+    let namelen = String.length name in
+    
+    (* Try splitting the name at each position *)
+    let rec check_splits pos =
+      if pos >= namelen - 1 then ()  (* Need at least 2 chars on each side *)
+      else begin
+        let prefix = String.sub name 0 pos in
+        let suffix = String.sub name pos (namelen - pos) in
+        
+        (* Check if both parts are existing class names *)
+        if Class_graph.StringSet.mem prefix all_class_names && Class_graph.StringSet.mem suffix all_class_names then begin
+          findings := {
+            Finding.rule = "ParallelInheritance";
+            severity = "Low";
+            file = info.Class_graph.file;
+            line = info.Class_graph.line;
+            message = Printf.sprintf
+              "'%s' appears to be a combination of '%s' and '%s'. This suggests parallel hierarchies - when you add a new '%s', you must also add a new '%s'."
+              name prefix suffix suffix suffix;
+            flow = [ {
+              Finding.file = info.Class_graph.file;
+              line = info.Class_graph.line;
+              message = Printf.sprintf "'%s' is a compound class (prefix: '%s', suffix: '%s')"
+                name prefix suffix;
+            } ];
+            language = "crystal";
+            dependency = None;
+            reachability = None; suggestion = None;
+          } :: !findings
+        end;
+        check_splits (pos + 1)
+      end
+    in
+    check_splits 1
+  ) infos;
+  
+  List.rev !findings
+
 (* ── Main Analyzer ───────────────────────────────────────────────── *)
 
 let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
@@ -447,5 +507,6 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
   let tradition_breaker_findings = detect_tradition_breaker infos parent_to_children in
   let refused_bequest_findings = detect_refused_parent_bequest nodes infos parent_to_children in
   let base_knows_derived_findings = detect_base_class_knows_derived infos parent_to_children in
+  let parallel_inheritance_findings = detect_parallel_inheritance infos parent_to_children in
   
-  base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings @ refused_bequest_findings @ base_knows_derived_findings
+  base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings @ refused_bequest_findings @ base_knows_derived_findings @ parallel_inheritance_findings
