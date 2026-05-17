@@ -134,7 +134,9 @@ let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
   List.rev steps
 
 (** Run the full analysis pipeline and return findings with populated flow.
-    The DAG is built for each finding to trace the taint path. *)
+    The DAG is built for each finding to trace the taint path.
+    Path sensitivity is applied to suppress findings where validation
+    scopes cover the sink use. *)
 let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     (nodes : Security_node.t list) : Finding.t list =
   let db = build_taint_db ~extra_sources nodes in
@@ -151,18 +153,25 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     ~import_map:(Symbol_table.build_import_map nodes)
     () in
   let raw_findings = Catseye_rules.Interpreter.run_all rules nodes ctx in
+  (* Build validation scopes for path sensitivity *)
+  let validation_scopes = Path_sensitivity.build_validation_scopes nodes in
   (* Precompute sink lookup map for O(1) access per finding *)
   let sink_map = build_sink_lookup_map nodes in
   let results = ref [] in
   List.iter (fun f ->
-    let key = f.Finding.file ^ ":" ^ string_of_int f.Finding.line in
-    match StringMap.find_opt key sink_map with
-    | None -> results := f :: !results
-    | Some sink ->
-      (match build_dag sink db nodes with
-       | None -> results := f :: !results
-       | Some dag ->
-         let flow = dag_to_flow_steps dag nodes in
-         results := { f with Finding.flow = flow } :: !results)
+    (* Check if this finding should be suppressed due to path sensitivity *)
+    let suppressed = Path_sensitivity.should_suppress f validation_scopes in
+    if suppressed then () (* Skip this finding *)
+    else begin
+      let key = f.Finding.file ^ ":" ^ string_of_int f.Finding.line in
+      match StringMap.find_opt key sink_map with
+      | None -> results := f :: !results
+      | Some sink ->
+        (match build_dag sink db nodes with
+         | None -> results := f :: !results
+         | Some dag ->
+           let flow = dag_to_flow_steps dag nodes in
+           results := { f with Finding.flow = flow } :: !results)
+    end
   ) raw_findings;
   List.rev !results

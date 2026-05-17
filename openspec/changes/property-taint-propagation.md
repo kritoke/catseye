@@ -133,4 +133,4 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
 
 ---
 
-_Updated: 2026-05-17 (Phase 1, 2, 3 partial completed)_
+_Updated: 2026-05-17 (Phase 1, 2, 3 completed)_
