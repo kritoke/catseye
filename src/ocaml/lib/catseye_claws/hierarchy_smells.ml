@@ -8,6 +8,7 @@
     - RefusedParentBequest: empty overrides of parent methods
     - BaseClassKnowsDerivedClass: base class references its subclasses
     - TraditionBreaker: small child of large parent
+    - DeepInheritance: >4 levels of inheritance depth
 *)
 
 open Catseye_types
@@ -16,7 +17,9 @@ open Catseye_types
 
 let base_class_subclass_threshold = 3
 let speculative_generality_child_threshold = 2
-let tradition_breaker_parent_loc_threshold = 500
+let tradition_breaker_parent_loc_threshold = 50  (* Lowered from 100 - parent needs 50+ lines between start/end *)
+let deep_inheritance_threshold = 4
+let refused_bequest_min_loc = 5  (* Override with <5 lines is suspicious *)
 
 (* ── Helper ───────────────────────────────────────────────────────── *)
 
@@ -42,12 +45,13 @@ let is_abstract_class (name : string) : bool =
 
 (** Build inheritance registry from Security_node list.
 
-    Returns (class_infos, parent_to_children) where:
+    Returns (class_infos, parent_to_children, graph) where:
     - class_infos: list of class_info records
     - parent_to_children: map from parent name to child names
+    - graph: StringMap of name -> class_info for quick lookup
 *)
 let build_registry (nodes : Security_node.t list) :
-    (Class_graph.class_info list * string list Class_graph.StringMap.t) =
+    (Class_graph.class_info list * string list Class_graph.StringMap.t * Class_graph.class_info Class_graph.StringMap.t) =
   (* Group nodes by file *)
   let by_file = Hashtbl.create 16 in
   List.iter (fun (n : Security_node.t) ->
@@ -108,7 +112,12 @@ let build_registry (nodes : Security_node.t list) :
     | None -> acc
   ) Class_graph.StringMap.empty infos in
 
-  (infos, parent_to_children)
+  (* Build name -> info map *)
+  let graph = List.fold_left (fun acc info ->
+    Class_graph.StringMap.add info.Class_graph.name info acc
+  ) Class_graph.StringMap.empty infos in
+
+  (infos, parent_to_children, graph)
 
 (* ── Smell Detectors ────────────────────────────────────────────────── *)
 
@@ -176,13 +185,86 @@ let detect_speculative_generality
     else None
   ) infos
 
+(** 3. DeepInheritance
+    Classes with too many levels of inheritance. *)
+let detect_deep_inheritance
+    (infos : Class_graph.class_info list)
+    (graph : Class_graph.class_info Class_graph.StringMap.t)
+    : Finding.t list =
+  List.filter_map (fun (info : Class_graph.class_info) ->
+    let depth = Class_graph.get_inheritance_depth graph info.name in
+    if depth > deep_inheritance_threshold then
+      Some {
+        Finding.rule = "DeepInheritance";
+        severity = "Low";
+        file = info.Class_graph.file;
+        line = info.Class_graph.line;
+        message = Printf.sprintf
+          "Class '%s' has inheritance depth of %d (threshold: %d). Deep hierarchies are hard to understand and maintain."
+          info.Class_graph.name depth deep_inheritance_threshold;
+        flow = [ {
+          Finding.file = info.Class_graph.file;
+          line = info.Class_graph.line;
+          message = Printf.sprintf "Definition of '%s' (depth: %d)"
+            info.Class_graph.name depth;
+        } ];
+        language = "crystal";
+        dependency = None;
+        reachability = None; suggestion = None;
+      }
+    else None
+  ) infos
+
+(** 4. TraditionBreaker
+    A small class inheriting from a parent with many methods. *)
+let detect_tradition_breaker
+    (infos : Class_graph.class_info list)
+    (_parent_to_children : string list Class_graph.StringMap.t)
+    : Finding.t list =
+  (* Flag small children of large parents *)
+  List.filter_map (fun (info : Class_graph.class_info) ->
+    match info.Class_graph.parent with
+    | Some parent_name ->
+        (* Find parent class *)
+        let parent_opt = List.find_opt (fun i -> i.Class_graph.name = parent_name) infos in
+        (match parent_opt with
+         | Some parent 
+             when List.length parent.Class_graph.methods >= 10  (* Parent has 10+ methods *)
+               && List.length info.Class_graph.methods <= 2  (* Child has ≤2 methods *)
+               && info.Class_graph.loc > 1000 ->  (* Child LOC > 1000 means single-class file *)
+               Some {
+                 Finding.rule = "TraditionBreaker";
+                 severity = "Low";
+                 file = info.Class_graph.file;
+                 line = info.Class_graph.line;
+                 message = Printf.sprintf
+                   "Class '%s' inherits from large parent '%s' (%d methods) but provides minimal variation (%d methods). Consider composition over inheritance."
+                   info.Class_graph.name parent.Class_graph.name 
+                   (List.length parent.Class_graph.methods)
+                   (List.length info.Class_graph.methods);
+                 flow = [ {
+                   Finding.file = info.Class_graph.file;
+                   line = info.Class_graph.line;
+                   message = Printf.sprintf "Definition of '%s' (inherits %s)"
+                     info.Class_graph.name parent.Class_graph.name;
+                 } ];
+                 language = "crystal";
+                 dependency = None;
+                 reachability = None; suggestion = None;
+               }
+         | _ -> None)
+    | None -> None
+  ) infos
+
 (* ── Main Analyzer ───────────────────────────────────────────────── *)
 
 let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
     : Finding.t list =
-  let infos, parent_to_children = build_registry nodes in
+  let infos, parent_to_children, graph = build_registry nodes in
   
   let base_class_findings = detect_base_class_not_abstract infos parent_to_children in
   let speculative_findings = detect_speculative_generality infos parent_to_children in
+  let deep_inheritance_findings = detect_deep_inheritance infos graph in
+  let tradition_breaker_findings = detect_tradition_breaker infos parent_to_children in
   
-  base_class_findings @ speculative_findings
+  base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings

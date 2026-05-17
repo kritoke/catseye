@@ -58,6 +58,54 @@ let is_data_class_name (name : string) : bool =
   contains lower "entity" ||
   contains lower "model"
 
+(** Check if a class name suggests it's a delegate/filter class.
+    These are Crystal's 'extend self' pattern for namespaced functions. *)
+let is_delegate_class_name (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  (* Pattern 1: Names containing delegate pattern keywords *)
+  contains lower "filter" ||
+  contains lower "parser" ||
+  contains lower "formatter" ||
+  contains lower "renderer" ||
+  contains lower "converter" ||
+  contains lower "adapter" ||
+  contains lower "handler" ||
+  contains lower "processor" ||
+  contains lower "serializer" ||
+  contains lower "deserializer" ||
+  contains lower "validator" ||
+  contains lower "builder" ||
+  contains lower "generator" ||
+  (* Pattern 2: Single-method converters (e.g., ToString, ToHtml, ToJson, DateToString) *)
+  (contains lower "to" && 
+   (contains lower "string" || contains lower "html" || contains lower "json" || contains lower "xml")) ||
+  (* Pattern 3: Verb-like names that are clearly operations *)
+  contains lower "ify" ||  (* Markdownify, Humanize *)
+  contains lower "escape" ||
+  contains lower "sanitize" ||
+  (* Pattern 4: Expression/language query patterns (WhereExp, etc.) *)
+  contains lower "exp" ||
+  (* Pattern 5: URL/path transformation patterns *)
+  (contains lower "url" || contains lower "path" || contains lower "link" || contains lower "relative" || contains lower "absolute") ||
+  (* Pattern 6: Specific Crystal filter class names *)
+  contains lower "localize" ||
+  contains lower "slugify" ||
+  (* Pattern 7: Common Liquid filter operation names *)
+  (contains lower "strip" || contains lower "truncate" || contains lower "split" || 
+   contains lower "slice" || contains lower "escape" || contains lower "normalize" ||
+   contains lower "newline" || contains lower "index" || contains lower "whitespace" ||
+   contains lower "times" || contains lower "minus" || contains lower "striptags" || contains lower "xml" ||
+   contains lower "contains" || contains lower "replace" || contains lower "remove" || contains lower "append" ||
+   contains lower "prepend" || contains lower "first" || contains lower "last" || contains lower "sort" ||
+   contains lower "join" || contains lower "compact" || contains lower "uniq" || contains lower "size" ||
+   contains lower "default" || contains lower "floor" || contains lower "ceil" || contains lower "round" ||
+   contains lower "sum" || contains lower "avg" || contains lower "abs" ||
+   contains lower "date" || contains lower "time" || contains lower "where" || contains lower "group" ||
+   contains lower "any" || contains lower "all" || contains lower "none" || contains lower "include" ||
+   contains lower "highlight" || contains lower "markdown" || contains lower " textilize") &&
+   not (contains lower "class") &&  (* Exclude generic class names *)
+   String.length name > 4
+
 (** Check if a class is a data-only class (only has getters/properties) *)
 let is_data_only_class (methods : Scope.scope list) : bool =
   List.for_all (fun (s : Scope.scope) ->
@@ -84,6 +132,7 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
       (* Exemptions *)
       if is_config_file file then None
       else if is_data_class_name name then None
+      else if is_delegate_class_name name && method_count <= 5 then None
       else if method_count = 1 && is_data_only_class cs.methods then None
       else if method_count > 0 && method_count < threshold then
         Some {
