@@ -431,7 +431,7 @@ let run (config : t) : int =
       ) uncached_other;
     (List.rev !all_nodes, !cache_hits)
   ) in
-  if nodes = [] then begin
+  if nodes = [] && not config.ai_lint && not config.claws then begin
     Catseye_engine.Cache.close cache;
     Printf.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
     exit 0
@@ -593,6 +593,36 @@ let run (config : t) : int =
             in
             List.map convert_finding (Ai_linter.Gleam_rules.analyze_module mod_)
            | Crystal -> []
+           | JavaScript | TypeScript ->
+            let convert_finding (f : Ai_linter.Types.finding) =
+              { Catseye_types.Finding.rule = f.rule_id;
+                severity = Ai_linter.Types.severity_to_string f.severity;
+                file = f.file;
+                line = f.line; message = f.message;
+                flow = []; language = "javascript"; dependency = None; reachability = None;
+                suggestion = f.suggestion; }
+            in
+            List.map convert_finding (Ai_linter.Javascript_rules.analyze_module mod_)
+           | Svelte ->
+            let convert_finding (f : Ai_linter.Types.finding) =
+              { Catseye_types.Finding.rule = f.rule_id;
+                severity = Ai_linter.Types.severity_to_string f.severity;
+                file = f.file;
+                line = f.line; message = f.message;
+                flow = []; language = "svelte"; dependency = None; reachability = None;
+                suggestion = f.suggestion; }
+            in
+            List.map convert_finding (Ai_linter.Svelte_rules.analyze_module mod_)
+           | Other "ocaml" ->
+            let convert_finding (f : Ai_linter.Types.finding) =
+              { Catseye_types.Finding.rule = f.rule_id;
+                severity = Ai_linter.Types.severity_to_string f.severity;
+                file = f.file;
+                line = f.line; message = f.message;
+                flow = []; language = "ocaml"; dependency = None; reachability = None;
+                suggestion = f.suggestion; }
+            in
+            List.map convert_finding (Ai_linter.Ocaml_rules.analyze_module mod_)
            | _ -> [])
       with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
     ) sources in

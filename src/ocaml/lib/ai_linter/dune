@@ -2,5 +2,5 @@
 (library
  (name ai_linter)
  (public_name catseye.ai_linter)
- (modules types ast_rules gleam_rules crystal_rules type_inference)
+ (modules types ast_rules gleam_rules crystal_rules type_inference javascript_rules svelte_rules ocaml_rules)
  (libraries catseye_ast))

@@ -12,6 +12,9 @@ open Catseye_types.Finding
 module Ast_rules = Ai_linter.Ast_rules
 module Gleam_rules = Ai_linter.Gleam_rules
 module Crystal_rules = Ai_linter.Crystal_rules
+module Javascript_rules = Ai_linter.Javascript_rules
+module Svelte_rules = Ai_linter.Svelte_rules
+module Ocaml_rules = Ai_linter.Ocaml_rules
 module Types = Ai_linter.Types
 
 (** AI finding type (alias for Finding.t) *)
@@ -80,7 +83,28 @@ let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t opti
       let lang_findings = match mod_.mod_lang with
         | Gleam -> List.map gleam_finding_to_finding (Gleam_rules.analyze_module mod_)
         | Crystal -> List.map crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
-        | _ -> []  (* Future: Svelte, TypeScript, JavaScript rules *)
+        | JavaScript | TypeScript ->
+          List.map (fun (f : Ai_linter.Types.finding) ->
+            { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
+              file = f.file; line = f.line; message = f.message;
+              flow = []; language = "javascript"; dependency = None;
+              reachability = None; suggestion = f.suggestion }
+          ) (Javascript_rules.analyze_module mod_)
+        | Svelte ->
+          List.map (fun (f : Ai_linter.Types.finding) ->
+            { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
+              file = f.file; line = f.line; message = f.message;
+              flow = []; language = "svelte"; dependency = None;
+              reachability = None; suggestion = f.suggestion }
+          ) (Svelte_rules.analyze_module mod_)
+        | Other "ocaml" ->
+          List.map (fun (f : Ai_linter.Types.finding) ->
+            { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
+              file = f.file; line = f.line; message = f.message;
+              flow = []; language = "ocaml"; dependency = None;
+              reachability = None; suggestion = f.suggestion }
+          ) (Ocaml_rules.analyze_module mod_)
+        | _ -> []  (* Future language rules *)
       in
       let ast_findings = List.map (fun v ->
         let base = violation_to_finding v in
