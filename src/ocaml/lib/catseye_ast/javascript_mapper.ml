@@ -312,7 +312,12 @@ let parse_with_grammar ~grammar ~lang ~path : (t, parse_error) result =
     match status with
     | Unix.WEXITED 0 | Unix.WEXITED 1 ->
       let doc = parse_xml (Buffer.contents xml_str) in
-      let items = List.concat_map (fun c -> walk_statement c path) doc.children in
+      (* Drill through <sources><source><program> wrapper *)
+      let program = match find doc ~tag:"program" with
+        | [p] -> p
+        | _ -> doc
+      in
+      let items = List.concat_map (fun c -> walk_statement c path) program.children in
       let mod_lang = match lang with
         | "javascript" -> JavaScript
         | "typescript" -> TypeScript
