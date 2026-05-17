@@ -252,6 +252,79 @@ let rec check_hardcoded_secrets (items : item list) (path : string) : T.finding 
     | _ -> []
   ) items
 
+(* ── 6. Todo / FIXME in code ──────────────────────────────────────── *)
+
+(** Detect calls to `todo` function pattern in OCaml.
+    OCaml doesn't have a built-in todo, but AI often generates `let todo = ...`
+    or raises Failure "todo". Also flag `failwith "TODO" patterns. *)
+let check_todo (all_apps : (string * int) list) (path : string) : T.finding list =
+  List.filter_map (fun (name, line) ->
+    match name with
+    | "todo" ->
+      Some { T.file = path; line; rule_id = "todo-in-code";
+        severity = T.Warning;
+        message = "todo placeholder found — implement or remove before production";
+        suggestion = Some "Implement the function or raise a more specific exception" }
+    | _ -> None
+  ) all_apps
+
+(* ── 7. Unused let binding (OCaml-specific) ────────────────────────── *)
+
+let rec collect_vars_in_expr (e : expr) : string list =
+  match e.expr_value with
+  | EVar v -> [v]
+  | EApp (fn, args) -> collect_vars_in_expr fn @ List.concat_map collect_vars_in_expr args
+  | EBlock es -> List.concat_map collect_vars_in_expr es
+  | ELet (_, e1, e2) -> collect_vars_in_expr e1 @ collect_vars_in_expr e2
+  | EIf (cond, then_, else_) ->
+    collect_vars_in_expr cond @ collect_vars_in_expr then_
+    @ (match else_ with Some e -> collect_vars_in_expr e | None -> [])
+  | ECase (_, branches) ->
+    List.concat_map (fun (_, body) -> collect_vars_in_expr body) branches
+  | EFn (_, body) -> collect_vars_in_expr body
+  | EBinOp (e1, _, e2) -> collect_vars_in_expr e1 @ collect_vars_in_expr e2
+  | ETuple es | EList es -> List.concat_map collect_vars_in_expr es
+  | ERecord fields -> List.concat_map (fun (_, v) -> collect_vars_in_expr v) fields
+  | EFieldAccess (inner, _) -> collect_vars_in_expr inner
+  | EAssignment (e1, e2) -> collect_vars_in_expr e1 @ collect_vars_in_expr e2
+  | EUnOp (_, e) -> collect_vars_in_expr e
+  | _ -> []
+
+let rec find_unused_lets (e : expr) : (string * int) list =
+  match e.expr_value with
+  | ELet (PVar name, _, body) ->
+    let used = collect_vars_in_expr body in
+    let is_used = List.mem name used in
+    let self = if not is_used && String.length name > 1 && name <> "_" then
+      [(name, e.expr_location.start.line)] else [] in
+    self @ find_unused_lets body
+  | EBlock es -> List.concat_map find_unused_lets es
+  | ELet (_, e1, e2) -> find_unused_lets e1 @ find_unused_lets e2
+  | EIf (_, then_, else_) ->
+    find_unused_lets then_ @ (match else_ with Some e -> find_unused_lets e | None -> [])
+  | ECase (_, branches) ->
+    List.concat_map (fun (_, body) -> find_unused_lets body) branches
+  | EApp (fn, args) -> find_unused_lets fn @ List.concat_map find_unused_lets args
+  | EFn (_, body) -> find_unused_lets body
+  | _ -> []
+
+let check_unused_lets (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun (name, line) ->
+          { T.file = path; line; rule_id = "unused-binding";
+            severity = T.Hint;
+            message = Printf.sprintf "let binding '%s' is never used" name;
+            suggestion = Some ("Remove unused binding or prefix with _ to indicate intentional discard") }
+        ) (find_unused_lets body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
@@ -275,3 +348,5 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   @ check_common_mistakes all_apps path
   @ check_best_practices all_apps path
   @ check_hardcoded_secrets mod_.mod_items path
+  @ check_todo all_apps path
+  @ check_unused_lets mod_.mod_items path

@@ -124,6 +124,19 @@ let rec walk_expr (n : xml) (file : string) : expr =
       (match List.filter (fun c -> attr c "field" <> "" || true) n.children with
        | [inner] -> (walk_expr inner file).expr_value
        | _ -> EUnknown n.tag)
+    | "statement_block" ->
+      (* Block of statements — collect each as an expression *)
+      let stmts = List.filter_map (fun c ->
+        match c.tag with
+        | "," | "comment" -> None
+        | "return_statement" ->
+          let vals = List.filter_map (fun inner ->
+            if attr inner "field" = "argument" then Some (walk_expr inner file) else None
+          ) c.children in
+          (match vals with [v] -> Some { expr_value = EApp ({ expr_value = EVar "return"; expr_location = range_of_xml c }, [v]); expr_location = range_of_xml c } | _ -> None)
+        | _ -> Some (walk_expr c file)
+      ) n.children in
+      EBlock stmts
     | "new_expression" ->
       let constructor = List.filter_map (fun c ->
         if attr c "field" = "constructor" then Some (walk_expr c file) else None

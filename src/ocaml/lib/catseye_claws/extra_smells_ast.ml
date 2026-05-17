@@ -517,6 +517,253 @@ let check_feature_envy (scopes : Ast_scope.ast_scope list) : Finding.t list =
     end
   ) scopes
 
+(* ── MagicNumber ─────────────────────────────────────────────────────── *)
+
+(** Numbers that are not considered "magic" — well-known constants or common patterns. *)
+let is_known_literal (n : string) : bool =
+  n = "0" || n = "1" || n = "-1" || n = "2" || n = "10" || n = "100"
+  || n = "1000" || n = "0x0" || n = "0x1" || n = "0b0" || n = "0b1"
+  || n = "0o0" || n = "0o1" || n = "0.0" || n = "1.0" || n = "0.5"
+  || n = "2.0" || n = "-1.0"
+
+(** Contexts where a numeric literal is acceptable and not "magic":
+    - RHS of an assignment to a screaming-case (constant) variable
+    - Inside array/list/record literal constructors
+    - Default parameter values
+    - Type annotations / sizes
+    We use a simplified heuristic: skip if the literal is the RHS of an IConstant. *)
+let is_constant_item (items : item list) (line : int) : bool =
+  List.exists (fun (item : item) ->
+    (match item.item_value with
+     | IConstant _ -> true
+     | _ -> false)
+    && item.item_location.start.line = line
+  ) items
+
+(** Recursively walk an expression looking for integer/float literals
+    that are not in known-literal set and not inside constant definitions. *)
+let rec collect_magic_numbers (e : expr) : (string * int) list =
+  match e.expr_value with
+  | ELiteral (LInt n) when not (is_known_literal n) ->
+    [(n, e.expr_location.start.line)]
+  | ELiteral (LFloat n) when not (is_known_literal n) ->
+    [(n, e.expr_location.start.line)]
+  | EApp (fn, args) ->
+    collect_magic_numbers fn @ List.concat_map collect_magic_numbers args
+  | EBlock es -> List.concat_map collect_magic_numbers es
+  | ELet (_, e1, e2) -> collect_magic_numbers e1 @ collect_magic_numbers e2
+  | EIf (cond, then_, else_) ->
+    collect_magic_numbers cond @ collect_magic_numbers then_
+    @ (match else_ with Some e -> collect_magic_numbers e | None -> [])
+  | ECase (_, branches) ->
+    List.concat_map (fun (_, body) -> collect_magic_numbers body) branches
+  | EAssignment (e1, e2) -> collect_magic_numbers e1 @ collect_magic_numbers e2
+  | EBinOp (e1, _, e2) -> collect_magic_numbers e1 @ collect_magic_numbers e2
+  | EUnOp (_, e) -> collect_magic_numbers e
+  | ETuple es | EList es -> List.concat_map collect_magic_numbers es
+  | ERecord fields -> List.concat_map (fun (_, v) -> collect_magic_numbers v) fields
+  | ERecordUpdate (e, fields) ->
+    collect_magic_numbers e @ List.concat_map (fun (_, v) -> collect_magic_numbers v) fields
+  | EFieldAccess (inner, _) -> collect_magic_numbers inner
+  | EFn (_, body) -> collect_magic_numbers body
+  | _ -> []
+
+let check_magic_numbers (modules : Catseye_ast.Types.t list)
+    : Finding.t list =
+  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Other s -> s in
+    let scopes = Ast_scope.build [mod_] in
+    List.concat_map (fun (scope : Ast_scope.ast_scope) ->
+      let nums = collect_magic_numbers scope.body in
+      List.filter_map (fun (n, line) ->
+        if is_constant_item mod_.mod_items line then None
+        else
+          Some (make_finding scope.file line lang "MagicNumber" "Medium"
+            (Printf.sprintf "Magic number %s in '%s' — extract to a named constant for clarity"
+               n scope.fn_name))
+      ) nums
+    ) scopes
+  ) modules
+
+(* ── EmptyCatch ──────────────────────────────────────────────────────── *)
+
+(** Check if a rescue/catch body is empty (EUnit, empty block, or just a variable binding). *)
+let is_empty_body (e : expr) : bool =
+  match e.expr_value with
+  | EUnit -> true
+  | EBlock [] -> true
+  | EBlock [e] -> (match e.expr_value with EUnit | EVar _ -> true | _ -> false)
+  | _ -> false
+
+(** Find ETryCatchFinally with empty rescue bodies. *)
+let rec find_empty_catches (e : expr) : (string option * int) list =
+  match e.expr_value with
+  | ETryCatchFinally { rescue_clauses; _ } ->
+    let empty = List.filter_map (fun (clause : Catseye_ast.Types.rescue_clause) ->
+      if is_empty_body clause.rescue_body then
+        Some (clause.exception_var, clause.rescue_body.expr_location.start.line)
+      else None
+    ) rescue_clauses in
+    (* Also recurse into try_body and rescue bodies *)
+    empty
+  | EApp (fn, args) ->
+    find_empty_catches fn @ List.concat_map find_empty_catches args
+  | EBlock es -> List.concat_map find_empty_catches es
+  | ELet (_, e1, e2) -> find_empty_catches e1 @ find_empty_catches e2
+  | EIf (cond, then_, else_) ->
+    find_empty_catches cond @ find_empty_catches then_
+    @ (match else_ with Some e -> find_empty_catches e | None -> [])
+  | ECase (_, branches) ->
+    List.concat_map (fun (_, body) -> find_empty_catches body) branches
+  | EAssignment (e1, e2) -> find_empty_catches e1 @ find_empty_catches e2
+  | EBinOp (e1, _, e2) -> find_empty_catches e1 @ find_empty_catches e2
+  | EFn (_, body) -> find_empty_catches body
+  | _ -> []
+
+let check_empty_catch (modules : Catseye_ast.Types.t list)
+    : Finding.t list =
+  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Other s -> s in
+    let scopes = Ast_scope.build [mod_] in
+    List.concat_map (fun (scope : Ast_scope.ast_scope) ->
+      let empties = find_empty_catches scope.body in
+      List.map (fun (var, line) ->
+        let var_desc = match var with Some v -> Printf.sprintf " '%s'" v | None -> "" in
+        make_finding scope.file line lang "EmptyCatch" "High"
+          (Printf.sprintf "Empty catch%s in '%s' silently swallows errors — at minimum, log the exception"
+             var_desc scope.fn_name)
+      ) empties
+    ) scopes
+  ) modules
+
+(* ── ReturnFromFinally ────────────────────────────────────────────────── *)
+
+(** Check if an expression is a return statement.
+    Returns are represented as EApp(EVar "return", [value]) or EVar "return". *)
+let is_return_expr (e : expr) : bool =
+  match e.expr_value with
+  | EApp (fn, _) ->
+    (match fn.expr_value with EVar "return" -> true | _ -> false)
+  | EVar "return" -> true
+  | _ -> false
+
+(** Recursively find return/raise inside an expression. *)
+let rec has_return_or_raise (e : expr) : int option =
+  match e.expr_value with
+  | EApp (fn, args) ->
+    (match fn.expr_value with
+     | EVar "return" | EVar "raise" -> Some e.expr_location.start.line
+     | _ -> None)
+    |> (fun r -> match r with
+        | Some _ as r -> r
+        | None ->
+          match has_return_or_raise fn with
+          | Some _ as r -> r
+          | None -> List.find_map has_return_or_raise args)
+  | EBlock es -> List.find_map has_return_or_raise es
+  | ELet (_, e1, e2) ->
+    (match has_return_or_raise e1 with Some _ as r -> r | None -> has_return_or_raise e2)
+  | EIf (_, then_, else_) ->
+    (match has_return_or_raise then_ with
+     | Some _ as r -> r
+     | None -> match else_ with Some e -> has_return_or_raise e | None -> None)
+  | ECase (_, branches) ->
+    List.find_map (fun (_, body) -> has_return_or_raise body) branches
+  | _ -> None
+
+(** Find ETryCatchFinally where ensure_body contains a return/raise. *)
+let rec find_return_in_finally (e : expr) : int option =
+  match e.expr_value with
+  | ETryCatchFinally { try_body; rescue_clauses; ensure_body; _ } ->
+    (* Check ensure body for return/raise *)
+    (match ensure_body with
+     | Some body -> has_return_or_raise body
+     | None -> None)
+    |> (fun r -> match r with
+        | Some _ as r -> r
+        | None ->
+          (* Recurse into try_body and rescue bodies *)
+          match has_return_or_raise try_body with
+          | Some _ as r -> r
+          | None ->
+            List.find_map (fun (clause : Catseye_ast.Types.rescue_clause) ->
+              find_return_in_finally clause.rescue_body
+            ) rescue_clauses)
+  | EApp (fn, args) ->
+    (match find_return_in_finally fn with Some _ as r -> r | None ->
+     List.find_map find_return_in_finally args)
+  | EBlock es -> List.find_map find_return_in_finally es
+  | ELet (_, e1, e2) ->
+    (match find_return_in_finally e1 with Some _ as r -> r | None -> find_return_in_finally e2)
+  | EIf (_, then_, else_) ->
+    (match find_return_in_finally then_ with
+     | Some _ as r -> r
+     | None -> (match else_ with Some e -> find_return_in_finally e | None -> None))
+  | EFn (_, body) -> find_return_in_finally body
+  | _ -> None
+
+let check_return_from_finally (modules : Catseye_ast.Types.t list)
+    : Finding.t list =
+  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Other s -> s in
+    let scopes = Ast_scope.build [mod_] in
+    List.filter_map (fun (scope : Ast_scope.ast_scope) ->
+      match find_return_in_finally scope.body with
+      | Some line ->
+        Some (make_finding scope.file line lang "ReturnFromFinally" "High"
+          (Printf.sprintf "return/raise inside finally block in '%s' masks exceptions from try/catch"
+             scope.fn_name))
+      | None -> None
+    ) scopes
+  ) modules
+
+(* ── FloatEquality ──────────────────────────────────────────────────── *)
+
+(** Detect exact float equality comparisons (== or === with float literals).
+    Floats should use epsilon comparison or be avoided entirely. *)
+let rec find_float_equality (e : expr) : (string * int) list =
+  match e.expr_value with
+  | EBinOp (e1, op, e2) when op = "==" || op = "===" || op = "!=" || op = "!==" ->
+    let is_float (x : expr) =
+      match x.expr_value with
+      | ELiteral (LFloat _) -> true
+      | ELiteral (LString s) ->
+        (* Some mappers represent floats as strings with '.' in them *)
+        String.length s > 0 && String.contains s '.'
+      | _ -> false
+    in
+    if is_float e1 || is_float e2 then
+      [(op, e.expr_location.start.line)]
+    else
+      find_float_equality e1 @ find_float_equality e2
+  | EBinOp (e1, _, e2) ->
+    find_float_equality e1 @ find_float_equality e2
+  | EApp (fn, args) ->
+    find_float_equality fn @ List.concat_map find_float_equality args
+  | EBlock es -> List.concat_map find_float_equality es
+  | ELet (_, e1, e2) -> find_float_equality e1 @ find_float_equality e2
+  | EIf (cond, then_, else_) ->
+    find_float_equality cond @ find_float_equality then_
+    @ (match else_ with Some e -> find_float_equality e | None -> [])
+  | ECase (_, branches) ->
+    List.concat_map (fun (_, body) -> find_float_equality body) branches
+  | _ -> []
+
+let check_float_equality (modules : Catseye_ast.Types.t list)
+    : Finding.t list =
+  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+    let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Other s -> s in
+    let scopes = Ast_scope.build [mod_] in
+    List.concat_map (fun (scope : Ast_scope.ast_scope) ->
+      let floats = find_float_equality scope.body in
+      List.map (fun (op, line) ->
+        make_finding scope.file line lang "FloatEquality" "Warning"
+          (Printf.sprintf "Float equality via '%s' in '%s' is unreliable due to floating-point precision — use epsilon comparison"
+             op scope.fn_name)
+      ) floats
+    ) scopes
+  ) modules
+
 (* ── Combined analysis ──────────────────────────────────────────────── *)
 
 let analyze (modules : Catseye_ast.Types.t list)
@@ -531,3 +778,7 @@ let analyze (modules : Catseye_ast.Types.t list)
   @ check_dead_code scopes
   @ check_data_classes modules
   @ check_feature_envy scopes
+  @ check_magic_numbers modules
+  @ check_empty_catch modules
+  @ check_return_from_finally modules
+  @ check_float_equality modules

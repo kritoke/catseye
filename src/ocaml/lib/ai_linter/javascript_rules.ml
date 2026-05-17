@@ -365,6 +365,263 @@ let check_weak_random (all_apps : (string * int) list) (path : string) : T.findi
     | _ -> None
   ) all_apps
 
+(* ── 5. Callback Hell (deep callback nesting) ──────────────────────── *)
+
+(** Count nesting depth of callback patterns:
+    EApp where an arg is an EFn (anonymous callback).
+    3+ levels is callback hell. *)
+let rec count_callback_depth (e : expr) : int =
+  match e.expr_value with
+  | EApp (_, args) ->
+    let has_callback = List.exists (fun a ->
+      match a.expr_value with EFn _ -> true | _ -> false
+    ) args in
+    if has_callback then
+      let inner_max = List.fold_left (fun acc a ->
+        match a.expr_value with
+        | EFn (_, body) -> max acc (count_callback_depth body)
+        | _ -> acc
+      ) 0 args in
+      1 + inner_max
+    else 0
+  | _ -> 0
+
+let rec find_callback_hell (e : expr) : (int * int) list =
+  let depth = count_callback_depth e in
+  let self = if depth >= 3 then
+    [(depth, e.expr_location.start.line)]
+  else [] in
+  let children = match e.expr_value with
+    | EApp (_, args) -> List.concat_map find_callback_hell args
+    | EBlock es -> List.concat_map find_callback_hell es
+    | ELet (_, e1, e2) -> find_callback_hell e1 @ find_callback_hell e2
+    | EIf (_, then_, else_) ->
+      find_callback_hell then_ @ (match else_ with Some e2 -> find_callback_hell e2 | None -> [])
+    | _ -> []
+  in
+  self @ children
+
+let check_callback_hell (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun (depth, line) ->
+          { T.file = path; line; rule_id = "callback-hell";
+            severity = T.Warning;
+            message = Printf.sprintf "Callback nesting %d levels deep — use async/await or Promises" depth;
+            suggestion = Some "Refactor to async/await for readability" }
+        ) (find_callback_hell body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
+(* ── 6. Assignment in condition ──────────────────────────────────────── *)
+
+(** Detect `if (x = expr)` which is likely a typo for `==`/`===`.
+    We look for EIf where the condition is an EAssignment. *)
+let rec find_assignment_in_condition (e : expr) : int list =
+  match e.expr_value with
+  | EIf (cond, _, _) ->
+    let self = match cond.expr_value with
+      | EAssignment _ -> [cond.expr_location.start.line]
+      | _ -> []
+    in
+    self @ find_assignment_in_condition cond
+  | EBlock es -> List.concat_map find_assignment_in_condition es
+  | ELet (_, e1, e2) -> find_assignment_in_condition e1 @ find_assignment_in_condition e2
+  | EApp (fn, args) ->
+    find_assignment_in_condition fn @ List.concat_map find_assignment_in_condition args
+  | _ -> []
+
+let check_assignment_in_condition (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun line ->
+          { T.file = path; line; rule_id = "assignment-in-condition";
+            severity = T.Error;
+            message = "Assignment in if condition — likely meant == or === comparison";
+            suggestion = Some "Use === for strict equality comparison" }
+        ) (find_assignment_in_condition body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
+(* ── 7. Nested ternary ──────────────────────────────────────────────── *)
+
+(** Detect ternary expressions nested inside other ternaries.
+    In the AST, a ternary `a ? b : c` maps to EIf.
+    Nested EIf inside EIf branches = nested ternary. *)
+let rec count_ternary_depth (e : expr) : int =
+  match e.expr_value with
+  | EIf (_, then_, else_) ->
+    let then_d = count_ternary_depth then_ in
+    let else_d = match else_ with Some e -> count_ternary_depth e | None -> 0 in
+    1 + max then_d else_d
+  | _ -> 0
+
+let rec find_nested_ternary (e : expr) : (int * int) list =
+  match e.expr_value with
+  | EIf (_, then_, else_) ->
+    let depth = count_ternary_depth e in
+    let self = if depth >= 2 then
+      [(depth, e.expr_location.start.line)]
+    else [] in
+    self
+    @ find_nested_ternary then_
+    @ (match else_ with Some e2 -> find_nested_ternary e2 | None -> [])
+  | EBlock es -> List.concat_map find_nested_ternary es
+  | ELet (_, e1, e2) -> find_nested_ternary e1 @ find_nested_ternary e2
+  | EApp (fn, args) ->
+    find_nested_ternary fn @ List.concat_map find_nested_ternary args
+  | _ -> []
+
+let check_nested_ternary (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun (depth, line) ->
+          { T.file = path; line; rule_id = "nested-ternary";
+            severity = T.Warning;
+            message = Printf.sprintf "Nested ternary %d levels deep — use if/else or a lookup table" depth;
+            suggestion = Some "Replace nested ternary with if/else statements or a lookup map" }
+        ) (find_nested_ternary body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
+(* ── 8. Async function without await ────────────────────────────────── *)
+
+(** Detect async functions that don't use await.
+    Heuristic: function name starts with "async" in the source, or the
+    function body has no `await` calls. Since our AST doesn't have an
+    async flag, we look for functions that call `.then()` chains
+    (should use await instead) or have a body that never references `await`.
+    Actually: detect functions whose body contains EApp(EVar "await", _)
+    — no, that's sync functions in async context.
+    Instead: detect .then() chains (already covered) and functions
+    returning Promises without await. For now, flag any function that
+    has EApp with fn being EFieldAccess(_, "then") without any await in the body. *)
+
+let rec has_await (e : expr) : bool =
+  match e.expr_value with
+  | EApp (fn, _) ->
+    (match fn.expr_value with
+     | EVar "await" -> true
+     | _ -> has_await fn)
+    || (match e.expr_value with EApp (_, args) -> List.exists has_await args | _ -> false)
+  | EBlock es -> List.exists has_await es
+  | ELet (_, e1, e2) -> has_await e1 || has_await e2
+  | EIf (_, then_, else_) ->
+    has_await then_ || (match else_ with Some e -> has_await e | None -> false)
+  | EFn (_, body) -> has_await body
+  | _ -> false
+
+let rec has_then_chain (e : expr) : bool =
+  match e.expr_value with
+  | EApp (fn, _) ->
+    (match fn.expr_value with
+     | EFieldAccess (_, "then") -> true
+     | _ -> has_then_chain fn)
+    || (match e.expr_value with EApp (_, args) -> List.exists has_then_chain args | _ -> false)
+  | EBlock es -> List.exists has_then_chain es
+  | ELet (_, e1, e2) -> has_then_chain e1 || has_then_chain e2
+  | EIf (_, then_, else_) ->
+    has_then_chain then_ || (match else_ with Some e -> has_then_chain e | None -> false)
+  | _ -> false
+
+let check_promise_not_awaited (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (name, _, _, body) when has_then_chain body && not (has_await body) ->
+        [{ T.file = path; line = item.item_location.start.line;
+           rule_id = "promise-not-awaited";
+           severity = T.Hint;
+           message = Printf.sprintf "Function '%s' uses .then() chains without await — consider using async/await" name;
+           suggestion = Some "Convert to async function and use await instead of .then() chains" }]
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
+(* ── 9. Insecure cookie / Hardcoded IP / Console assert ────────────── *)
+
+(** Hardcoded IP addresses — placeholder for future implementation.
+    Currently handled by Crystal rules for all languages. *)
+let _check_hardcoded_ip (_all_apps : (string * int) list) (_path : string) : T.finding list = []
+
+(** Detect console.assert left in production code. *)
+let check_console_assert (all_apps : (string * int) list) (path : string) : T.finding list =
+  List.filter_map (fun (name, line) ->
+    match name with
+    | "console.assert" ->
+      Some { T.file = path; line; rule_id = "leftover-debugging";
+        severity = T.Hint;
+        message = "console.assert() should not be in production code — use a proper assertion library";
+        suggestion = Some "Replace with a proper test or assertion library" }
+    | _ -> None
+  ) all_apps
+
+(* ── 10. Error message leakage ──────────────────────────────────────── *)
+
+(** Detect patterns where internal error details are sent to the client.
+    Flag: res.send(err), res.json(err), res.json({ error: err.message })
+    Heuristic: look for send/json/set calls with err/error/e as argument. *)
+let rec find_error_leakage (e : expr) : (string * int) list =
+  match e.expr_value with
+  | EApp (fn, args) ->
+    let fn_name = expr_name fn in
+    let is_sender = fn_name = "res.send" || fn_name = "res.json"
+                   || fn_name = "response.send" || fn_name = "response.json"
+                   || fn_name = "ctx.body" in
+    let has_error_arg = List.exists (fun a ->
+      match a.expr_value with
+      | EVar v -> v = "err" || v = "error" || v = "e"
+      | EFieldAccess (inner, field) ->
+        (match inner.expr_value with
+         | EVar v -> (v = "err" || v = "error") && (field = "message" || field = "stack")
+         | _ -> false)
+      | _ -> false
+    ) args in
+    let self = if is_sender && has_error_arg then
+      [(fn_name, e.expr_location.start.line)]
+    else [] in
+    self @ find_error_leakage fn @ List.concat_map find_error_leakage args
+  | EBlock es -> List.concat_map find_error_leakage es
+  | ELet (_, e1, e2) -> find_error_leakage e1 @ find_error_leakage e2
+  | EIf (_, then_, else_) ->
+    find_error_leakage then_ @ (match else_ with Some e -> find_error_leakage e | None -> [])
+  | EFn (_, body) -> find_error_leakage body
+  | _ -> []
+
+let check_error_leakage (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun (fn, line) ->
+          { T.file = path; line; rule_id = "error-leakage";
+            severity = T.Warning;
+            message = Printf.sprintf "%s with error object — leaking internal details to client" fn;
+            suggestion = Some "Send a generic error message, log the details server-side" }
+        ) (find_error_leakage body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
@@ -401,3 +658,9 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   in
 
   hallucination_findings @ security @ best_practice @ quality
+  @ check_callback_hell mod_.mod_items path
+  @ check_assignment_in_condition mod_.mod_items path
+  @ check_nested_ternary mod_.mod_items path
+  @ check_promise_not_awaited mod_.mod_items path
+  @ check_console_assert all_apps path
+  @ check_error_leakage mod_.mod_items path
