@@ -606,6 +606,12 @@ let run (config : t) : int =
            | _ -> [])
       with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
     ) sources in
+    (* Apply --suppress to AI findings *)
+    let suppressed = config.suppress in
+    let ai_lint_findings = if suppressed = [] then ai_lint_findings
+      else List.filter (fun (f : Catseye_types.Finding.t) ->
+        not (List.mem f.rule suppressed)
+      ) ai_lint_findings in
     if config.format = Terminal && ai_lint_findings <> [] then begin
       List.iter (fun (f : Catseye_types.Finding.t) ->
         Printf.printf "  [ai:%s] %s:%d - %s\n" f.rule f.file f.line f.message
@@ -645,10 +651,15 @@ let run (config : t) : int =
     reachability @ all_claws @ ai_findings
   end else reachability @ ai_findings in
 
-  (* Apply taint suppression from [taint.suppress] in .catseye.toml *)
+  (* Apply --suppress from CLI and [taint.suppress] from .catseye.toml *)
   let all_findings =
+    let suppressed = config.suppress in
+    let filtered = if suppressed = [] then all_findings
+      else List.filter (fun (f : Finding.t) ->
+        not (List.mem f.Finding.rule suppressed)
+      ) all_findings in
     let sup = config.taint_suppress in
-    if Hashtbl.length sup = 0 then all_findings
+    if Hashtbl.length sup = 0 then filtered
     else List.filter (fun (f : Finding.t) ->
       match Hashtbl.find_opt sup f.Finding.rule with
       | None -> true
@@ -656,7 +667,7 @@ let run (config : t) : int =
         not (List.exists (fun pat ->
           Catseye_claws.Smells.glob_match pat f.Finding.file
         ) patterns)
-    ) all_findings
+    ) filtered
   in
 
   (* Step 5: Report *)

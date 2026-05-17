@@ -41,6 +41,7 @@ type t = {
   cfg_timeout_ms : int;       (* Timeout per function CFG build (safety limit) *)
   claws_config : Catseye_claws.Types.claws_config;
   taint_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress taint findings *)
+  suppress : string list;  (* Rule IDs to suppress (--suppress flag) *)
   include_deps : bool;  (* Include shard dependencies in scan (Crystal only) *)
 }
 
@@ -75,6 +76,7 @@ let default = {
   cfg_timeout_ms = 5000;
   claws_config = Catseye_claws.Types.default_config;
   taint_suppress = Hashtbl.create 0;
+  suppress = [];
 }
 
 (** Walk up from [dir] looking for .catseye.toml. *)

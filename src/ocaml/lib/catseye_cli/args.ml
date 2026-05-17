@@ -58,6 +58,9 @@ let parse_args () : t =
       go { acc with ast_bridge = true } rest
     | "--include-deps" :: rest ->
       go { acc with include_deps = true } rest
+    | "--suppress" :: rules :: rest ->
+      let suppress_list = String.split_on_char ',' rules in
+      go { acc with suppress = suppress_list @ acc.suppress } rest
     | "--cfg" :: rest ->
       go { acc with use_cfg = true } rest
     | "--no-cfg" :: rest ->
@@ -93,6 +96,7 @@ let parse_args () : t =
       Printf.printf "  --cfg                 Use IL/CFG-based taint engine (faster, fewer FPs)\n";
       Printf.printf "  --no-cfg              Use flat taint engine (more predictable performance)\n";
       Printf.printf "  --include-deps        Include shard dependencies in scan (Crystal only)\n";
+      Printf.printf "  --suppress <rules>    Comma-separated rule IDs to suppress (e.g., unused-let,InsecureRandom)\n";
       Printf.printf "  --analysis-timeout <ms>  Timeout for analysis phase (0=disabled)\n";
       Printf.printf "  --cfg-max-blocks <n>    Max blocks per function CFG (default: 500)\n";
       Printf.printf "  --cfg-timeout-ms <ms>   Timeout per function CFG build (default: 5000)\n";
