@@ -4,7 +4,7 @@
 
 Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, and OCaml** — with language-specific security rules and antipattern databases for each.
 
-> ⚠️ **Highly experimental.** Expect breakage, false positives, and frequent API changes until the project stabilizes. Not ready for production use.
+> **v0.4.2** - Path sensitivity, multi-language anti-patterns, property taint propagation
 
 ## Requirements
 
@@ -168,7 +168,14 @@ All 16 code smell detectors use **AST-native analysis** via `CatseyeAST.t` — t
 | Feature envy          | `FeatureEnvy`       | excessive cross-class calls        |
 | Orphaned spawn        | `OrphanedSpawn`     | `spawn`/`go` without rescue/ensure |
 | Muted pack            | `MutedPack`         | `Channel.send` without receive     |
-| Dead letter           | `DeadLetter`        | `Channel.close` before receive     |
+| Dead letter           | `DeadLetter`        | `Channel.close` before receive      |
+| Spaghetti code        | `SpaghettiCode`     | ≥ 60 body nodes                     |
+| Large class           | `LargeClass`        | > 500 LOC                          |
+| Blob                  | `Blob`              | large + data clumps                |
+| Lazy class            | `LazyClass`         | < 3 methods                        |
+| Hub-like module       | `HubLikeModule`     | > 12 dependencies                  |
+| Shotgun surgery       | `ShotgunSurgery`    | 5+ calls to same module            |
+| Parallel inheritance  | `ParallelInheritance`| same-prefix class hierarchies     |
 
 ### Supply Chain Audit (`--crows-nest`)
 
@@ -192,7 +199,7 @@ What it doesn't do:
 ## Example Output
 
 ```
-  Catseye v0.4.0
+  Catseye v0.4.2
   Target:   ./src
   Files:    72 Crystal, 8 JavaScript, 5 TypeScript, 4 Svelte
 
@@ -206,6 +213,9 @@ What it doesn't do:
        {@html} with dynamic content is an XSS risk — ensure input is sanitized
 
   [ai:hallucinated-method] scripts/utils.js:42 - 'strip()' doesn't exist in JS — use .trim()
+
+  ⚠️ Warning  PathTraversal  src/file_handler.cr:45
+       Path traversal via File.read — but path.starts_with?() validation detected, suppressing.
 
   Found 6 Error(s), 0 Warning(s) across 89 files.
   Review the findings above.
@@ -239,11 +249,16 @@ Source files
 **Taint pipeline:** seed → propagate → returns → interproc → propagate → cross-file → guards → rules
 
 1. **Seed** — Params named like taint sources (`url`, `request`, `params`) are marked tainted
-2. **Propagate** — Fixed-point; taint flows through assignments and call chains (sanitizer-aware: `File.expand_path`, `URI.parse`, `validate_*` cleanse taint)
+2. **Propagate** — Fixed-point; taint flows through assignments, call chains, and **property access** (e.g., `uri.request_target` inherits taint from `uri`)
 3. **Returns** — Functions with tainted bodies return tainted data
 4. **Inter-procedural** — Taint crosses function boundaries
-5. **Guards** — `unless path.starts_with?("/safe/")` suppresses taint
+5. **Guards** — `unless path.starts_with?("/safe/")` suppresses taint (**path sensitivity**)
 6. **Rules** — KDL rules match sinks against tainted variables, with `arg=N` position matching
+
+**Path sensitivity** reduces false positives by tracking validation guards:
+- `starts_with?`, `end_with?` → suppress path traversal
+- `valid_url?`, `check_*`, `sanitize_*` → suppress SSRF
+- Validation scope: 50 lines or to next function boundary
 
 **CFG engine** (`--cfg`) converts CatseyeAST.t → IL → basic block CFG → forward dataflow taint analysis. Branch-aware: taint does not flow across dead branches. Dominator-based sanitizer suppression.
 
@@ -376,6 +391,7 @@ catseye/
 | Crystal only (72 files)   | 72                           | ~0.12s     | ~0.06s   |
 | Multi-language (89 files) | 72 Crystal + 17 JS/TS/Svelte | ~0.25s     | ~6s      |
 | OCaml self-scan           | 84                           | ~0.19s     | ~0.15s   |
+| Gleam project (144 files) | 115 Gleam + 29 TS/JS         | ~0.73s     | ~0.14s   |
 
 **CFG engine** scales linearly: 500 sequential branches in 0.09ms, 10,000 nodes in 2.4ms, 500-block taint analysis in 0.75ms.
 
