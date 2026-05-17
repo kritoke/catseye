@@ -19,7 +19,7 @@ let base_class_subclass_threshold = 3
 let speculative_generality_child_threshold = 2
 let tradition_breaker_parent_loc_threshold = 50  (* Lowered from 100 - parent needs 50+ lines between start/end *)
 let deep_inheritance_threshold = 4
-let refused_bequest_min_loc = 5  (* Override with <5 lines is suspicious *)
+let refused_bequest_min_loc = 10  (* Override with <10 lines is suspicious - includes def+end+at least some content *)
 
 (* ── Helper ───────────────────────────────────────────────────────── *)
 
@@ -256,6 +256,121 @@ let detect_tradition_breaker
     | None -> None
   ) infos
 
+(** 5. RefusedParentBequest
+    A class overrides a parent method with an empty or near-empty implementation.
+    
+    Detection: For each class B with parent A:
+    1. Find methods in B that also exist in parent A
+    2. Check the "body size" (lines until next method)
+    3. If body is very small (< 5 lines), flag it
+    
+    Note: This uses line-based heuristics since the extractor doesn't provide
+    method body ASTs. A small body suggests the method is essentially empty. *)
+let detect_refused_parent_bequest
+    (nodes : Security_node.t list)
+    (infos : Class_graph.class_info list)
+    (_parent_to_children : string list Class_graph.StringMap.t)
+    : Finding.t list =
+  (* Group nodes by file for body size calculation *)
+  let by_file = Hashtbl.create 16 in
+  List.iter (fun (n : Security_node.t) ->
+    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
+    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  ) nodes;
+  
+  let findings = ref [] in
+  
+  List.iter (fun (info : Class_graph.class_info) ->
+    match info.Class_graph.parent with
+    | Some parent_name ->
+        (* Find parent's methods *)
+        let parent_opt = List.find_opt (fun i -> i.Class_graph.name = parent_name) infos in
+        (match parent_opt with
+         | Some _parent ->
+             (* Get all ancestor methods *)
+             let rec get_ancestor_methods (name : string) (visited : string list) : string list =
+               if List.mem name visited then []
+               else
+                 match List.find_opt (fun i -> i.Class_graph.name = name) infos with
+                 | Some ci ->
+                     let methods = ci.Class_graph.methods in
+                     (match ci.Class_graph.parent with
+                      | Some p -> methods @ get_ancestor_methods p (name :: visited)
+                      | None -> methods)
+                 | None -> []
+             in
+             let ancestor_methods = get_ancestor_methods parent_name [] in
+             
+             (* For each method in this class, check if it overrides an ancestor *)
+             List.iter (fun method_name ->
+               if List.mem method_name ancestor_methods then
+                 (* Calculate body size for this method *)
+                 let file_nodes = try Hashtbl.find by_file info.Class_graph.file with Not_found -> [] in
+                 let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
+                 
+                 (* Find all classes to determine class boundaries *)
+                 let all_classes = List.filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in
+                 
+                 (* Find this class's boundaries *)
+                 let class_start = info.Class_graph.line in
+                 let class_end = 
+                   let rec find_next_class = function
+                     | [] -> 999999
+                     | c :: _ when c.Security_node.line > class_start -> c.Security_node.line
+                     | _ :: rest -> find_next_class rest
+                   in find_next_class all_classes
+                 in
+                 
+                 (* Find this specific def within this class's boundaries *)
+                 let def_nodes = List.filter (fun n -> 
+                   n.Security_node.node_type = Security_node.Def
+                   && n.Security_node.name = method_name
+                   && n.Security_node.line >= class_start
+                   && n.Security_node.line < class_end
+                 ) sorted in
+                 
+                 List.iter (fun (def_node : Security_node.t) ->
+                   let start_line = def_node.Security_node.line in
+                   (* Find end of method body (next Def in this class, or next class) *)
+                   let next_def = List.find_opt (fun n -> 
+                     n.Security_node.node_type = Security_node.Def 
+                     && n.Security_node.line > start_line
+                     && n.Security_node.line < class_end
+                   ) sorted in
+                   let end_line = match next_def with
+                     | Some d -> d.Security_node.line
+                     | None -> class_end
+                   in
+                   let body_size = end_line - start_line in
+                   
+                   (* Flag if body is suspiciously small (< 3 lines) *)
+                   if body_size <= refused_bequest_min_loc then
+                     findings := {
+                       Finding.rule = "RefusedParentBequest";
+                       severity = "Low";
+                       file = info.Class_graph.file;
+                       line = start_line;
+                       message = Printf.sprintf
+                         "Method '%s' in '%s' overrides parent but has tiny body (%d lines). This is 'Refused Parent Bequest' - the class refuses functionality from its parent."
+                         method_name info.Class_graph.name body_size;
+                       flow = [ {
+                         Finding.file = info.Class_graph.file;
+                         line = start_line;
+                         message = Printf.sprintf "Override of '%s' in '%s' (%d lines)"
+                           method_name parent_name body_size;
+                       } ];
+                       language = "crystal";
+                       dependency = None;
+                       reachability = None; suggestion = None;
+                     } :: !findings
+                 ) def_nodes
+             ) info.Class_graph.methods
+         | None -> ())
+    | None -> ()
+  ) infos;
+  
+  List.rev !findings
+
 (* ── Main Analyzer ───────────────────────────────────────────────── *)
 
 let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
@@ -266,5 +381,6 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
   let speculative_findings = detect_speculative_generality infos parent_to_children in
   let deep_inheritance_findings = detect_deep_inheritance infos graph in
   let tradition_breaker_findings = detect_tradition_breaker infos parent_to_children in
+  let refused_bequest_findings = detect_refused_parent_bequest nodes infos parent_to_children in
   
-  base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings
+  base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings @ refused_bequest_findings
