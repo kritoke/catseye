@@ -94,6 +94,19 @@ let get_tainted_records (db : t) (var : string) (file : string) : taint_record l
   | Some records -> List.filter (fun r -> r.var_name = var) records
   | None -> []
 
+(** Check if a variable is tainted in ANY file (cross-file taint propagation). *)
+let is_tainted_anywhere (db : t) (var : string) : bool =
+  StringMap.exists (fun _ records ->
+    List.exists (fun r -> r.var_name = var) records
+  ) db
+
+(** Get all taint records for a variable across ALL files (for cross-file propagation). *)
+let get_tainted_records_global (db : t) (var : string) : taint_record list =
+  StringMap.fold (fun _ records acc ->
+    let filtered = List.filter (fun r -> r.var_name = var) records in
+    filtered :: acc
+  ) db [] |> List.concat
+
 (** Remove a tainted var from a specific file. Used for guard processing:
     when a guard node validates a variable, it should no longer be tainted
     for sinks at lines after the guard. *)

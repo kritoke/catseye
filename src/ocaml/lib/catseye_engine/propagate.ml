@@ -152,6 +152,61 @@ let get_call_receiver (call_node : Security_node.t) : string option =
   | Some idx -> Some (String.sub name 0 idx)
   | None -> None
 
+(* ── Cross-File Taint Propagation ─────────────────────────────────────
+
+   When a variable is tainted in one file, propagate that taint to
+   assignments in other files that reference the same variable name.
+
+   Example:
+     # file_a.cr
+     url = params["url"]  # ← Taint source
+
+     # file_b.cr (different file)
+     target = fetch_url(url)  # url is tainted in file_a, should propagate
+     HTTP::Client.get(target)  # ← Should be flagged
+*)
+
+(* Propagate taint across file boundaries.
+   When a variable is tainted in one file (file A), and it's assigned
+   to another variable in a different file (file B), the new variable
+   in file B should inherit the taint. *)
+let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
+  let db_ref = ref db in
+  (* For each assign node, check if the source variable is tainted in ANY file *)
+  List.iter (fun node ->
+    if node.Security_node.node_type = Security_node.Assign then
+      (* Check direct var args *)
+      List.iter (fun arg ->
+        if arg.Security_node.arg_type = Security_node.ArgVar then
+          let source_var = arg.Security_node.value in
+          let target_file = node.Security_node.file in
+          (* Check if source is tainted in any OTHER file *)
+          let is_cross_file = 
+            StringMap.exists (fun file _ -> 
+              file <> target_file && Db.is_tainted_in_file !db_ref source_var file
+            ) !db_ref
+          in
+          if is_cross_file then
+            (* Check if target is not already tainted in target file *)
+            if not (Db.is_tainted_in_file !db_ref node.Security_node.name target_file) then
+              let record = {
+                Db.var_name = node.Security_node.name;
+                Db.file = target_file;
+                Db.line = node.Security_node.line;
+                Db.description = node.Security_node.name ^ " tainted via cross-file assignment from " ^ source_var;
+                Db.source_var = source_var;
+                Db.field = None;
+                Db.status = Db.Tainted {
+                  source = source_var;
+                  field = None;
+                  origin = Db.From_var source_var
+                }
+              } in
+              db_ref := Db.add_record !db_ref record
+      ) node.Security_node.args
+  ) nodes;
+  !db_ref
+
 (* ── URI Constructor Taint Propagation ────────────────────────────────
 
    When URI.parse(tainted_var) is called, the resulting URI object's
@@ -393,7 +448,18 @@ let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
       else db1
   in
   
+  let rec loop_cross_file db count =
+    if count >= 100 then db
+    else
+      let size_before = Db.db_size db in
+      let db1 = propagate_cross_file nodes db in
+      let size_after = Db.db_size db1 in
+      if size_after > size_before then loop_cross_file db1 (count + 1)
+      else db1
+  in
+  
   let after_string = loop_string_ops db 0 in
   let after_uri = loop_uri after_string 0 in
   let after_alias = loop_alias after_uri 0 in
-  after_alias
+  let after_cross = loop_cross_file after_alias 0 in
+  after_cross

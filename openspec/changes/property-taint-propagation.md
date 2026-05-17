@@ -4,7 +4,7 @@
 **Priority:** P1  
 **Size:** L (1 week)  
 **Created:** 2026-05-17  
-**Status:** Phase 1 & 2 Implemented ✓
+**Status:** Phase 1, 2 & 3 Partial Implemented ✓
 
 ## Context
 
@@ -76,25 +76,41 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
 **Supported string methods:**
 `upcase`, `downcase`, `capitalize`, `strip`, `lstrip`, `rstrip`, `reverse`, `chomp`, `chop`, `squeeze`, `gsub`, `sub`, `replace`, `split`, `lines`, `chars`, `bytes`, `tr`, `delete`, `prepend`, `concat`, `encode`, `decode`
 
-### ✅ Phase 1 & 2 Testing
+### ✅ Phase 3: Cross-File Taint Propagation (DONE 2026-05-17)
+
+**Files Modified:**
+
+- `lib/catseye_engine/db.ml` - Added `is_tainted_anywhere`, `get_tainted_records_global`
+- `lib/catseye_engine/propagate.ml` - Added `propagate_cross_file`
+
+**Key Changes:**
+
+1. **Cross-file taint propagation** (`propagate_cross_file`)
+   - When a variable is tainted in one file (file A), and it's assigned
+     to another variable in a different file (file B), the new variable
+     inherits the taint
+   - Example: `url = params["url"]` in file_a.cr → `target = url` in file_b.cr → target is tainted
+
+2. **Global taint queries** (`is_tainted_anywhere`, `get_tainted_records_global`)
+   - Check if a variable is tainted in ANY file
+   - Get all taint records for a variable across all files
+
+### ✅ Phase 1, 2, 3 Testing
 
 ```bash
 # All test cases now pass:
 # Test 1: def proxy_request(url) with uri = URI.parse(url) → SSRF detected ✓
 # Test 2: params["url"] pattern → SSRF detected ✓
 # Test 3: Aliasing (other = uri) → SSRF detected ✓
-# Test 4: real codebase (quickheadlines) → 2 SSRFs detected ✓
-# Test 5: url.split("/") + parts[0] → SSRF detected ✓
-# Test 6: url.upcase, url.gsub, url.strip → SSRF detected ✓
+# Test 4: url.split("/") + parts[0] → SSRF detected ✓
+# Test 5: url.upcase, url.gsub, url.strip → SSRF detected ✓
+# Test 6: cross-file: source.cr tainted → user.cr → SSRF detected ✓
 ```
 
 ---
 
-## Remaining: Phase 3
+## Remaining: Phase 3 Complete
 
-### Phase 3: Advanced Taint Patterns (TODO)
-
-- **Cross-file taint propagation**: Track taint across file boundaries
 - **Hub-like Module detection**: Classes with high fan-out to many other classes
 - **Shotgun Surgery detection**: Single responsibility violation (one change affects many classes)
 
@@ -102,20 +118,19 @@ client.get(uri.request_target)  # ← NOW detected as SSRF
 
 ## Files Modified
 
-| File                              | Change                                                   |
-| --------------------------------- | -------------------------------------------------------- |
-| `lib/catseye_engine/propagate.ml` | Added string op taint, enhanced alias propagation         |
-| `lib/catseye_engine/db.ml`        | Added `get_tainted_records`, fixed field-level dedup      |
-| `lib/catseye_engine/seed.ml`      | Always seed params matching known sources                |
+| File                              | Change                                               |
+| --------------------------------- | ---------------------------------------------------- |
+| `lib/catseye_engine/propagate.ml` | Added string op taint, enhanced alias, cross-file    |
+| `lib/catseye_engine/db.ml`        | Added `get_tainted_records`, `is_tainted_anywhere`   |
+| `lib/catseye_engine/seed.ml`      | Always seed params matching known sources            |
 
 ---
 
 ## Related
 
-- **Cross-file taint propagation**: Will benefit from property tracking
 - **Object sensitivity**: Future: track distinct object instances
 - **Path sensitivity**: Track conditionals that may sanitize values
 
 ---
 
-_Updated: 2026-05-17 (Phase 1 & 2 completed)_
+_Updated: 2026-05-17 (Phase 1, 2, 3 partial completed)_
