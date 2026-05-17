@@ -53,23 +53,17 @@ let do_propagate (nodes : Security_node.t list) (db : Db.t)
             List.filter_map (fun a ->
               if a.Security_node.arg_type <> Security_node.ArgCall then None
               else
-                (* Find the actual call node to check its args *)
                 let key = node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line in
                 match Hashtbl.find_opt call_at key with
                 | Some call_node ->
-                    (* Sanitizer check: if the call is a known sanitizer, skip taint
-                       propagation and remove any existing taint on the target var.
-                       e.g. absolute_path = File.expand_path(path) → clean *)
                     if Constants.is_sanitizer call_node.Security_node.name then None
                     else
-                      (* Check if any arg to the call is tainted *)
                       let hit = List.find_opt (fun ca ->
                         ca.Security_node.arg_type = Security_node.ArgVar
                         && Db.is_tainted_in_file acc ca.Security_node.value node.Security_node.file
                       ) call_node.Security_node.args in
                       (match hit with
-                       | Some ca ->
-                           Some ca.Security_node.value
+                       | Some ca -> Some ca.Security_node.value
                        | None -> None)
                 | None -> None
             ) node.Security_node.args
@@ -101,14 +95,12 @@ let cleanse_sanitized_assigns (nodes : Security_node.t list) (db : Db.t)
   List.fold_left (fun acc node ->
     if node.Security_node.node_type <> Security_node.Assign then acc
     else
-      (* Check if any arg to this assign is a sanitizer call *)
       let has_sanitizer_arg =
         List.exists (fun a ->
           a.Security_node.arg_type = Security_node.ArgCall
           && Constants.is_sanitizer a.Security_node.value
         ) node.Security_node.args
       in
-      (* Also check via call_at: the same-line call might be a sanitizer *)
       let has_sanitizer_call =
         let key = node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line in
         match Hashtbl.find_opt call_at key with
@@ -120,25 +112,138 @@ let cleanse_sanitized_assigns (nodes : Security_node.t list) (db : Db.t)
       else acc
   ) db nodes
 
-(* Fixed-point: propagate until no new tainted vars found (max 100 iterations).
-   After each propagation pass, cleanse sanitized assigns to remove taint
-   that was incorrectly propagated through sanitizer calls.
+(* ── Property Taint Propagation ────────────────────────────────────────
 
-   Performance: call_at is built ONCE before the loop and reused across all
-   iterations. Previously, do_propagate created a new Hashtbl on every call
-   (~100 hashtables per propagate call), and cleanse_sanitized_assigns built
-   another one inline on each invocation. *)
+   When URI.parse(tainted_var) is called, the resulting URI object's
+   properties (host, request_target, etc.) inherit the taint.
+
+   Also handles aliases:
+     uri = URI.parse(url)
+     other = uri  # alias - should also inherit tainted properties
+*)
+
+let uri_constructors = [
+  "URI.parse";
+  "URI.new";
+  "URL.parse";
+  "URL.new";
+]
+
+let uri_tainted_properties = [
+  "host";
+  "request_target";
+  "path";
+  "query";
+  "full_path";
+  "scheme";
+]
+
+let is_uri_constructor (call_name : string) : bool =
+  List.exists (fun c -> 
+    call_name = c || call_name = c ^ "."
+  ) uri_constructors
+
+(* Propagate URI constructor property taint *)
+let propagate_uri_properties (nodes : Security_node.t list) (db : Db.t)
+    ~(call_at : (string, Security_node.t) Hashtbl.t) : Db.t =
+  let db_ref = ref db in
+  let uri_found = ref 0 in
+  let tainted_found = ref 0 in
+  List.iter (fun node ->
+    if node.Security_node.node_type = Security_node.Assign then
+      let key = node.Security_node.file ^ ":" ^ string_of_int node.Security_node.line in
+      match Hashtbl.find_opt call_at key with
+      | Some cn when is_uri_constructor cn.Security_node.name ->
+          uri_found := !uri_found + 1;
+          let tainted_arg = List.find_opt (fun a ->
+            a.Security_node.arg_type = Security_node.ArgVar
+            && Db.is_tainted_in_file !db_ref a.Security_node.value node.Security_node.file
+          ) cn.Security_node.args in
+          (match tainted_arg with
+           | Some arg ->
+               tainted_found := !tainted_found + 1;
+               let var_name = node.Security_node.name in
+               let file = node.Security_node.file in
+               List.iter (fun prop ->
+                 let record = {
+                   Db.var_name = var_name;
+                   Db.file = file;
+                   Db.line = node.Security_node.line;
+                   Db.description = var_name ^ "." ^ prop ^ " tainted from " ^ arg.Security_node.value;
+                   Db.source_var = arg.Security_node.value;
+                   Db.field = Some prop;
+                   Db.status = Db.Tainted {
+                     source = arg.Security_node.value;
+                     field = Some prop;
+                     origin = Db.From_var arg.Security_node.value
+                   }
+                 } in
+                 db_ref := Db.add_record !db_ref record
+               ) uri_tainted_properties
+           | None -> ())
+      | _ -> ()
+  ) nodes;
+  (if !uri_found > 0 || !tainted_found > 0 then
+     Printf.eprintf "[propagate_uri_properties] URI calls: %d, tainted: %d\n" !uri_found !tainted_found
+  );
+  !db_ref
+
+(* Propagate aliases *)
+let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
+  let db_ref = ref db in
+  List.iter (fun node ->
+    if node.Security_node.node_type = Security_node.Assign then
+      match node.Security_node.args with
+      | [{ arg_type = Security_node.ArgVar; value = rhs_var; field = "" }] ->
+          if Db.is_tainted_in_file !db_ref rhs_var node.Security_node.file then
+            let var_name = node.Security_node.name in
+            let file = node.Security_node.file in
+            List.iter (fun prop ->
+              let record = {
+                Db.var_name = var_name;
+                Db.file = file;
+                Db.line = node.Security_node.line;
+                Db.description = var_name ^ "." ^ prop ^ " tainted via alias of " ^ rhs_var;
+                Db.source_var = rhs_var;
+                Db.field = Some prop;
+                Db.status = Db.Tainted {
+                  source = rhs_var;
+                  field = Some prop;
+                  origin = Db.From_var rhs_var
+                }
+              } in
+              db_ref := Db.add_record !db_ref record
+            ) uri_tainted_properties
+      | _ -> ()
+  ) nodes;
+  !db_ref
+
+(* Fixed-point: propagate until no new tainted vars found (max 100 iterations). *)
 let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let call_at = build_call_lookup nodes in
-  let rec loop db count =
+  
+  let rec loop_uri db count =
     if count >= 100 then db
     else
       let size_before = Db.db_size db in
-      let db' = cleanse_sanitized_assigns nodes db ~call_at
-                |> fun d -> do_propagate nodes d ~call_at
-      in
-      let size_after = Db.db_size db' in
-      if size_after > size_before then loop db' (count + 1)
-      else db'
+      let db1 = cleanse_sanitized_assigns nodes db ~call_at in
+      let db2 = do_propagate nodes db1 ~call_at in
+      let db3 = propagate_uri_properties nodes db2 ~call_at in
+      let size_after = Db.db_size db3 in
+      if size_after > size_before then loop_uri db3 (count + 1)
+      else db3
   in
-  loop db 0
+  
+  let rec loop_alias db count =
+    if count >= 100 then db
+    else
+      let size_before = Db.db_size db in
+      let db1 = propagate_aliases nodes db in
+      let size_after = Db.db_size db1 in
+      if size_after > size_before then loop_alias db1 (count + 1)
+      else db1
+  in
+  
+  let after_uri = loop_uri db 0 in
+  let after_alias = loop_alias after_uri 0 in
+  after_alias

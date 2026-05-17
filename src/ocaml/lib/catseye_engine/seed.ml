@@ -8,7 +8,8 @@ let is_source ?(extra = []) name = Constants.is_source ~extra name
 let is_sanitizer ?(extra = []) name = Constants.is_sanitizer ~extra name
 
 (* Seed from function parameters named like taint sources.
-   Only seed params in functions where the extractor detected at least
+   Always seed params that match known sources (they're likely primary taint sources).
+   Also seed other params in functions where the extractor detected at least
    one tainted assignment — this avoids seeding in helper functions
    where params have source-like names (e.g. `path`) but receive safe data. *)
 let seed_from_params (nodes : Security_node.t list) (extra_sources : string list)
@@ -17,7 +18,6 @@ let seed_from_params (nodes : Security_node.t list) (extra_sources : string list
   let has_tainted_assign = Hashtbl.create 32 in
   List.iter (fun n ->
     if n.Security_node.node_type = Security_node.Assign && n.Security_node.taint then
-      (* Find the enclosing def by looking for the nearest Def before this line *)
       let def_node =
         List.filter (fun d ->
           d.Security_node.node_type = Security_node.Def
@@ -27,12 +27,11 @@ let seed_from_params (nodes : Security_node.t list) (extra_sources : string list
         |> List.sort (fun a b -> compare b.Security_node.line a.Security_node.line)
         |> List.find_opt (fun _ -> true)
       in
-      match def_node with
-      | Some d ->
-        Hashtbl.replace has_tainted_assign
-          (d.Security_node.file, d.Security_node.line) true
-      | None -> ()
-    (* Also consider calls with taint=true — they indicate user data flow *)
+      (match def_node with
+       | Some d ->
+           Hashtbl.replace has_tainted_assign
+             (d.Security_node.file, d.Security_node.line) true
+       | None -> ())
     else if n.Security_node.node_type = Security_node.Call && n.Security_node.taint then
       let def_node =
         List.filter (fun d ->
@@ -43,17 +42,20 @@ let seed_from_params (nodes : Security_node.t list) (extra_sources : string list
         |> List.sort (fun a b -> compare b.Security_node.line a.Security_node.line)
         |> List.find_opt (fun _ -> true)
       in
-      match def_node with
-      | Some d ->
-        Hashtbl.replace has_tainted_assign
-          (d.Security_node.file, d.Security_node.line) true
-      | None -> ()
+      (match def_node with
+       | Some d ->
+           Hashtbl.replace has_tainted_assign
+             (d.Security_node.file, d.Security_node.line) true
+       | None -> ())
   ) nodes;
   nodes
   |> List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
   |> List.filter (fun def ->
-    (* Only seed params in functions where extractor found tainted assigns *)
-    Hashtbl.mem has_tainted_assign (def.Security_node.file, def.Security_node.line)
+    let has_source_param = List.exists (fun a -> 
+      is_source ~extra:extra_sources a.Security_node.value
+    ) def.Security_node.args in
+    let has_tainted = Hashtbl.mem has_tainted_assign (def.Security_node.file, def.Security_node.line) in
+    has_source_param || has_tainted
   )
   |> List.concat_map (fun def ->
     def.Security_node.args
@@ -80,16 +82,15 @@ let seed_from_taint_flags (nodes : Security_node.t list) (db : Db.t) : Db.t =
     n.Security_node.node_type = Security_node.Assign && n.Security_node.taint
   )
   |> List.filter (fun n ->
-    (* Skip if RHS is a sanitizer call *)
-    match n.Security_node.args with
-    | [{ Security_node.arg_type = ArgCall; value; _ }] ->
-      not (is_sanitizer value)
-    | _ -> true
+    (match n.Security_node.args with
+     | [{ Security_node.arg_type = ArgCall; value; _ }] ->
+       not (is_sanitizer value)
+     | _ -> true)
   )
   |> List.map (fun n ->
     let from_var =
       n.Security_node.args
-      |> List.find_opt (fun a -> a.Security_node.arg_type = Security_node.ArgVar)
+      |> List.find_opt (fun a -> a.Security_node.arg_type = ArgVar)
       |> Option.map (fun a -> a.Security_node.value)
       |> Option.value ~default:""
     in
@@ -124,13 +125,12 @@ let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t
     && Security_node.has_metadata_flag n "scent"
   )
   |> List.filter (fun n ->
-    (* Don't double-seed: if already tainted, skip *)
     not n.Security_node.taint
   )
   |> List.map (fun n ->
     let from_var =
       n.Security_node.args
-      |> List.find_opt (fun a -> a.Security_node.arg_type = Security_node.ArgVar)
+      |> List.find_opt (fun a -> a.Security_node.arg_type = ArgVar)
       |> Option.map (fun a -> a.Security_node.value)
       |> Option.value ~default:""
     in

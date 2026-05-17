@@ -67,8 +67,8 @@ let add_record (db : t) (record : taint_record) : t =
     | Some rs -> rs
     | None -> []
   in
-  (* Don't add duplicate entries for same var in same file *)
-  if List.exists (fun r -> r.var_name = record.var_name) records then db
+  (* Don't add duplicate entries for same (var, field) in same file *)
+  if List.exists (fun r -> r.var_name = record.var_name && r.field = record.field) records then db
   else StringMap.add file (record :: records) db
 
 let find_record (db : t) (var : string) : taint_record option =
