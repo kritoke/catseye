@@ -10,7 +10,7 @@ let lang_of_extension path =
   if Filename.check_suffix path ".gleam" then Some Gleam
   else if Filename.check_suffix path ".cr" then Some Crystal
   else if Filename.check_suffix path ".ts" || Filename.check_suffix path ".tsx" then Some TypeScript
-  else if Filename.check_suffix path ".js" || Filename.check_suffix path ".jsx" then Some JavaScript
+  else if Filename.check_suffix path ".js" || Filename.check_suffix path ".jsx" || Filename.check_suffix path ".mjs" || Filename.check_suffix path ".cjs" then Some JavaScript
   else if Filename.check_suffix path ".svelte" then Some Svelte
   else if Filename.check_suffix path ".ml" || Filename.check_suffix path ".mli" then Some (Other "ocaml")
   else None

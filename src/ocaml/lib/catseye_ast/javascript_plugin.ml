@@ -4,7 +4,7 @@
 
 let plugin : Language_plugin.t = {
   name = "javascript";
-  extensions = [".js"; ".jsx"];
+  extensions = [".js"; ".jsx"; ".mjs"; ".cjs"];
 
   parse_file = Javascript_mapper.parse_file;
 
