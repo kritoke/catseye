@@ -298,6 +298,8 @@ class SecurityVisitor < Crystal::Visitor
   # ── Class / Struct / Module / Enum boundaries ────────────────────────
 
   def visit(node : Crystal::ClassDef) : Bool
+    # Extract superclass for inheritance tracking
+    metadata = node.superclass ? {"parent" => node.superclass.to_s} : nil
     @nodes << {
       type:     "class",
       name:     node.name.to_s,
@@ -306,7 +308,7 @@ class SecurityVisitor < Crystal::Visitor
       taint:    false,
       file:     @file_path,
       language: "crystal",
-      metadata: nil,
+      metadata: metadata,
     }
     true # visit body
   end

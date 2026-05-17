@@ -104,12 +104,15 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
   let spaghetti_code_findings =
     Spaghetti_code.analyze nodes config
   in
+  let hierarchy_findings =
+    Hierarchy_smells.analyze nodes config
+  in
   let concurrency_findings =
     if config.concurrency_enabled then Concurrency.analyze nodes config
     else []
   in
   let ameba_findings = Ameba_hook.run config nodes in
-  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ anti_singleton_findings @ lazy_class_findings @ large_class_findings @ blob_findings @ spaghetti_code_findings @ concurrency_findings @ ameba_findings)
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ anti_singleton_findings @ lazy_class_findings @ large_class_findings @ blob_findings @ spaghetti_code_findings @ hierarchy_findings @ concurrency_findings @ ameba_findings)
   |> deduplicate
   |> List.filter (fun f -> not (is_suppressed config f))
 

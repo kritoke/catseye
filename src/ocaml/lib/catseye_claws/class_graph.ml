@@ -1,0 +1,154 @@
+(* lib/catseye_claws/hierarchy/class_graph.ml *)
+
+(** Class hierarchy graph builder.
+
+    Builds an inheritance graph from extracted Security_node.t list.
+    Maps class names to their parent, children, methods, and metadata.
+*)
+
+open Catseye_types
+module StringMap = Map.Make(String)
+module StringSet = Set.Make(String)
+
+(* ── Types ──────────────────────────────────────────────────────────── *)
+
+type class_info = {
+  name : string;          (** Class name *)
+  file : string;          (** File where defined *)
+  line : int;            (** Line number of class definition *)
+  parent : string option; (** Parent class name if any *)
+  methods : string list; (** Method names defined in this class *)
+  loc : int;             (** Lines of code (end - start) *)
+  is_abstract : bool;    (** Whether class is abstract *)
+}
+
+(* ── Helpers ───────────────────────────────────────────────────────── *)
+
+(** Extract parent name from class node metadata *)
+let get_parent (node : Security_node.t) : string option =
+  Security_node.get_metadata node "parent"
+
+(** Check if a string contains a substring *)
+let contains (str : string) (sub : string) : bool =
+  let slen = String.length str in
+  let slen_sub = String.length sub in
+  if slen_sub > slen then false
+  else
+    let rec check i =
+      if i > slen - slen_sub then false
+      else if String.sub str i slen_sub = sub then true
+      else check (i + 1)
+    in
+    check 0
+
+(** Check if a class name suggests it's abstract (Crystal convention) *)
+let is_abstract_class (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  contains lower "abstract"
+
+(* ── Class Graph Building ───────────────────────────────────────────── *)
+
+(** Build a class graph from a flat node list.
+
+    Groups Class nodes and their Def children into class_info records.
+*)
+let build_class_graph (nodes : Security_node.t list) : class_info StringMap.t =
+  (* Group nodes by file *)
+  let by_file = Hashtbl.create 16 in
+  List.iter (fun (n : Security_node.t) ->
+    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
+    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  ) nodes;
+
+  let class_infos = ref [] in
+  Hashtbl.iter (fun _file file_nodes ->
+    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
+    
+    (* Find class boundaries *)
+    let class_nodes = List.filter (fun n ->
+      n.Security_node.node_type = Security_node.Class
+    ) sorted in
+
+    List.iteri (fun i (cn : Security_node.t) ->
+      let start_line = cn.Security_node.line in
+      let end_line =
+        if i + 1 < List.length class_nodes then
+          (List.nth class_nodes (i + 1)).Security_node.line
+        else 1000000
+      in
+
+      (* Find Def nodes within this class *)
+      let methods_in_class = List.filter (fun (n : Security_node.t) ->
+        n.Security_node.node_type = Security_node.Def
+        && n.Security_node.line >= start_line
+        && n.Security_node.line < end_line
+      ) sorted in
+
+      let method_names = List.map (fun n -> n.Security_node.name) methods_in_class in
+      let parent = get_parent cn in
+      let loc = end_line - start_line in
+      let is_abstract = is_abstract_class cn.Security_node.name in
+
+      class_infos := {
+        name = cn.Security_node.name;
+        file = cn.Security_node.file;
+        line = cn.Security_node.line;
+        parent;
+        methods = method_names;
+        loc;
+        is_abstract;
+      } :: !class_infos
+    ) class_nodes
+  ) by_file;
+
+  (* Build map from class name to info *)
+  let graph = StringMap.empty in
+  List.fold_left (fun map ci ->
+    StringMap.add ci.name ci map
+  ) graph (List.rev !class_infos)
+
+(* ── Graph Queries ──────────────────────────────────────────────────── *)
+
+(** Get direct children of a class *)
+let get_children (graph : class_info StringMap.t) (class_name : string) : class_info list =
+  StringMap.fold (fun _name info acc ->
+    match info.parent with
+    | Some p when p = class_name -> info :: acc
+    | _ -> acc
+  ) graph []
+
+(** Get ancestor chain (parent, grandparent, etc.) *)
+let get_ancestors (graph : class_info StringMap.t) (class_name : string) : class_info list =
+  let rec collect (name : string) (visited : string list) : class_info list =
+    if List.mem name visited then []  (* Prevent cycles *)
+    else
+      match StringMap.find_opt name graph with
+      | Some info ->
+        let new_visited = name :: visited in
+        (match info.parent with
+         | Some p -> info :: collect p new_visited
+         | None -> [info])
+      | None -> []
+  in
+  collect class_name []
+
+(** Get inheritance depth (how many ancestors) *)
+let get_inheritance_depth (graph : class_info StringMap.t) (class_name : string) : int =
+  let ancestors = get_ancestors graph class_name in
+  List.length ancestors
+
+(** Check if class B inherits from class A (directly or indirectly) *)
+let inherits_from (graph : class_info StringMap.t) (child : string) (ancestor : string) : bool =
+  let ancestors = get_ancestors graph child in
+  List.exists (fun a -> a.name = ancestor) ancestors
+
+(** Get all methods in a class and its ancestors *)
+let get_all_methods (graph : class_info StringMap.t) (class_name : string) : string list =
+  let ancestors = get_ancestors graph class_name in
+  List.fold_left (fun methods a -> a.methods @ methods) [] ancestors
+
+(** Check if a class overrides a method from a parent *)
+let overrides_method (graph : class_info StringMap.t) (class_name : string) (method_name : string) : bool =
+  match StringMap.find_opt class_name graph with
+  | Some info -> List.mem method_name info.methods
+  | None -> false
