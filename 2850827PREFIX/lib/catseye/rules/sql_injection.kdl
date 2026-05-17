@@ -1,0 +1,35 @@
+rule "SQLInjection" severity="Critical" {
+    sinks {
+        sink "db.exec" arg=0 {
+            fix "Use parameterized queries: db.exec(\"SELECT ... WHERE id = $1\", [{arg0}])"
+        }
+        sink "db.query" arg=0 {
+            fix "Use parameterized queries: db.query(\"SELECT ... WHERE id = $1\", [{arg0}])"
+        }
+        sink "db.scalar" arg=0 {
+            fix "Use parameterized queries: db.scalar(\"SELECT ... WHERE id = $1\", [{arg0}])"
+        }
+        sink "db.query_one" arg=0 {
+            fix "Use parameterized queries: db.query_one(\"SELECT ... WHERE id = $1\", [{arg0}])"
+        }
+        sink "db.query_all" arg=0 {
+            fix "Use parameterized queries: db.query_all(\"SELECT ... WHERE id = $1\", [{arg0}])"
+        }
+        sink "db.execute" arg=0 {
+            fix "Use parameterized queries: db.execute(\"INSERT ... VALUES ($1)\", [{arg0}])"
+        }
+        sink "database.exec" arg=0 {
+            fix "Use parameterized queries instead of string interpolation"
+        }
+        sink "database.query" arg=0 {
+            fix "Use parameterized queries instead of string interpolation"
+        }
+    }
+    sources {
+        source "params"
+        source "query"
+        source "user_input"
+        source "request"
+    }
+    message "Potential SQL injection via {sink} with tainted argument(s): {tainted_vars}."
+}

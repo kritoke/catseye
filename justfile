@@ -123,25 +123,50 @@ clean:
 # Install to PREFIX (default /usr/local)
 # Install to PREFIX (default /usr/local). Use $HOME not ~ for home dir.
 # Usage: just install /usr/local  OR  just install "$HOME/.local"
-install prefix="/usr/local": build
-    @# Check if installing to system location without root/sudo
-    @if [ "{{prefix}}" = "/usr/local" ] && [ "$(id -u)" != "0" ]; then \
-        echo "⚠️  Warning: Installing to /usr/local requires root/sudo."; \
-        echo "   Run 'sudo just install' or use a local prefix like 'just install ~/.local'"; \
-        exit 1; \
+install prefix="": build
+    @if [ -z "{{prefix}}" ]; then \
+        if [ "$(id -u)" = "0" ]; then \
+            just --evaluate prefix=/usr/local >/dev/null 2>&1; \
+            echo "Installing to /usr/local ..."; \
+            install -d /usr/local/bin; \
+            install -m 755 bin/catseye-ocaml /usr/local/bin/catseye-ocaml; \
+            install -d /usr/local/lib/catseye/rules; \
+            install -m 644 src/ocaml/rules/*.kdl /usr/local/lib/catseye/rules/; \
+            install -d /usr/local/lib/catseye/extractor; \
+            install -m 755 bin/catseye-crystal-extractor /usr/local/lib/catseye/extractor/catseye-crystal-extractor; \
+            echo "✓ Installed to /usr/local"; \
+        else \
+            mkdir -p ~/.local/bin; \
+            echo "Installing to ~/.local ..."; \
+            install -m 755 bin/catseye-ocaml ~/.local/bin/catseye-ocaml; \
+            mkdir -p ~/.local/lib/catseye/rules; \
+            install -m 644 src/ocaml/rules/*.kdl ~/.local/lib/catseye/rules/; \
+            mkdir -p ~/.local/lib/catseye/extractor; \
+            install -m 755 bin/catseye-crystal-extractor ~/.local/lib/catseye/extractor/catseye-crystal-extractor; \
+            echo "✓ Installed to ~/.local"; \
+            if ! echo ":$$PATH:" | grep -q ":$$HOME/.local/bin:"; then \
+                echo "💡 Add ~/.local/bin to your PATH"; \
+            fi; \
+        fi; \
+    else \
+        if [ "{{prefix}}" = "/usr/local" ] && [ "$(id -u)" != "0" ]; then \
+            echo "⚠️  Installing to /usr/local requires root."; \
+            echo "   Run 'sudo just install' or 'just install' (auto-selects ~/.local)"; \
+            exit 1; \
+        fi; \
+        if [ "$(id -u)" = "0" ] && echo "{{prefix}}" | grep -q "^$$HOME"; then \
+            echo "⚠️  Using sudo with home directory prefix ({{prefix}})."; \
+            echo "   This may install files owned by root. Consider 'just install' without sudo."; \
+        fi; \
+        echo "Installing to {{prefix}} ..."; \
+        install -d {{prefix}}/bin; \
+        install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml; \
+        install -d {{prefix}}/lib/catseye/rules; \
+        install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/; \
+        install -d {{prefix}}/lib/catseye/extractor; \
+        install -m 755 bin/catseye-crystal-extractor {{prefix}}/lib/catseye/extractor/catseye-crystal-extractor; \
+        echo "✓ Installed to {{prefix}}"; \
     fi
-    @# Warn if using sudo with home directory (misunderstands the flag)
-    @if [ "$(id -u)" = "0" ] && echo "{{prefix}}" | grep -q "^$HOME"; then \
-        echo "⚠️  Warning: Using sudo with home directory prefix ({{prefix}})."; \
-        echo "   This may install files owned by root. Consider 'just install {{prefix}}' without sudo."; \
-    fi
-    install -d {{prefix}}/bin
-    install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
-    install -d {{prefix}}/lib/catseye/rules
-    install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/
-    install -d {{prefix}}/lib/catseye/extractor
-    install -m 755 bin/catseye-crystal-extractor {{prefix}}/lib/catseye/extractor/catseye-crystal-extractor
-    @echo "✓ Installed to {{prefix}}"
 
 # Install pi extension (project-local)
 install-pi:
@@ -155,10 +180,22 @@ install-pi-global:
     @cp extensions/pi-catseye-scan/index.ts ~/.pi/agent/extensions/catseye-scan/
     @echo "✓ Pi extension installed globally → ~/.pi/agent/extensions/catseye-scan/"
 
-uninstall prefix="/usr/local":
-    rm -f {{prefix}}/bin/catseye-ocaml
-    rm -rf {{prefix}}/lib/catseye
-    @echo "✓ Uninstalled from {{prefix}}"
+uninstall prefix="":
+    @if [ -z "{{prefix}}" ]; then \
+        if [ "$(id -u)" = "0" ]; then \
+            rm -f /usr/local/bin/catseye-ocaml; \
+            rm -rf /usr/local/lib/catseye; \
+            echo "✓ Uninstalled from /usr/local"; \
+        else \
+            rm -f ~/.local/bin/catseye-ocaml; \
+            rm -rf ~/.local/lib/catseye; \
+            echo "✓ Uninstalled from ~/.local"; \
+        fi; \
+    else \
+        rm -f {{prefix}}/bin/catseye-ocaml; \
+        rm -rf {{prefix}}/lib/catseye; \
+        echo "✓ Uninstalled from {{prefix}}"; \
+    fi
 
 list:
     @just --list

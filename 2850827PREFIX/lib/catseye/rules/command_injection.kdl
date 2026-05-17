@@ -1,0 +1,70 @@
+rule "CommandInjection" severity="Critical" {
+    sinks {
+        sink "system" arg=0 {
+            fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
+        }
+        sink "Process.run" arg=0 {
+            fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
+        }
+        sink "os.command" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "os.cmd" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "shell.cmd" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink "cmd.run" arg=0 {
+            fix "Use array-form command execution to avoid shell injection"
+        }
+        sink ":os.cmd" arg=0 {
+            fix "Use :os.cmd/2 with a charlist, not a string with interpolation"
+        }
+        sink "erlexec.Shell" arg=0 {
+            fix "Validate and sanitize command arguments"
+        }
+    }
+    sources {
+        source "params"
+        source "gets"
+        source "STDIN"
+        source "ARGV"
+        source "env"
+        source "user_input"
+        source "input"
+        source "cmd"
+        source "command"
+        source "repo"
+    }
+    message "Potential command injection via {sink}. User input may flow into a shell command."
+}
+
+rule "EnvInjection" severity="High" {
+    sinks {
+        sink "ENV[]=" {
+            fix "Whitelist allowed env var names before setting: ENV[allowed_key] = validated_value"
+        }
+        sink "ENV.[]=" {
+            fix "Whitelist allowed env var names before setting: ENV[allowed_key] = validated_value"
+        }
+        sink "putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "os.setenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "os.putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+        sink "system.putenv" {
+            fix "Whitelist allowed env var names before setting"
+        }
+    }
+    sources {
+        source "params"
+        source "env"
+        source "user_input"
+    }
+    message "Potential environment injection via {sink}. Validate and whitelist allowed variable names and values."
+}

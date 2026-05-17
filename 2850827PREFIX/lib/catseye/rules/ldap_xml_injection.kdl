@@ -1,0 +1,23 @@
+rule "LDAPInjection" severity="High" {
+    sinks {
+        sink "LDAP.search" {
+            fix "LDAP.search(filter: LDAP.escape({arg0}))"
+        }
+        sink "LDAP.query" {
+            fix "LDAP.query(filter: LDAP.escape({arg0}))"
+        }
+        sink "ldap.search" {
+            fix "ldap.search(filter: ldap.escape({arg0}))"
+        }
+        sink "ldap.bind" {
+            fix "Validate and sanitize DN components before binding"
+        }
+    }
+    sources {
+        source "params"
+        source "user_input"
+        source "username"
+        source "query"
+    }
+    message "Potential LDAP injection via {sink} with user-controlled input: {tainted_vars}."
+}

@@ -1,0 +1,360 @@
+// JS/TS Command Injection
+rule "CommandInjection" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "$exec" arg=0 {
+            sanitizer "escape"
+            sanitizer "sanitize"
+        }
+        sink "$execSync" arg=0 {
+            sanitizer "escape"
+            sanitizer "sanitize"
+        }
+        sink "$spawn" arg=0 {
+            sanitizer "escape"
+        }
+        sink "$spawnSync" arg=0 {
+            sanitizer "escape"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "req.body"
+        source "request.params"
+        source "request.query"
+        source "request.body"
+        source "ctx.request.body"
+        source "params"
+        source "query"
+        source "body"
+        source "user_input"
+        source "input"
+        source "url"
+        source "command"
+    }
+    message "Potential command injection via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Use child_process.execFile() with escaped arguments, or a sanitization library"
+}
+
+// JS/TS Path Traversal
+rule "PathTraversal" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "$readFile" arg=0 {
+            sanitizer "path.resolve"
+            sanitizer "path.normalize"
+            sanitizer "sanitize"
+            sanitizer "validate_path"
+        }
+        sink "$writeFile" arg=0 {
+            sanitizer "path.resolve"
+            sanitizer "path.normalize"
+            sanitizer "sanitize"
+        }
+        sink "$unlink" arg=0 {
+            sanitizer "path.resolve"
+            sanitizer "path.normalize"
+        }
+        sink "$readdir" arg=0 {
+            sanitizer "path.resolve"
+        }
+        sink "$access" arg=0 {
+            sanitizer "path.resolve"
+        }
+        sink "$stat" arg=0 {
+            sanitizer "path.resolve"
+        }
+        sink "$open" arg=0 {
+            sanitizer "path.resolve"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "params"
+        source "query"
+        source "filename"
+        source "filepath"
+        source "path"
+        source "user_input"
+        source "input"
+        source "url"
+    }
+    message "Potential path traversal via {sink} with variable argument(s): {tainted_vars}."
+    fix "Use path.resolve() to normalize and validate paths before file operations"
+}
+
+// JS/TS SSRF
+rule "SSRF" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "$fetch" arg=0 {
+            sanitizer "URL"
+            sanitizer "validate_url"
+            sanitizer "check_ssrf"
+        }
+        sink "$request" arg=0 {
+            sanitizer "URL"
+            sanitizer "validate_url"
+        }
+        sink "$get" arg=0 {
+            sanitizer "URL"
+            sanitizer "validate_url"
+        }
+        sink "$post" arg=0 {
+            sanitizer "URL"
+        }
+        sink "$put" arg=0 {
+            sanitizer "URL"
+        }
+        sink "$delete" arg=0 {
+            sanitizer "URL"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "req.body"
+        source "params"
+        source "query"
+        source "url"
+        source "uri"
+        source "endpoint"
+        source "user_input"
+        source "input"
+        source "callbackUrl"
+        source "redirect_url"
+    }
+    message "Potential SSRF via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Validate URLs with new URL() and check against an allowlist of permitted hosts"
+}
+
+// JS/TS XSS via innerHTML / document.write
+rule "XSS" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "innerHTML" {
+            sanitizer "escape"
+            sanitizer "sanitize"
+            sanitizer "DOMPurify.sanitize"
+        }
+        sink "outerHTML" {
+            sanitizer "escape"
+            sanitizer "sanitize"
+        }
+        sink "document.write" {
+            sanitizer "escape"
+        }
+        sink "dangerouslySetInnerHTML" {
+            sanitizer "DOMPurify.sanitize"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "req.body"
+        source "params"
+        source "query"
+        source "body"
+        source "innerHTML"
+        source "user_input"
+        source "input"
+        source "url"
+        source "html"
+        source "text"
+    }
+    message "Potential XSS via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Use textContent instead of innerHTML, or sanitize with DOMPurify"
+}
+
+// JS/TS Open Redirect
+rule "OpenRedirect" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "$redirect" arg=0 {
+            sanitizer "validate_url"
+            sanitizer "URL"
+        }
+        sink "location.assign" arg=0 {
+            sanitizer "validate_url"
+        }
+        sink "location.replace" arg=0 {
+            sanitizer "validate_url"
+        }
+        sink "res.redirect" arg=0 {
+            sanitizer "validate_url"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "params"
+        source "query"
+        source "url"
+        source "redirect_url"
+        source "returnTo"
+        source "next"
+        source "user_input"
+    }
+    message "Potential open redirect via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Validate redirect URLs against an allowlist of permitted destinations"
+}
+
+// JS/TS Prototype Pollution
+rule "PrototypePollution" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "$merge" arg=0 {
+            sanitizer "Object.create(null)"
+        }
+        sink "$extend" arg=0 {}
+        sink "$assign" arg=0 {}
+        sink "$deepMerge" arg=0 {}
+    }
+    sources {
+        source "req.body"
+        source "req.params"
+        source "req.query"
+        source "body"
+        source "params"
+        source "query"
+        source "JSON.parse"
+        source "user_input"
+        source "input"
+    }
+    message "Potential prototype pollution via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Use Object.create(null) for clean objects, or validate input has no __proto__ or constructor keys"
+}
+
+// JS/TS Weak Cryptography
+rule "WeakCryptography" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "createHash" arg=0 {}
+        sink "createCipher" arg=0 {}
+    }
+    sources {
+        source "md5"
+        source "sha1"
+        source "MD5"
+        source "SHA1"
+    }
+    message "Weak cryptographic algorithm via {sink}: {tainted_vars}."
+    fix "Use SHA-256 or stronger (crypto.createHash('sha256'))"
+}
+
+// JS/TS Eval Injection
+rule "EvalInjection" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "eval" arg=0 {
+            sanitizer "JSON.stringify"
+        }
+        sink "Function" arg=0 {
+            sanitizer "JSON.stringify"
+        }
+        sink "setTimeout" arg=0 {
+            sanitizer "JSON.stringify"
+        }
+        sink "setInterval" arg=0 {
+            sanitizer "JSON.stringify"
+        }
+    }
+    sources {
+        source "process.argv"
+        source "req.params"
+        source "req.query"
+        source "req.body"
+        source "params"
+        source "query"
+        source "body"
+        source "user_input"
+        source "input"
+    }
+    message "Potential code injection via {sink} with tainted argument(s): {tainted_vars}."
+    fix "Never pass user input to eval(). Use JSON.parse() for data, or a sandboxed evaluator"
+}
+
+// JS/TS Scent Leakage (logging sensitive data)
+rule "ScentLeakage" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "console.log" {}
+        sink "console.error" {}
+        sink "console.warn" {}
+        sink "console.info" {}
+        sink "$write" {}
+        sink "$send" {}
+    }
+    sources {
+        source "password"
+        source "secret"
+        source "token"
+        source "api_key"
+        source "apikey"
+        source "access_token"
+        source "private_key"
+        source "credential"
+        source "authorization"
+    }
+    message "Scent Leakage: sensitive data may reach {sink} via scented variable(s): {tainted_vars}."
+    fix "Avoid printing sensitive data — redact or mask before output"
+}
+
+// JS/TS Hardcoded Secrets
+rule "HardcodedSecrets" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
+    sinks {
+        sink "password=" {}
+        sink "secret=" {}
+        sink "api_key=" {}
+        sink "apikey=" {}
+        sink "token=" {}
+        sink "access_token=" {}
+        sink "private_key=" {}
+    }
+    sources {
+        source "params"
+        source "env"
+        source "user_input"
+        source "input"
+    }
+    message "Hardcoded secret detected via {sink}."
+    fix "Use environment variables or a secrets manager"
+}
