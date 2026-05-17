@@ -50,8 +50,19 @@ let () =
   Printf.printf "\nTainted vars: %d\n" (List.length tainted);
   List.iter (Printf.printf "  %s\n") tainted;
   
+  (* Build taint context for rule engine *)
+  let files = List.fold_left (fun acc n ->
+    let f = n.Catseye_types.Security_node.file in
+    if List.mem f acc then acc else f :: acc
+  ) [] nodes in
+  let by_file = List.map (fun f -> (f, Catseye_engine.Db.get_tainted_vars_in_file db f)) files in
+  let ctx = Catseye_rules.Interpreter.make_taint_context
+    ~global:tainted ~by_file
+    ~import_map:(Catseye_engine.Symbol_table.build_import_map nodes)
+    () in
+  
   (* Run rules *)
-  let findings = Catseye_rules.Interpreter.run_all rules nodes tainted in
+  let findings = Catseye_rules.Interpreter.run_all rules nodes ctx in
   Printf.printf "\nFindings: %d\n" (List.length findings);
   List.iter (fun f ->
     Printf.printf "  [%s] %s %s:%d\n" f.Catseye_types.Finding.rule f.Catseye_types.Finding.severity

@@ -51,8 +51,13 @@ let parse_shard_yml (path : string) : (shard_dep list, [> `Msg of string ]) resu
         else
           (* Look for a dependency name line: "  name:" (indented, not version/github) *)
           (match String.split_on_char ':' trimmed with
-           | [name] when String.length name > 0 && not (String.contains name ' ') ->
+           | [name] | [name; _] when String.length name > 0 && not (String.contains name ' ') ->
              (* This is a dependency name — collect its children *)
+             (* Calculate dep indent to properly scope child collection *)
+             let dep_indent =
+               let trimmed = String.trim line in
+               String.length line - String.length trimmed
+             in
              let dep_name = String.trim name in
              let rec collect_children children rest =
                match rest with
@@ -61,7 +66,7 @@ let parse_shard_yml (path : string) : (shard_dep list, [> `Msg of string ]) resu
                  let c_trim = String.trim c_line in
                  if c_trim = "" then collect_children children c_rest
                  else if String.length c_line > 0 &&
-                         (c_line.[0] = ' ' || c_line.[0] = '\t') then
+                         (c_line.[dep_indent] = ' ' || c_line.[dep_indent] = '\t') then
                    (* It's a child line *)
                    collect_children (c_trim :: children) c_rest
                  else children, rest

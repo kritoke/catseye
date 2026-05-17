@@ -10,20 +10,23 @@
    Dominator-based FP suppression: if a sanitizer call dominates
    the block containing a sink, the finding is suppressed because
    every path to the sink passes through the sanitizer.
+
+   Thread-safe: dominator context is passed explicitly through the
+   transfer function chain rather than via module-level mutable refs.
+   This allows safe concurrent analysis with OCaml 5 Domains.
 *)
-
-(* ── Dominator context (threaded via refs) ──────────────────────────── *)
-
-(** Current dominator analysis, set per analyze_cfg call.
-    Used by check_call_sinks to suppress guarded findings. *)
-let current_dom_data : Cfg_dominator.t option ref = ref None
-
-(** Current block ID being analyzed, set per worklist iteration.
-    Used by check_call_sinks to query dominance for the current block. *)
-let current_block_id : int ref = ref (-1)
 
 open Il_types
 open Catseye_rules.Types
+
+(* ── Dominator context (passed explicitly, not via mutable refs) ─────────── *)
+
+(** Dominator analysis context threaded through the worklist.
+    Replaces module-level refs to enable safe concurrent analysis. *)
+type dom_ctx = {
+  dom : Cfg_dominator.t option;
+  block_id : int;
+}
 
 (* ── Lvalue utilities ──────────────────────────────────────────────── *)
 
@@ -123,7 +126,7 @@ let matches_source (lv : lval) (sources : source_def list) : bool =
 (* Forward declare with mutual recursion *)
 let rec transfer_node (state : taint_state) (node : il_node)
     (sources : source_def list) (rules : rule_def list)
-    (file : string) (lang : string) : taint_state =
+    (file : string) (lang : string) (dom_ctx : dom_ctx) : taint_state =
   match node with
   | ILAssign (lv, expr, _pos) ->
     (* If RHS is tainted, propagate to LHS *)
@@ -162,7 +165,7 @@ let rec transfer_node (state : taint_state) (node : il_node)
 
   | ILCall (result_lv, fn_name, args, pos) ->
     (* Check if this call matches a sink with tainted args *)
-    let new_findings = check_call_sinks fn_name args pos file lang rules state in
+    let new_findings = check_call_sinks fn_name args pos file lang rules state dom_ctx in
     (* Propagate taint through call if result is assigned *)
     let any_tainted = List.exists (is_expr_tainted state) args in
     let receiver_tainted =
@@ -186,9 +189,9 @@ let rec transfer_node (state : taint_state) (node : il_node)
     state'
 
   | ILBranch (_, then_block, else_block, _) ->
-    let then_state = transfer_block state then_block sources rules file lang in
+    let then_state = transfer_block state then_block sources rules file lang dom_ctx in
     let else_state = match else_block with
-      | Some eb -> transfer_block state eb sources rules file lang
+      | Some eb -> transfer_block state eb sources rules file lang dom_ctx
       | None -> state
     in
     union_state then_state else_state
@@ -200,19 +203,19 @@ let rec transfer_node (state : taint_state) (node : il_node)
     state
 
   | ILResume (block, _) ->
-    transfer_block state block sources rules file lang
+    transfer_block state block sources rules file lang dom_ctx
 
 and transfer_block (state : taint_state) (block : il_block)
     (sources : source_def list) (rules : rule_def list)
-    (file : string) (lang : string) : taint_state =
+    (file : string) (lang : string) (dom_ctx : dom_ctx) : taint_state =
   List.fold_left (fun st node ->
-    transfer_node st node sources rules file lang
+    transfer_node st node sources rules file lang dom_ctx
   ) state block
 
 (* Check a call against all sink rules *)
 and check_call_sinks (fn_name : string) (args : il_expr list)
     (pos : pos) (file : string) (lang : string)
-    (rules : rule_def list) (state : taint_state)
+    (rules : rule_def list) (state : taint_state) (dom_ctx : dom_ctx)
     : Catseye_types.Finding.t list =
   List.concat_map (fun (rule : rule_def) ->
     List.concat_map (fun (sink : sink_def) ->
@@ -229,11 +232,10 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
         else begin
           (* Dominator-based suppression: if a sanitizer dominates this block,
              the sink is guarded on all paths from entry. Suppress the finding. *)
-          let dominated_by_sanitizer = match !current_dom_data with
+          let dominated_by_sanitizer = match dom_ctx.dom with
             | None -> false
             | Some dom ->
-              let bid = !current_block_id in
-              Cfg_dominator.is_sanitized_by dom bid sink.sanitizers
+              Cfg_dominator.is_sanitized_by dom dom_ctx.block_id sink.sanitizers
           in
           if dominated_by_sanitizer then []
           else begin
@@ -299,7 +301,10 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
 
     Instead, we use ocamlgraph's graph APIs (G.pred for predecessor
     lookup, G.succ for successor iteration) which are already
-    available through the Cfg_graph adapter. *)
+    available through the Cfg_graph adapter.
+
+    Thread-safe: dominator context is passed explicitly via dom_ctx,
+    enabling safe concurrent analysis with OCaml 5 Domains. *)
 
 let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
     (rules : rule_def list) (file : string) (lang : string)
@@ -310,7 +315,6 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
     try Some (Cfg_dominator.compute cfg)
     with _ -> None
   in
-  current_dom_data := dom;
 
   (* State per block *)
   let states = Hashtbl.create 32 in
@@ -336,7 +340,8 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
 
       let nodes = Cfg_graph.block_nodes cfg block_id in
       if nodes <> [] then begin
-        current_block_id := block_id;
+        (* Build dominator context for this block — passed explicitly, not via refs *)
+        let dom_ctx = { dom; block_id } in
         (* Input state = union of predecessor outputs *)
         let pred_ids = Cfg_graph.G.pred cfg.Cfg_graph.graph block_id in
         let input_state = List.fold_left (fun acc pid ->
@@ -351,7 +356,7 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
         ) input_state cfg.Cfg_graph.fn_params in
 
         (* Transfer through this block's nodes *)
-        let output = transfer_block seeded_state nodes sources rules file lang in
+        let output = transfer_block seeded_state nodes sources rules file lang dom_ctx in
 
         Hashtbl.replace states block_id output;
 

@@ -26,8 +26,6 @@ let take_linear (nodes : il_node list) : il_node list * il_node list =
 
 (* ── Public API ─────────────────────────────────────────────────────── *)
 
-(* ── Public API ─────────────────────────────────────────────────────── *)
-
 let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
     (fn : il_function) : (Cfg_graph.t, cfg_error) result =
   let cfg = Cfg_graph.create fn in

@@ -326,6 +326,18 @@ let with_timeout ~ms f =
       raise (Failure msg)
     | e -> raise e
 
+(* ── AI finding converter ───────────────────────────────────────────── *)
+
+(** Converts an Ai_linter.Types.finding to Catseye_types.Finding.t *)
+let convert_ai_finding ~lang (f : Ai_linter.Types.finding) =
+  { Catseye_types.Finding.rule = f.rule_id;
+    severity = Ai_linter.Types.severity_to_string f.severity;
+    file = f.file;
+    line = f.line; message = f.message;
+    flow = []; language = lang; dependency = None; reachability = None;
+    suggestion = f.suggestion; }
+
+
 (* ── Main pipeline ──────────────────────────────────────────────────── *)
 
 let run (config : t) : int =
@@ -583,46 +595,14 @@ let run (config : t) : int =
         | Ok mod_ ->
           (match mod_.mod_lang with
            | Gleam ->
-            let convert_finding (f : Ai_linter.Types.finding) =
-              { Catseye_types.Finding.rule = f.rule_id;
-                severity = Ai_linter.Types.severity_to_string f.severity;
-                file = f.file;
-                line = f.line; message = f.message;
-                flow = []; language = "gleam"; dependency = None; reachability = None;
-                suggestion = f.suggestion; }
-            in
-            List.map convert_finding (Ai_linter.Gleam_rules.analyze_module mod_)
+            List.map (convert_ai_finding ~lang:"gleam") (Ai_linter.Gleam_rules.analyze_module mod_)
            | Crystal -> []
            | JavaScript | TypeScript ->
-            let convert_finding (f : Ai_linter.Types.finding) =
-              { Catseye_types.Finding.rule = f.rule_id;
-                severity = Ai_linter.Types.severity_to_string f.severity;
-                file = f.file;
-                line = f.line; message = f.message;
-                flow = []; language = "javascript"; dependency = None; reachability = None;
-                suggestion = f.suggestion; }
-            in
-            List.map convert_finding (Ai_linter.Javascript_rules.analyze_module mod_)
+            List.map (convert_ai_finding ~lang:"javascript") (Ai_linter.Javascript_rules.analyze_module mod_)
            | Svelte ->
-            let convert_finding (f : Ai_linter.Types.finding) =
-              { Catseye_types.Finding.rule = f.rule_id;
-                severity = Ai_linter.Types.severity_to_string f.severity;
-                file = f.file;
-                line = f.line; message = f.message;
-                flow = []; language = "svelte"; dependency = None; reachability = None;
-                suggestion = f.suggestion; }
-            in
-            List.map convert_finding (Ai_linter.Svelte_rules.analyze_module mod_)
+            List.map (convert_ai_finding ~lang:"svelte") (Ai_linter.Svelte_rules.analyze_module mod_)
            | Other "ocaml" ->
-            let convert_finding (f : Ai_linter.Types.finding) =
-              { Catseye_types.Finding.rule = f.rule_id;
-                severity = Ai_linter.Types.severity_to_string f.severity;
-                file = f.file;
-                line = f.line; message = f.message;
-                flow = []; language = "ocaml"; dependency = None; reachability = None;
-                suggestion = f.suggestion; }
-            in
-            List.map convert_finding (Ai_linter.Ocaml_rules.analyze_module mod_)
+            List.map (convert_ai_finding ~lang:"ocaml") (Ai_linter.Ocaml_rules.analyze_module mod_)
            | _ -> [])
       with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
     ) sources in

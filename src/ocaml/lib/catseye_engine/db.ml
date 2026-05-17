@@ -15,6 +15,7 @@ type taint_status =
   | Clean
   | Tainted of { source : string; field : string option; origin : taint_source }
   | Sanitized of { by : string }
+  | Guarded of { at_line : int }  (** Validated by a guard at this line; clean for sinks after it *)
 
 type taint_record = {
   var_name : string;
@@ -54,7 +55,9 @@ let get_tainted_vars_in_file (db : t) (file : string) : string list =
   match StringMap.find_opt file db with
   | Some records ->
     List.filter_map (fun r ->
-      if r.status <> Clean then Some r.var_name else None
+      match r.status with
+      | Tainted _ -> Some r.var_name
+      | Clean | Sanitized _ | Guarded _ -> None
     ) records
   | None -> []
 
@@ -97,10 +100,21 @@ let remove_record (db : t) (var : string) (file : string) : t =
   | None -> db
 
 (** Remove a tainted var from a specific file for sinks at lines >= guard_line.
-    If the var was tainted at a line before the guard, keep the taint record
-    but mark it as guarded. *)
-let apply_guard (db : t) (var : string) (file : string) (_guard_line : int) : t =
-  remove_record db var file
+    Changes the taint status from Tainted to Guarded, preserving the record for
+    sinks at lines before the guard. This allows the record to remain in the DB
+    for cross-file analysis while still suppressing findings on post-guard sinks. *)
+let apply_guard (db : t) (var : string) (file : string) (guard_line : int) : t =
+  match StringMap.find_opt file db with
+  | Some records ->
+    let updated = List.map (fun r ->
+      if r.var_name = var then
+        match r.status with
+        | Tainted _ -> { r with status = Guarded { at_line = guard_line } }
+        | _ -> r
+      else r
+    ) records in
+    StringMap.add file updated db
+  | None -> db
 
 (** Shared taint-check: given an Assign node, return the source var name if
     any ArgVar arg is tainted (same-file or global) and none of the args is a

@@ -43,14 +43,14 @@ just test
 
 ## Supported Languages
 
-| Language | Extensions | Security Rules | AI Lint | Code Smells | Extractor |
-|----------|-----------|:---:|:---:|:---:|---|
-| Crystal | `.cr` | ✅ 12 rules | ✅ 37-entry hallucination DB | ✅ 16 detectors | Crystal extractor + AST bridge |
-| Gleam | `.gleam` | ✅ 12 rules | ✅ 12 detectors | ✅ 16 detectors | tree-sitter |
-| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | ✅ 10 rules | ✅ 60+ hallucinations + antipatterns | ✅ 16 detectors | tree-sitter |
-| TypeScript | `.ts` `.tsx` | ✅ 10 rules | ✅ (shares JS rules) | ✅ 16 detectors | tree-sitter |
-| Svelte | `.svelte` | ✅ XSS/SSRF | ✅ Svelte 4→5 + framework confusion | ✅ 16 detectors | tree-sitter (two-pass) |
-| OCaml | `.ml` `.mli` | ✅ Basic | ✅ 55+ hallucinations + unsafe ops | ✅ 16 detectors | tree-sitter |
+| Language   | Extensions                 | Security Rules |               AI Lint                |   Code Smells   | Extractor                      |
+| ---------- | -------------------------- | :------------: | :----------------------------------: | :-------------: | ------------------------------ |
+| Crystal    | `.cr`                      |  ✅ 12 rules   |     ✅ 37-entry hallucination DB     | ✅ 16 detectors | Crystal extractor + AST bridge |
+| Gleam      | `.gleam`                   |  ✅ 12 rules   |           ✅ 12 detectors            | ✅ 16 detectors | tree-sitter                    |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations + antipatterns | ✅ 16 detectors | tree-sitter                    |
+| TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
+| Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
+| OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
 
 ## CLI Reference
 
@@ -71,7 +71,7 @@ catseye [options] <directory>
   --cfg-max-blocks <n>       max blocks per function CFG (default: 500)
   --cfg-timeout-ms <ms>      timeout per function CFG build (default: 5000)
   --predator-vision          enable reachability analysis (live/dormant/safe)
-  --crows-nest               enable supply chain audit (CVE + staleness)
+  --crows-nest               enable supply chain audit (Crystal shard.yml + Gleam gleam.toml only; very limited CVE data)
   --claws                    enable code smell detection
   --ai-lint                  enable AI antipattern detection
   -p, --parallelism <n>      parallel workers (0 = auto)
@@ -85,22 +85,22 @@ catseye [options] <directory>
 
 Rules are KDL files — different rule sets per language, all using the same taint engine.
 
-| Rule | Severity | Crystal/Gleam | JS/TS | Svelte |
-|------|----------|:---:|:---:|:---:|
-| **SSRF** | Critical | `HTTP::Client.get`, `hackney.get` | `$fetch`, `$get` | `$fetch` |
-| **CommandInjection** | Critical | `system`, `Process.run` | `child_process.$exec` | — |
-| **PathTraversal** | High | `File.read`, `File.write` | `$readFile`, `$writeFile` | — |
-| **SQLInjection** | Critical | `db.exec`, `db.query` | — | — |
-| **XSS** | Critical | — | `innerHTML`, `document.write` | `{@html}`, `innerHTML` |
-| **OpenRedirect** | Medium | `redirect_to` | `$redirect`, `location.assign` | — |
-| **PrototypePollution** | High | — | `$merge`, `Object.assign` | — |
-| **EvalInjection** | Critical | — | `eval`, `Function`, `setTimeout` | — |
-| **EnvInjection** | High | `ENV[]=` | — | — |
-| **LDAPInjection** | High | `LDAP.query` | — | — |
-| **ScentLeakage** | High | `puts`, `Log.info` | `console.log` | — |
-| **ReDoS** | Medium | `Regex.new` | `new RegExp` | — |
-| **WeakCryptography** | Medium | `Digest::MD5` | `createHash('md5')` | — |
-| **HardcodedSecrets** | Medium | `password=` | `api_key=` | — |
+| Rule                   | Severity |           Crystal/Gleam           |              JS/TS               |         Svelte         |
+| ---------------------- | -------- | :-------------------------------: | :------------------------------: | :--------------------: |
+| **SSRF**               | Critical | `HTTP::Client.get`, `hackney.get` |         `$fetch`, `$get`         |        `$fetch`        |
+| **CommandInjection**   | Critical |      `system`, `Process.run`      |      `child_process.$exec`       |           —            |
+| **PathTraversal**      | High     |     `File.read`, `File.write`     |    `$readFile`, `$writeFile`     |           —            |
+| **SQLInjection**       | Critical |       `db.exec`, `db.query`       |                —                 |           —            |
+| **XSS**                | Critical |                 —                 |  `innerHTML`, `document.write`   | `{@html}`, `innerHTML` |
+| **OpenRedirect**       | Medium   |           `redirect_to`           |  `$redirect`, `location.assign`  |           —            |
+| **PrototypePollution** | High     |                 —                 |    `$merge`, `Object.assign`     |           —            |
+| **EvalInjection**      | Critical |                 —                 | `eval`, `Function`, `setTimeout` |           —            |
+| **EnvInjection**       | High     |             `ENV[]=`              |                —                 |           —            |
+| **LDAPInjection**      | High     |           `LDAP.query`            |                —                 |           —            |
+| **ScentLeakage**       | High     |        `puts`, `Log.info`         |          `console.log`           |           —            |
+| **ReDoS**              | Medium   |            `Regex.new`            |           `new RegExp`           |           —            |
+| **WeakCryptography**   | Medium   |           `Digest::MD5`           |       `createHash('md5')`        |           —            |
+| **HardcodedSecrets**   | Medium   |            `password=`            |            `api_key=`            |           —            |
 
 Rules are KDL files in `src/ocaml/rules/` — add your own by creating a `.kdl` file.
 
@@ -110,69 +110,84 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 
 #### JavaScript / TypeScript (60+ rules)
 
-| Category | Examples |
-|----------|----------|
-| **Hallucinated methods** | `strip()` → `.trim()`, `len()` → `.length`, `append()` → `.push()`, `print()` → `console.log()` |
-| **Framework confusion** | Python (`dict`, `range`, `enumerate`), Ruby (`puts`, `select`, `compact`), Java (`System.out.println`), PHP (`var_dump`, `strlen`) |
-| **Security** | `eval()`, `new Function()`, `child_process.exec()`, prototype pollution (`__proto__`), `Math.random()` for security |
-| **Best practices** | `alert()`, `debugger`, `console.log` left in code, `document.write()` deprecated |
-| **Code quality** | `==` instead of `===`, deep `.then()` chains (4+), `escape()`/`unescape()` deprecated, incomplete `.replace()` sanitization |
+| Category                 | Examples                                                                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Hallucinated methods** | `strip()` → `.trim()`, `len()` → `.length`, `append()` → `.push()`, `print()` → `console.log()`                                    |
+| **Framework confusion**  | Python (`dict`, `range`, `enumerate`), Ruby (`puts`, `select`, `compact`), Java (`System.out.println`), PHP (`var_dump`, `strlen`) |
+| **Security**             | `eval()`, `new Function()`, `child_process.exec()`, prototype pollution (`__proto__`), `Math.random()` for security                |
+| **Best practices**       | `alert()`, `debugger`, `console.log` left in code, `document.write()` deprecated                                                   |
+| **Code quality**         | `==` instead of `===`, deep `.then()` chains (4+), `escape()`/`unescape()` deprecated, incomplete `.replace()` sanitization        |
 
 #### Svelte (40+ rules)
 
-| Category | Examples |
-|----------|----------|
-| **Svelte 4→5 migration** | `createEventDispatcher` → callback props, `beforeUpdate`/`afterUpdate` → `$effect()`, Svelte 4 stores → runes |
-| **Framework confusion** | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
-| **XSS** | `{@html}` with dynamic content, `innerHTML`, `document.write` |
-| **Antipatterns** | `tick()` overuse, Svelte 4 store patterns in runes mode |
+| Category                 | Examples                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| **Svelte 4→5 migration** | `createEventDispatcher` → callback props, `beforeUpdate`/`afterUpdate` → `$effect()`, Svelte 4 stores → runes   |
+| **Framework confusion**  | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
+| **XSS**                  | `{@html}` with dynamic content, `innerHTML`, `document.write`                                                   |
+| **Antipatterns**         | `tick()` overuse, Svelte 4 store patterns in runes mode                                                         |
 
 #### OCaml (55+ rules)
 
-| Category | Examples |
-|----------|----------|
+| Category                   | Examples                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Hallucinated functions** | Haskell: `foldl` → `List.fold_left`, `putStrLn` → `print_endline`, `getLine` → `read_line`. Scala: `println`, `asInstanceOf`. Python: `range`, `len`, `strip` |
-| **Unsafe operations** | `Obj.magic`, `Obj.set_field`, `Marshal.from_channel`, `Sys.command` |
-| **Common mistakes** | `Option.get` (raises on None), `List.hd`/`List.tl` (partial), `Hashtbl.find` (raises Not_found) |
-| **Best practices** | `failwith`/`raise` → use `Result.t`, Printf without `open Printf` |
+| **Unsafe operations**      | `Obj.magic`, `Obj.set_field`, `Marshal.from_channel`, `Sys.command`                                                                                           |
+| **Common mistakes**        | `Option.get` (raises on None), `List.hd`/`List.tl` (partial), `Hashtbl.find` (raises Not_found)                                                               |
+| **Best practices**         | `failwith`/`raise` → use `Result.t`, Printf without `open Printf`                                                                                             |
 
 #### Crystal & Gleam
 
-| Rule | Languages | What it catches |
-|------|-----------|-----------------|
-| `hallucinated-stdlib` | Crystal | Calls to methods that don't exist (37-entry database) |
-| `hardcoded-secrets` | Both | API key patterns (Stripe, GitHub, AWS, JWT, Slack) |
-| `hardcoded-urls` | Crystal | Hardcoded http:// and IP addresses |
-| `deprecated-syntax` | Crystal | `puts`, `p`, `pp` in production code |
-| `panic-call` | Gleam | `panic` used instead of `Result` |
-| `list-wrap-unnecessary` | Gleam | `List.wrap` on collections |
+| Rule                    | Languages | What it catches                                       |
+| ----------------------- | --------- | ----------------------------------------------------- |
+| `hallucinated-stdlib`   | Crystal   | Calls to methods that don't exist (37-entry database) |
+| `hardcoded-secrets`     | Both      | API key patterns (Stripe, GitHub, AWS, JWT, Slack)    |
+| `hardcoded-urls`        | Crystal   | Hardcoded http:// and IP addresses                    |
+| `deprecated-syntax`     | Crystal   | `puts`, `p`, `pp` in production code                  |
+| `panic-call`            | Gleam     | `panic` used instead of `Result`                      |
+| `list-wrap-unnecessary` | Gleam     | `List.wrap` on collections                            |
 
 ### Code Smells (`--claws`)
 
 All 16 code smell detectors use **AST-native analysis** via `CatseyeAST.t` — they work across all supported languages.
 
-| Detector | Rule ID | Threshold |
-|----------|---------|-----------|
-| Cyclomatic complexity | `HighComplexity` | M ≥ 10 |
-| Long parameter list | `LongParameterList` | ≥ 5 params |
-| Deep nesting | `DeepNesting` | ≥ 4 levels |
-| God objects | `GodObject` | ≥ 20 defs/file |
-| DRY violations | `DRYViolation` | 4+ duplicates |
-| Long method | `LongMethod` | ≥ 30 nodes |
-| Message chain | `MessageChain` | ≥ 5 links |
-| Data class | `DataClass` | 2+ props, no behavior |
-| Data clump | `DataClump` | 3+ params always together |
-| Flag argument | `FlagArgument` | bool params |
-| Complex match | `ComplexMatch` | ≥ 5 branches |
-| Dead code | `DeadCode` | unreachable code |
-| Feature envy | `FeatureEnvy` | excessive cross-class calls |
-| Orphaned spawn | `OrphanedSpawn` | `spawn`/`go` without rescue/ensure |
-| Muted pack | `MutedPack` | `Channel.send` without receive |
-| Dead letter | `DeadLetter` | `Channel.close` before receive |
+| Detector              | Rule ID             | Threshold                          |
+| --------------------- | ------------------- | ---------------------------------- |
+| Cyclomatic complexity | `HighComplexity`    | M ≥ 10                             |
+| Long parameter list   | `LongParameterList` | ≥ 5 params                         |
+| Deep nesting          | `DeepNesting`       | ≥ 4 levels                         |
+| God objects           | `GodObject`         | ≥ 20 defs/file                     |
+| DRY violations        | `DRYViolation`      | 4+ duplicates                      |
+| Long method           | `LongMethod`        | ≥ 30 nodes                         |
+| Message chain         | `MessageChain`      | ≥ 5 links                          |
+| Data class            | `DataClass`         | 2+ props, no behavior              |
+| Data clump            | `DataClump`         | 3+ params always together          |
+| Flag argument         | `FlagArgument`      | bool params                        |
+| Complex match         | `ComplexMatch`      | ≥ 5 branches                       |
+| Dead code             | `DeadCode`          | unreachable code                   |
+| Feature envy          | `FeatureEnvy`       | excessive cross-class calls        |
+| Orphaned spawn        | `OrphanedSpawn`     | `spawn`/`go` without rescue/ensure |
+| Muted pack            | `MutedPack`         | `Channel.send` without receive     |
+| Dead letter           | `DeadLetter`        | `Channel.close` before receive     |
 
 ### Supply Chain Audit (`--crows-nest`)
 
-CVE scanning via [OSV.dev](https://osv.dev) and staleness detection for Crystal Shards and Gleam Hex packages. Results cached in SQLite (24h TTL).
+> ⚠️ **Very limited.** Only supports Crystal `shard.yml` and Gleam `gleam.toml`. No JavaScript/TypeScript (npm/pnpm/yarn), Python, Ruby, Rust, Go, or other ecosystems. CVE data via [OSV.dev](https://osv.dev) has **very limited coverage** — most packages return no vulnerabilities even when known issues exist. Use dedicated tools like `npm audit`, `cargo audit`, or `safety` for real supply chain auditing.
+
+What it does:
+
+- Parses `shard.yml` → Crystal Shards dependencies (with versions from GitHub)
+- Parses `gleam.toml` → Gleam Hex dependencies
+- Queries OSV.dev for known CVEs (limited data coverage)
+- Checks GitHub repo activity for staleness (Crystal shards with `github:` fields)
+- Results cached in SQLite (24h TTL)
+
+What it doesn't do:
+
+- Parse `package.json`, `Cargo.toml`, `requirements.txt`, `Gemfile`, etc.
+- Run ecosystem-native audit tools (`pnpm audit`, `cargo audit`, etc.)
+- Provide comprehensive vulnerability coverage
+- Check lockfiles for exact installed versions
 
 ## Example Output
 
@@ -356,11 +371,11 @@ catseye/
 
 ## Performance
 
-| Scan | Files | Extraction | Analysis |
-|------|-------|-----------|----------|
-| Crystal only (72 files) | 72 | ~0.12s | ~0.06s |
-| Multi-language (89 files) | 72 Crystal + 17 JS/TS/Svelte | ~0.25s | ~6s |
-| OCaml self-scan | 84 | ~0.19s | ~0.15s |
+| Scan                      | Files                        | Extraction | Analysis |
+| ------------------------- | ---------------------------- | ---------- | -------- |
+| Crystal only (72 files)   | 72                           | ~0.12s     | ~0.06s   |
+| Multi-language (89 files) | 72 Crystal + 17 JS/TS/Svelte | ~0.25s     | ~6s      |
+| OCaml self-scan           | 84                           | ~0.19s     | ~0.15s   |
 
 **CFG engine** scales linearly: 500 sequential branches in 0.09ms, 10,000 nodes in 2.4ms, 500-block taint analysis in 0.75ms.
 
