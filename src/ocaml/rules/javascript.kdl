@@ -1,5 +1,9 @@
 // JS/TS Command Injection
 rule "CommandInjection" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "$exec" arg=0 {
             sanitizer "escape"
@@ -39,6 +43,10 @@ rule "CommandInjection" severity="Critical" {
 
 // JS/TS Path Traversal
 rule "PathTraversal" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "$readFile" arg=0 {
             sanitizer "path.resolve"
@@ -87,6 +95,10 @@ rule "PathTraversal" severity="High" {
 
 // JS/TS SSRF
 rule "SSRF" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "$fetch" arg=0 {
             sanitizer "URL"
@@ -132,6 +144,10 @@ rule "SSRF" severity="Critical" {
 
 // JS/TS XSS via innerHTML / document.write
 rule "XSS" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "innerHTML" {
             sanitizer "escape"
@@ -170,6 +186,10 @@ rule "XSS" severity="Critical" {
 
 // JS/TS Open Redirect
 rule "OpenRedirect" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "$redirect" arg=0 {
             sanitizer "validate_url"
@@ -203,6 +223,10 @@ rule "OpenRedirect" severity="Medium" {
 
 // JS/TS Prototype Pollution
 rule "PrototypePollution" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "$merge" arg=0 {
             sanitizer "Object.create(null)"
@@ -228,6 +252,10 @@ rule "PrototypePollution" severity="High" {
 
 // JS/TS Weak Cryptography
 rule "WeakCryptography" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "createHash" arg=0 {}
         sink "createCipher" arg=0 {}
@@ -244,6 +272,10 @@ rule "WeakCryptography" severity="Medium" {
 
 // JS/TS Eval Injection
 rule "EvalInjection" severity="Critical" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "eval" arg=0 {
             sanitizer "JSON.stringify"
@@ -275,6 +307,10 @@ rule "EvalInjection" severity="Critical" {
 
 // JS/TS Scent Leakage (logging sensitive data)
 rule "ScentLeakage" severity="High" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "console.log" {}
         sink "console.error" {}
@@ -300,6 +336,10 @@ rule "ScentLeakage" severity="High" {
 
 // JS/TS Hardcoded Secrets
 rule "HardcodedSecrets" severity="Medium" {
+    languages {
+        include "javascript"
+        include "typescript"
+    }
     sinks {
         sink "password=" {}
         sink "secret=" {}
