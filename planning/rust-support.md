@@ -54,6 +54,7 @@ Add `test/samples/rust/` to catseye self-scan to verify clean findings
 ### Phase 1: Test Fixtures
 - [x] Create `test/samples/rust/hallucinated.rs` - intentional hallucinated API patterns
 - [x] Create `test/samples/rust/unsafe.rs` - intentional unwrap/panic patterns
+- [x] Create `test/samples/rust/simple_for.rs` - for loop with hallucinated range()
 - [ ] Add to test suite
 
 ### Phase 2: Enhanced AI Lint
