@@ -14,7 +14,7 @@ jobs:
       - name: Install opam and system deps
         run: |
           sudo apt-get update -qq || true
-          sudo apt-get install -y -qq curl build-essential bubblewrap libsqlite3-dev
+          sudo apt-get install -y -qq curl build-essential bubblewrap libsqlite3-dev m4
           curl -sL https://github.com/ocaml/opam/releases/download/2.2.0/opam-2.2.0-x86_64-linux -o /tmp/opam
           chmod +x /tmp/opam
           sudo mv /tmp/opam /usr/local/bin/opam
@@ -30,8 +30,8 @@ jobs:
           # Get environment
           eval $(opam env)
           
-          # Install dune and core dependencies
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt 2>&1 | tail -20
+          # Install ALL dependencies needed for the project
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt ocaml-sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -40
           
           # cd to ocaml dir and build
           cd src/ocaml
