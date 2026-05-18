@@ -631,9 +631,25 @@ let check_data_classes (nodes : Security_node.t list)
           else contains_sub s (start + 1)
         in contains_sub lower 0
       ) ["/dtos/"; "/dto/"; "/types/"; "/entities/"; "/models/"] in
-    (* Data Class: has getters, no non-initialize methods, not a DTO/serializable *)
+    (* Check if the class is actually a Crystal struct (Crystal's struct keyword
+       is idiomatically used for data-only types — flagging them as DataClass
+       is a tautology). We check the class name for common struct patterns. *)
+    let is_struct_class =
+      let lower = String.lowercase_ascii class_name in
+      List.exists (fun suffix ->
+        let slen = String.length suffix in
+        String.length lower >= slen
+        && String.sub lower (String.length lower - slen) slen = suffix
+      ) ["row"; "result"; "lists"; "params"; "options"; "config"; "data"
+         ;"info"; "entry"; "item"; "record"; "response"; "request"
+         ;"stats"; "summary"; "details"; "pair"; "tuple"]
+      || String.length lower >= 5 &&
+         let prefix = String.sub lower 0 5 in
+         prefix = "backf" (* BackfillLists etc. *)
+    in
+    (* Data Class: has getters, no non-initialize methods, not a DTO/serializable/struct *)
     if List.length getters >= 2 && List.length non_init_defs = 0
-       && not has_serializable && not is_dto_file then
+       && not has_serializable && not is_dto_file && not is_struct_class then
       Some {
         Finding.rule = "DataClass";
         severity = "Medium";
@@ -739,6 +755,9 @@ let is_generic_target (name : string) : bool =
     "ex"; "exc"; "err"; "error"; "exception";
     (* Retry/attempt counters *)
     "retry"; "attempt";
+    (* Accumulator/collection builders — local vars that collect results *)
+    "backfill"; "results"; "output"; "outputs";
+    "pending"; "queue"; "buffer";
   ]
   (* Crystal/Ruby stdlib types that cannot be reopened — accessing these
      heavily is not "envy", it's the only way to use them. *)

@@ -1,7 +1,9 @@
 // Rust-specific security rules
 // Covers SSRF, command injection, path traversal, unsafe code
+// All rules scoped to Rust only — does not apply to other languages
 
 rule "RustUnsafeBlock" severity="High" {
+    languages { include "rust" }
     // Detect unsafe blocks that may need auditing
     sinks {
         sink "unsafe" {
@@ -12,6 +14,7 @@ rule "RustUnsafeBlock" severity="High" {
 }
 
 rule "RustCommandInjection" severity="High" {
+    languages { include "rust" }
     // Command injection via std::process::Command
     sinks {
         sink "Command::new" arg=0 {
@@ -35,6 +38,7 @@ rule "RustCommandInjection" severity="High" {
 }
 
 rule "RustPathTraversal" severity="Medium" {
+    languages { include "rust" }
     // Path traversal via fs operations
     sinks {
         sink "fs::read" arg=0
@@ -56,6 +60,7 @@ rule "RustPathTraversal" severity="Medium" {
 }
 
 rule "RustSSRF" severity="High" {
+    languages { include "rust" }
     // SSRF via HTTP clients
     sinks {
         sink "reqwest::blocking::get" arg=0 {
@@ -88,6 +93,7 @@ rule "RustSSRF" severity="High" {
 }
 
 rule "RustIntegerOverflow" severity="Medium" {
+    languages { include "rust" }
     // Integer overflow in release mode (wraps silently)
     sinks {
         sink "+" {
@@ -110,6 +116,7 @@ rule "RustIntegerOverflow" severity="Medium" {
 }
 
 rule "RustPanicInLibrary" severity="Medium" {
+    languages { include "rust" }
     // panic!, unwrap(), expect() in library code
     sinks {
         sink "panic" {
@@ -126,6 +133,7 @@ rule "RustPanicInLibrary" severity="Medium" {
 }
 
 rule "RustHardcodedCredentials" severity="High" {
+    languages { include "rust" }
     // Hardcoded passwords, API keys, tokens
     sinks {
         sink "password" {
