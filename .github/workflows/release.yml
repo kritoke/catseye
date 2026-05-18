@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
 
 jobs:
   build:
@@ -13,18 +13,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq opam curl
-          npm install -g tree-sitter-cli
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq bubblewrap curl 2>/dev/null || true
+          curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh
 
       - name: Setup OCaml
-        uses: ocaml/setup-ocaml@v2
-        with:
-          ocaml-compiler: ocaml-base-compiler
-          opam-depext: true
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          opam init --disable-sandboxing --yes
+          opam switch create . ocaml-base-compiler.5.4.1 --yes
+          eval $(opam env)
+
+      - name: Install npm packages
+        run: npm install -g tree-sitter-cli
 
       - name: Build
         run: |
+          eval $(opam env)
           opam install --deps-only -y .
           dune build --profile release
           mkdir -p bin
