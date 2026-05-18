@@ -30,11 +30,11 @@ jobs:
           # Get environment
           eval $(opam env)
           
-          # Install dependencies from project
+          # Install dependencies from project's opam file (in src/ocaml/)
+          cd src/ocaml
           opam install -y . 2>&1 | tail -30
           
-          # Build the project
-          cd src/ocaml
+          # Build with opam exec
           opam exec -- dune build --profile release
           mkdir -p ../../bin
           cp _build/default/bin/main.exe ../../bin/catseye-ocaml
