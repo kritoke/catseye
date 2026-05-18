@@ -177,6 +177,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
             | ".js" | ".jsx" | ".mjs" | ".cjs" -> "javascript"
             | ".svelte" -> "svelte"
             | ".ml" | ".mli" -> "ocaml"
+            | ".rs" -> "rust"
             | _ -> "unknown"
           in
           (* Apply lang_filter *)
