@@ -51,6 +51,7 @@ just test
 | TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
 | Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
+| Rust       | `.rs`                      |    🔜 Future   |        ✅ 4 detectors (WASM)        | 🔜 Future      | tree-sitter (WASM)              |
 
 ## CLI Reference
 
@@ -60,6 +61,7 @@ catseye [options] <directory>
   -f, --format <fmt>         terminal (default), json, sarif, markdown, dot
   -o, --output <path>        write results to file
   -r, --rules <path>         rules directory (default: rules/)
+  --config <path>            config file path (default: .catseye.toml in target or parents)
   --lang <lang>              all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml
   --no-color                 disable colored output
   --no-cache                 disable extraction cache
@@ -73,7 +75,9 @@ catseye [options] <directory>
   --predator-vision          enable reachability analysis (live/dormant/safe)
   --crows-nest               enable supply chain audit (Crystal shard.yml + Gleam gleam.toml only; very limited CVE data)
   --claws                    enable code smell detection
-  --ai-lint                  enable AI antipattern detection
+  --ai-lint                  enable AI antipattern detection (Gleam, Crystal, Rust)
+  --suppress <rules>         comma-separated rule IDs to suppress (e.g., unused-let,InsecureRandom)
+  --include-deps             include shard dependencies in scan (Crystal only)
   -p, --parallelism <n>      parallel workers (0 = auto)
   -v, --version              show version
   -h, --help                 show help
@@ -146,6 +150,15 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 | `deprecated-syntax`     | Crystal   | `puts`, `p`, `pp` in production code                  |
 | `panic-call`            | Gleam     | `panic` used instead of `Result`                      |
 | `list-wrap-unnecessary` | Gleam     | `List.wrap` on collections                            |
+
+#### Rust
+
+| Rule                   | What it catches                                              |
+| ---------------------- | -------------------------------------------------------------|
+| `HallucinatedFunction` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
+| `UnsafePanic`          | `unwrap()`, `expect()`, `panic!()` without error handling    |
+| `RustInefficiency`     | Unnecessary clones, `String::from(&var)`                     |
+| `TodoFound`            | `TODO`/`FIXME` in production code                             |
 
 ### Code Smells (`--claws`)
 
