@@ -14,7 +14,7 @@ jobs:
       - name: Install opam and system deps
         run: |
           sudo apt-get update -qq || true
-          sudo apt-get install -y -qq curl build-essential bubblewrap libsqlite3-dev m4 darcs
+          sudo apt-get install -y -qq curl build-essential bubblewrap libsqlite3-dev m4
           curl -sL https://github.com/ocaml/opam/releases/download/2.2.0/opam-2.2.0-x86_64-linux -o /tmp/opam
           chmod +x /tmp/opam
           sudo mv /tmp/opam /usr/local/bin/opam
@@ -24,7 +24,7 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           
-          # Initialize opam - disable darcs warning
+          # Initialize opam - ignore darcs warning
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
           
           # Get environment
