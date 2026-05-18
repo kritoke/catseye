@@ -27,6 +27,7 @@ curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/cats
 ```
 
 After extraction, run `./SETUP_GRAMMARS.sh` to install tree-sitter grammars:
+
 ```bash
 cd catseye
 ./SETUP_GRAMMARS.sh
@@ -51,6 +52,7 @@ EOF
 ### Build from Source
 
 **Requirements:**
+
 - **OCaml** 5.x + **Dune** 3.x
 - **tree-sitter** CLI + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
 - **Crystal** 1.x (optional — needed only for native Crystal extractor)
@@ -96,7 +98,7 @@ just scan-json path/to/project/src
 | TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
 | Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
-| Rust       | `.rs`                      |  ✅ Basic    |        ✅ 4 detectors (WASM)         | ✅ 16 detectors | tree-sitter (native)         |
+| Rust       | `.rs`                      |    ✅ Basic    |        ✅ 4 detectors (WASM)         | ✅ 16 detectors | tree-sitter (native)           |
 
 ## CLI Reference
 
@@ -134,14 +136,14 @@ catseye [options] <directory>
 
 Rules are KDL files — different rule sets per language, all using the same taint engine.
 
-| Rule                   | Severity |           Crystal/Gleam           |              JS/TS               |         Svelte         |        Rust        |
-| ---------------------- | -------- | :-------------------------------: | :------------------------------: | :--------------------: | :----------------: |
-| **SSRF**               | Critical | `HTTP::Client.get`, `hackney.get` |         `$fetch`, `$get`         |        `$fetch`        |        —         |
+| Rule                   | Severity |           Crystal/Gleam           |              JS/TS               |         Svelte         |          Rust           |
+| ---------------------- | -------- | :-------------------------------: | :------------------------------: | :--------------------: | :---------------------: |
+| **SSRF**               | Critical | `HTTP::Client.get`, `hackney.get` |         `$fetch`, `$get`         |        `$fetch`        |            —            |
 | **CommandInjection**   | Critical |      `system`, `Process.run`      |      `child_process.$exec`       |           —            | `std::process::Command` |
-| **PathTraversal**      | High     |     `File.read`, `File.write`     |    `$readFile`, `$writeFile`     |           —            |        —         |
-| **SQLInjection**       | Critical |       `db.exec`, `db.query`       |                —                 |           —            |        —         |
-| **XSS**                | Critical |                 —                 |  `innerHTML`, `document.write`   | `{@html}`, `innerHTML` |        —         |
-| **UnsafeBlock**        | High     |                 —                 |                —                 |           —            |   `unsafe {}`     |
+| **PathTraversal**      | High     |     `File.read`, `File.write`     |    `$readFile`, `$writeFile`     |           —            |            —            |
+| **SQLInjection**       | Critical |       `db.exec`, `db.query`       |                —                 |           —            |            —            |
+| **XSS**                | Critical |                 —                 |  `innerHTML`, `document.write`   | `{@html}`, `innerHTML` |            —            |
+| **UnsafeBlock**        | High     |                 —                 |                —                 |           —            |       `unsafe {}`       |
 | **OpenRedirect**       | Medium   |           `redirect_to`           |  `$redirect`, `location.assign`  |           —            |
 | **PrototypePollution** | High     |                 —                 |    `$merge`, `Object.assign`     |           —            |
 | **EvalInjection**      | Critical |                 —                 | `eval`, `Function`, `setTimeout` |           —            |

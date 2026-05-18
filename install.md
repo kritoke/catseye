@@ -20,6 +20,7 @@ This guide covers building Catseye without Nix. If you have Nix installed, see [
 ### 1. Install OCaml and Dune
 
 **macOS:**
+
 ```bash
 brew install opam
 opam init
@@ -29,6 +30,7 @@ opam install dune
 ```
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install opam
 opam init --disable-sandboxing  # needed for WSL or certain environments
@@ -58,16 +60,19 @@ opam install \
 ### 3. Install tree-sitter CLI
 
 **macOS:**
+
 ```bash
 brew install tree-sitter
 ```
 
 **Linux (npm):**
+
 ```bash
 npm install -g tree-sitter-cli
 ```
 
 **From source:**
+
 ```bash
 git clone https://github.com/tree-sitter/tree-sitter.git
 cd tree-sitter
@@ -80,12 +85,14 @@ cp target/release/tree-sitter ~/.local/bin/
 Catseye needs grammars for: JavaScript, TypeScript, Svelte, OCaml, Gleam, and Rust.
 
 Create a grammars directory:
+
 ```bash
 mkdir -p ~/.tree-sitter/grammars
 cd ~/.tree-sitter/grammars
 ```
 
 **JavaScript:**
+
 ```bash
 git clone https://github.com/tree-sitter/tree-sitter-javascript.git
 cd tree-sitter-javascript
@@ -95,6 +102,7 @@ cp src/parser.c ../javascript-parser.c
 ```
 
 **TypeScript** (uses JavaScript grammar):
+
 ```bash
 git clone https://github.com/tree-sitter/tree-sitter-typescript.git
 cd tree-sitter-typescript
@@ -104,6 +112,7 @@ cp src/tsx/parser.c ../typescript-parser.c
 ```
 
 **Svelte:**
+
 ```bash
 git clone https://github.com/MetalDTO/tree-sitter-svelte.git  # fork with parser.c
 cd tree-sitter-svelte
@@ -114,6 +123,7 @@ cp src/parser.c ../svelte-parser.c
 ```
 
 **OCaml:**
+
 ```bash
 git clone https://github.com/tree-sitter/tree-sitter-ocaml.git
 cd tree-sitter-ocaml
@@ -123,6 +133,7 @@ cp src/parser.c ../ocaml-parser.c
 ```
 
 **Gleam:**
+
 ```bash
 git clone https://github.com/aleclarsv/tree-sitter-gleam.git
 cd tree-sitter-gleam
@@ -132,6 +143,7 @@ cp src/parser.c ../gleam-parser.c
 ```
 
 **Rust:**
+
 ```bash
 git clone https://github.com/tree-sitter/tree-sitter-rust.git
 cd tree-sitter-rust
@@ -204,6 +216,7 @@ export LD_LIBRARY_PATH=$HOME/.tree-sitter/grammars:$LD_LIBRARY_PATH
 ### "Failed to load language"
 
 The grammar parser binary may not be compiled with the `no-bindgen` flag. Regenerate:
+
 ```bash
 cd tree-sitter-javascript
 npx tree-sitter generate src/parser.c --no-bindgen
@@ -212,12 +225,14 @@ npx tree-sitter generate src/parser.c --no-bindgen
 ### Crystal extractor not working
 
 Crystal is optional but provides faster parsing. If you don't have Crystal:
+
 - The scanner falls back to tree-sitter for Crystal files
 - Or use `crystal run src/extractor/extractor.cr` as a workaround
 
 ### ARM64 (Apple Silicon / aarch64)
 
 Some grammars may need recompilation for ARM64:
+
 ```bash
 # Install platform-specific tree-sitter
 npm install -g tree-sitter-cli
@@ -229,10 +244,10 @@ npx tree-sitter generate src/parser.c --no-bindgen
 
 ## Quick Reference
 
-| Component | Location | Notes |
-|-----------|----------|-------|
-| OCaml binary | `bin/catseye-ocaml` | Main scanner |
-| Crystal extractor | `bin/catseye-crystal-extractor` | Optional, faster |
-| Grammars | `~/.tree-sitter/grammars/` | Must contain `.c` parser files |
-| Config | `.catseye.toml` | Per-project settings |
-| Cache | `.catseye/` | Extraction cache |
+| Component         | Location                        | Notes                          |
+| ----------------- | ------------------------------- | ------------------------------ |
+| OCaml binary      | `bin/catseye-ocaml`             | Main scanner                   |
+| Crystal extractor | `bin/catseye-crystal-extractor` | Optional, faster               |
+| Grammars          | `~/.tree-sitter/grammars/`      | Must contain `.c` parser files |
+| Config            | `.catseye.toml`                 | Per-project settings           |
+| Cache             | `.catseye/`                     | Extraction cache               |
