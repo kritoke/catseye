@@ -96,7 +96,7 @@ let extract_script_block (doc : xml) : (string * string) option =
 let rec extract_template_items (n : xml) (file : string) : item list =
   let loc = range_of_xml n in
   match n.tag with
-  | "html_expression" | "raw_html_expression" | "html" ->
+  | "html_expr" ->
     let inner_exprs = List.filter (fun c -> c.tag <> "") n.children in
     let expr = match inner_exprs with
       | [e] -> { expr_value = EVar (String.trim e.text); expr_location = range_of_xml e }
