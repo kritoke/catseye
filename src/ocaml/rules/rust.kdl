@@ -1,0 +1,145 @@
+// Rust-specific security rules
+// Covers SSRF, command injection, path traversal, unsafe code
+
+rule "RustUnsafeBlock" severity="High" {
+    // Detect unsafe blocks that may need auditing
+    sinks {
+        sink "unsafe" {
+            fix "Review unsafe block for memory safety issues. Document invariants."
+        }
+    }
+    message "Unsafe block without documented safety invariants"
+}
+
+rule "RustCommandInjection" severity="High" {
+    // Command injection via std::process::Command
+    sinks {
+        sink "Command::new" arg=0 {
+            sanitizer "String::from"
+            sanitizer ".to_string()"
+            sanitizer "std::path::Path::new"
+        }
+        sink "Command::arg" arg=0 {
+            sanitizer "String::from"
+            sanitizer ".to_string()"
+        }
+        sink "Command::args" arg=0 {
+            sanitizer ".to_string()"
+        }
+    }
+    sources {
+        source "std::env::var"
+        source "std::env::args"
+    }
+    message "Potential command injection via Command::new() with user input"
+}
+
+rule "RustPathTraversal" severity="Medium" {
+    // Path traversal via fs operations
+    sinks {
+        sink "fs::read" arg=0
+        sink "fs::read_to_string" arg=0
+        sink "fs::write" arg=0
+        sink "fs::create_dir" arg=0
+        sink "fs::remove_file" arg=0
+        sink "std::fs::File::open" arg=0 {
+            sanitizer "std::path::Path::new"
+            sanitizer "std::path::PathBuf::from"
+        }
+    }
+    sources {
+        source "std::env::var"
+        source "request"
+        source "params"
+    }
+    message "Potential path traversal via filesystem operation"
+}
+
+rule "RustSSRF" severity="High" {
+    // SSRF via HTTP clients
+    sinks {
+        sink "reqwest::blocking::get" arg=0 {
+            sanitizer "Url::parse"
+            sanitizer "reqwest::Url"
+        }
+        sink "reqwest::get" arg=0 {
+            sanitizer "Url::parse"
+        }
+        sink "reqwest::post" arg=0 {
+            sanitizer "Url::parse"
+        }
+        sink "ureq::get" arg=0 {
+            sanitizer "Url::parse"
+        }
+        sink "ureq::post" arg=0 {
+            sanitizer "Url::parse"
+        }
+        sink "attohttpc::get" arg=0 {
+            sanitizer "Url::parse"
+        }
+    }
+    sources {
+        source "std::env::var"
+        source "request"
+        source "params"
+        source "user_url"
+    }
+    message "Potential SSRF via HTTP client with user-controlled URL"
+}
+
+rule "RustIntegerOverflow" severity="Medium" {
+    // Integer overflow in release mode (wraps silently)
+    sinks {
+        sink "+" {
+            sanitizer "checked_add"
+            sanitizer "saturating_add"
+            sanitizer "wrapping_add"
+        }
+        sink "-" {
+            sanitizer "checked_sub"
+            sanitizer "saturating_sub"
+            sanitizer "wrapping_sub"
+        }
+        sink "*" {
+            sanitizer "checked_mul"
+            sanitizer "saturating_mul"
+            sanitizer "wrapping_mul"
+        }
+    }
+    message "Integer operation may overflow silently in release mode"
+}
+
+rule "RustPanicInLibrary" severity="Medium" {
+    // panic!, unwrap(), expect() in library code
+    sinks {
+        sink "panic" {
+            fix "Return Result<T, E> instead of panicking"
+        }
+        sink "unwrap" {
+            fix "Use ? operator or provide default value with unwrap_or()"
+        }
+        sink "expect" {
+            fix "Return Result or use unwrap_or() with proper error message"
+        }
+    }
+    message "Panic-inducing code in library code"
+}
+
+rule "RustHardcodedCredentials" severity="High" {
+    // Hardcoded passwords, API keys, tokens
+    sinks {
+        sink "password" {
+            fix "Use environment variable or secrets manager"
+        }
+        sink "api_key" {
+            fix "Use environment variable or secrets manager"
+        }
+        sink "secret" {
+            fix "Use environment variable or secrets manager"
+        }
+        sink "token" {
+            fix "Use environment variable or secrets manager"
+        }
+    }
+    message "Potential hardcoded credential"
+}
