@@ -69,6 +69,38 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : finding list =
     List.concat_map (fun item ->
       match item.item_value with
       | IFunction (_, _, _, body) ->
+        (* Check for inefficient patterns *)
+        let rec check_inefficient (e : expr) : finding list =
+          match e.expr_value with
+          | EApp (fn, args) ->
+            let fn_name = match fn.expr_value with EVar n -> n | _ -> "" in
+            let line = e.expr_location.start.line in
+            (* Extract method name from field expressions like data.clone or .unwrap *)
+            let method_name = 
+              if String.length fn_name > 1 && fn_name.[0] = '.' then
+                Some (String.sub fn_name 1 (String.length fn_name - 1))
+              else if String.length fn_name > 7 && 
+                      String.sub fn_name (String.length fn_name - 6) 6 = ".clone" then
+                Some "clone"
+              else None
+            in
+            let results = (match method_name with
+              | Some "clone" when not (is_stdlib_name fn_name) ->
+                [{ rule_id = "RustInefficiency"; severity = Warning;
+                   file = ""; line;
+                   message = "Unnecessary .clone() - consider using references or avoiding move";
+                   suggestion = Some "Pass by reference (&) or restructure to avoid clone" }]
+              | _ -> []
+            ) in
+            results @ List.concat_map check_inefficient args
+          | EBlock es -> List.concat_map check_inefficient es
+          | ELet (_, e1, e2) -> check_inefficient e1 @ check_inefficient e2
+          | EIf (_, t, o) -> check_inefficient t @ (match o with Some e -> check_inefficient e | None -> [])
+          | ECase (_, bs) -> List.concat (List.map (fun (_, e) -> check_inefficient e) bs)
+          | EFn (_, b) -> check_inefficient b
+          | _ -> []
+        in
+        
         (* Check for hallucinated functions *)
         let apps = collect_apps body in
         let hall_findings = List.filter_map (fun (name, line) ->
@@ -88,16 +120,32 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : finding list =
         let rec check_unsafe (e : expr) : finding list =
           match e.expr_value with
           | EApp (fn, args) ->
-            let fn_name = match fn.expr_value with EVar n -> n | _ -> "" in
+            let fn_name = match fn.expr_value with EVar n -> n | EApp _ -> "<nested>" | EBlock _ -> "<block>" | _ -> "" in
             let line = e.expr_location.start.line in
-            let unsafe_names = ["unwrap"; "expect"; "unwrap_err"; "panic"; "todo"; "unimplemented"] in
-            let found = List.filter (fun n -> fn_name = n || fn_name = "Option." ^ n || fn_name = "Result." ^ n) unsafe_names in
-            let results = List.map (fun _ ->
+            (* Check for direct unsafe calls: unwrap(), expect(), panic!() *)
+            let unsafe_patterns = ["unwrap"; "expect"; "unwrap_err"; "panic"; "todo"; "unimplemented"] in
+            let found_unsafe = List.filter (fun n -> fn_name = n) unsafe_patterns in
+            (* Check for method calls: result.unwrap(), option.expect() *)
+            let found_method = 
+              if fn_name <> "" && not (List.mem fn_name found_unsafe) then
+                (* Check if fn_name ends with an unsafe pattern like .unwrap, .expect *)
+                let rec check_patterns name patterns = match patterns with
+                  | [] -> []
+                  | p :: rest ->
+                    if String.length name > String.length p + 1 &&
+                       String.sub name (String.length name - String.length p - 1) (String.length p + 1) = ("." ^ p)
+                    then p :: check_patterns name rest
+                    else check_patterns name rest
+                in
+                check_patterns fn_name unsafe_patterns
+              else [] in
+            let () = if fn_name <> "" && (fn_name = "unwrap" || fn_name = "Result.unwrap" || fn_name = "option.unwrap" || fn_name = ".unwrap") then Printf.eprintf "DEBUG check: fn=%s found_unsafe=%d found_method=%d\n" fn_name (List.length found_unsafe) (List.length found_method) in
+            let results = (List.map (fun _ ->
               { rule_id = "UnsafePanic"; severity = Error;
                 file = ""; line; 
-                message = fn_name ^ "() may panic - consider proper error handling";
+                message = "Unsafe: " ^ fn_name ^ "() may panic - consider proper error handling";
                 suggestion = Some "Use ? operator, unwrap_or, or match pattern" }
-            ) found in
+            ) (found_unsafe @ found_method)) in
             results @ List.concat_map check_unsafe args
           | EBlock es -> List.concat_map check_unsafe es
           | ELet (_, e1, e2) -> check_unsafe e1 @ check_unsafe e2
@@ -107,7 +155,7 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : finding list =
           | _ -> []
         in
         
-        hall_findings @ check_unsafe body
+        hall_findings @ check_unsafe body @ check_inefficient body
       | _ -> []
     ) items
   in

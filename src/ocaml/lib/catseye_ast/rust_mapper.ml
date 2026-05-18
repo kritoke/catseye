@@ -238,6 +238,16 @@ let rec walk_expr (n : xml) : expr =
         | None -> "_" in
       EFieldAccess (obj, field)
 
+    (* Field expression (method call receiver): obj.field *)
+    | "field_expression" ->
+      let obj = match child_with_tag n ~tag:"identifier" with
+        | Some o -> o.text
+        | None -> "" in
+      let field = match child_with_tag n ~tag:"field_identifier" with
+        | Some f -> f.text
+        | None -> "" in
+      EVar (obj ^ "." ^ field)
+
     (* Index expressions *)
     | "index_expression" ->
       let obj = match child_with_field n ~field:"value" with
