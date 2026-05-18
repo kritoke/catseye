@@ -52,19 +52,18 @@ EOF
 
 **Requirements:**
 - **OCaml** 5.x + **Dune** 3.x
-- **tree-sitter** + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
-- **Crystal** 1.x (optional — needed only for Crystal language extraction)
+- **tree-sitter** CLI + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
+- **Crystal** 1.x (optional — needed only for native Crystal extractor)
 - OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
 
-The easiest way to get all dependencies is `nix develop`:
+For detailed instructions on installing dependencies without Nix, see [install.md](install.md).
 
 ```bash
-# Clone and enter dev shell
+# Clone the repo
 git clone https://github.com/catseye-scanner/catseye.git
 cd catseye
-nix develop
 
-# Build
+# Build (uses tree-sitter grammars from nix by default)
 just build
 
 # Run tests
