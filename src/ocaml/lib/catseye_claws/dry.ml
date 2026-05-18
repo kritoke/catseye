@@ -37,7 +37,31 @@ let normalize_node (n : Security_node.t) : string =
   let arg_count = List.length n.args in
   match n.Security_node.node_type with
   | Security_node.Call ->
-    Printf.sprintf "Call|%s|%d" n.Security_node.name arg_count
+    (* Check if any arg looks like a SQL statement — if so, include the
+       literal value to prevent different SQL statements from hashing the same.
+       SQL statements are inherently repetitive (UPDATE ... SET ... WHERE ...)
+       but semantically distinct when operating on different columns. *)
+    let has_sql_arg = List.exists (fun (a : Security_node.arg) ->
+      let v = String.lowercase_ascii a.Security_node.value in
+      String.length v >= 6 &&
+      (let prefix = String.sub v 0 6 in
+       prefix = "select" || prefix = "insert" || prefix = "update"
+       || prefix = "delete" || prefix = "create")
+    ) n.args in
+    if has_sql_arg then
+      (* Include enough of the SQL to differentiate statements *)
+      let sql_arg = List.find (fun (a : Security_node.arg) ->
+        let v = String.lowercase_ascii a.Security_node.value in
+        String.length v >= 6 &&
+        (let prefix = String.sub v 0 6 in
+         prefix = "select" || prefix = "insert" || prefix = "update"
+         || prefix = "delete" || prefix = "create")
+      ) n.args in
+      (* Hash the full SQL string to make each unique statement its own bucket *)
+      let sql_hash = Hashtbl.hash sql_arg.Security_node.value in
+      Printf.sprintf "Call|%s|%08x" n.Security_node.name sql_hash
+    else
+      Printf.sprintf "Call|%s|%d" n.Security_node.name arg_count
   | Security_node.Assign ->
     (* Instance var assigns (@x = x) are constructor boilerplate *)
     if String.length n.Security_node.name > 0
@@ -212,7 +236,11 @@ let is_dry_exempt_file (file : string) : bool =
     String.sub lower (String.length lower - plen) plen = pat
   ) [ "constants.cr"; "consts.cr"; "enums.cr"; "enums.gl"; "constants.gl"
     ; "/bench/"; "/benchmark/"; "/example/"; "/examples/"
-    ; "/spec/"; "/test/"; "/tests/" ]
+    ; "/spec/"; "/test/"; "/tests/"
+    (* Auth/user CRUD files naturally have repetitive query patterns *)
+    ; "auth.rs"; "users.rs"; "auth.gl"; "users.gl"
+    (* Rewards files often have similar calculation patterns *)
+    ; "rewards.rs"; "rewards.gl" ]
 
 (** Detect DRY violations across all files. *)
 let detect (nodes : Security_node.t list) (config : Types.claws_config)

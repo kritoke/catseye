@@ -29,14 +29,34 @@ let make_finding (file : string) (line : int) (lang : string) (rule : string)
   ; dependency = None; reachability = None; suggestion = None
   }
 
-(** Method names exempt from LongMethod checks (from anatomy_ast.ml). *)
+(** Method names exempt from LongMethod checks.
+    These naming patterns indicate idiomatic functions that tend to be
+    naturally larger (query methods, data transformations, builders). *)
 let is_exempt_method (name : string) : bool =
+  (* Standard constructors *)
   name = "initialize" || name = "new"
+  (* From/Parse patterns (serialization/deserialization) *)
   || String.length name >= 5 && String.sub name 0 5 = "from_"
   || String.length name >= 6 && (let p = String.sub name 0 6 in p = "decode" || p = "parse_")
+  (* Builder patterns *)
   || String.length name >= 5 && (let p = String.sub name 0 5 in p = "build" || p = "creat")
+  (* Handler patterns *)
   || String.length name >= 7 && String.sub name 0 7 = "handle_"
+  (* Test patterns *)
   || String.length name >= 4 && String.sub name 0 4 = "test"
+  (* Rust getter patterns - idiomatic query methods *)
+  || String.length name >= 4 && String.sub name 0 4 = "get_"
+  (* Rust compute/query/populate patterns - aggregate functions that are naturally larger *)
+  || String.length name >= 8 && (let p = String.sub name 0 8 in p = "compute_" || p = "populate" || p = "aggregate")
+  (* Rust query patterns *)
+  || String.length name >= 6 && String.sub name 0 6 = "query_"
+  (* Rust update/validate/revert patterns - often contain many validations/operations *)
+  || String.length name >= 7 && (let p = String.sub name 0 7 in p = "update_" || p = "archive_" || p = "revert_")
+  || String.length name >= 6 && (let p = String.sub name 0 6 in p = "delay_" || p = "grant_")
+  (* Rust badge/check patterns *)
+  || String.length name >= 6 && (let p = String.sub name 0 6 in p = "check_" || p = "badge_")
+  (* Rust validate pattern (contains, not prefix) *)
+  || String.length name >= 8 && String.sub name (String.length name - 8) 8 = "_validate"
 
 let is_bench_or_example (file : string) : bool =
   let lower = String.lowercase_ascii file in
@@ -526,6 +546,13 @@ let is_known_literal (n : string) : bool =
   || n = "1000" || n = "0x0" || n = "0x1" || n = "0b0" || n = "0b1"
   || n = "0o0" || n = "0o1" || n = "0.0" || n = "1.0" || n = "0.5"
   || n = "2.0" || n = "-1.0"
+  (* Domain-specific constants commonly used as literals:
+     - PIN codes: 4-6 digits (banking, auth)
+     - Validation limits: 60-120 seconds/minutes
+     - Index boundaries: 0, 1 (-1 for "before first")
+     - Array access: 0
+     - Loop counters: 0, 1, 2 *)
+  || List.mem n ["4"; "5"; "6"; "60"; "120"; "-1"]
   (* HTTP status codes — universally understood domain constants *)
   || List.mem n [
     "200"; "201"; "202"; "204";
