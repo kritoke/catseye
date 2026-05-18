@@ -24,24 +24,14 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           
-          # Initialize opam
-          opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
+          # Initialize opam - ignore darcs warning (it's just a warning)
+          opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           
           # Get environment
           eval $(opam env)
           
-          # Add packages repository if needed
-          opam repo add default --all 2>/dev/null || true
-          opam update --dev 2>/dev/null || true
-          
-          # Install core dependencies
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt 2>&1 | tail -20
-          
-          # Install sqlite3 package
-          opam install -y ocaml-sqlite3 2>&1 | tail -20
-          
-          # Install additional packages
-          opam install -y ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
+          # Install all dependencies - sqlite3 is the correct opam package name
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -30
           
           # cd to ocaml dir and build
           cd src/ocaml
