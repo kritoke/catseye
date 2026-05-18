@@ -3,16 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version tag (e.g., v0.4.2)"
-        required: true
-        type: string
+      - 'v*'
 
 jobs:
-  build-linux-x86_64:
+  build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -20,12 +14,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq opam tree-sitter
+          sudo apt-get install -y -qq opam tree-sitter curl
 
       - name: Setup OCaml
         uses: ocaml/setup-ocaml@v2
         with:
-          opam-pin: false
           opam-depext: true
 
       - name: Build
@@ -34,157 +27,14 @@ jobs:
           dune build --profile release
           mkdir -p bin
           cp _build/default/bin/main.exe bin/catseye-ocaml
-          # Crystal optional, skip if not available
           crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
+          crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
 
       - name: Package
         run: |
-          mkdir -p release
-          cp bin/* release/
-          tar -czf release/catseye-linux-x86_64.tar.gz -C release .
+          tar -czf catseye-linux-x86_64.tar.gz bin/
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: catseye-linux-x86_64
-          path: release/catseye-linux-x86_64.tar.gz
-
-  build-linux-aarch64:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install cross-compilation tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc-aarch64-linux-gnu libc6-dev-arm64-cross
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get install -y -qq opam
-
-      - name: Setup OCaml
-        uses: ocaml/setup-ocaml@v2
-        with:
-          opam-pin: false
-
-      - name: Build
-        run: |
-          opam install --deps-only -y .
-          dune build --profile release
-          mkdir -p bin
-          cp _build/default/bin/main.exe bin/catseye-ocaml
-          crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
-
-      - name: Package
-        run: |
-          mkdir -p release
-          cp bin/* release/
-          tar -czf release/catseye-linux-aarch64.tar.gz -C release .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: catseye-linux-aarch64
-          path: release/catseye-linux-aarch64.tar.gz
-
-  build-macos-x86_64:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          brew install opam tree-sitter
-          opam init --disable-sandboxing --yes
-
-      - name: Setup OCaml
-        run: |
-          eval $(opam env)
-          opam switch create 5.4.1
-          opam install --deps-only -y .
-
-      - name: Build
-        run: |
-          eval $(opam env)
-          dune build --profile release
-          mkdir -p bin
-          cp _build/default/bin/main.exe bin/catseye-ocaml
-          crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
-
-      - name: Package
-        run: |
-          mkdir -p release
-          cp bin/* release/
-          tar -czf release/catseye-macos-x86_64.tar.gz -C release .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: catseye-macos-x86_64
-          path: release/catseye-macos-x86_64.tar.gz
-
-  build-macos-aarch64:
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          brew install opam tree-sitter
-          opam init --disable-sandboxing --yes
-
-      - name: Setup OCaml
-        run: |
-          eval $(opam env)
-          opam switch create 5.4.1
-          opam install --deps-only -y .
-
-      - name: Build
-        run: |
-          eval $(opam env)
-          dune build --profile release
-          mkdir -p bin
-          cp _build/default/bin/main.exe bin/catseye-ocaml
-          crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
-
-      - name: Package
-        run: |
-          mkdir -p release
-          cp bin/* release/
-          tar -czf release/catseye-macos-aarch64.tar.gz -C release .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: catseye-macos-aarch64
-          path: release/catseye-macos-aarch64.tar.gz
-
-  create-release:
-    needs:
-      [
-        build-linux-x86_64,
-        build-linux-aarch64,
-        build-macos-x86_64,
-        build-macos-aarch64,
-      ]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create Release
-        id: create_release
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version || github.ref_name }}
-          name: Catseye ${{ github.event.inputs.version || github.ref_name }}
-          draft: false
-          prerelease: false
-          files: |
-            catseye-linux-x86_64/catseye-linux-x86_64.tar.gz
-            catseye-linux-aarch64/catseye-linux-aarch64.tar.gz
-            catseye-macos-x86_64/catseye-macos-x86_64.tar.gz
-            catseye-macos-aarch64/catseye-macos-aarch64.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: catseye-linux-x86_64.tar.gz
