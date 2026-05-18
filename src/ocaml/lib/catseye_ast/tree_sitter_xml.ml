@@ -189,10 +189,14 @@ let children_with_field (n : xml) ~(field : string) : xml list =
 
 (** Resolve a tree-sitter grammar path.
     Search order:
-    1. <LANG>_GRAMMAR env var (e.g. TREE_SITTER_GLEAM_GRAMMAR)
-    2. TREE_SITTER_GRAMMAR_DIR/<lang>.so
-    3. Bundled grammars next to the executable: <exe_dir>/../lib/catseye/grammars/<lang>.so
+    1. <LANG>_GRAMMAR env var (e.g. TREE_SITTER_RUST_GRAMMAR)
+    2. TREE_SITTER_GRAMMAR_DIR/<lang>.so or <lang>.wasm
+    3. Bundled grammars next to executable: <exe_dir>/../lib/catseye/grammars/<lang>.so
     4. Nix store auto-discover via find (slow, fallback)
+    5. CWD fallback
+
+    Note: On linux-aarch64, tree-sitter-rust may only be available as WASM.
+    The find command looks for 'parser' binary files in tree-sitter-* directories.
 *)
 let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
   (* 1. Explicit env var *)
@@ -203,18 +207,22 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
     let exe_dir = Filename.dirname (Sys.executable_name) in
     (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
      | dir ->
-       let path = Filename.concat dir (lang ^ ".so") in
-       if Sys.file_exists path then Some path else None
+       (* Try .so first, then .wasm for WASM-based grammars *)
+       let so_path = Filename.concat dir (lang ^ ".so") in
+       let wasm_path = Filename.concat dir (lang ^ ".wasm") in
+       if Sys.file_exists so_path then Some so_path
+       else if Sys.file_exists wasm_path then Some wasm_path
+       else None
      | exception Not_found ->
        (* 3. Bundled grammars next to executable *)
        let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
        if Sys.file_exists bundled then Some bundled
        else
-         (* 4. Nix store discovery *)
+         (* 4. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
          let discovered =
            try
              let ic = Unix.open_process_in
-               (Printf.sprintf "find /nix/store -maxdepth 2 -name parser -path '*tree-sitter-%s*' 2>/dev/null | head -1" lang)
+               (Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" lang)
              in
              let line = try Some (input_line ic) with End_of_file -> None in
              let _ = Unix.close_process_in ic in

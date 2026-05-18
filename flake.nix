@@ -86,6 +86,7 @@
         pkgs.tree-sitter-grammars.tree-sitter-typescript
         pkgs.tree-sitter-grammars.tree-sitter-svelte
         pkgs.tree-sitter-grammars.tree-sitter-ocaml
+        pkgs.tree-sitter-grammars.tree-sitter-rust
       ];
 
       # ── Private config ────────────────────────────────────────────────

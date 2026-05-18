@@ -359,7 +359,16 @@ let resolve_rust_grammar () : string option =
   Tree_sitter_xml.resolve_grammar ~lang:"rust" ~env_var:"TREE_SITTER_RUST_GRAMMAR"
 
 let parse_with_grammar ~grammar ~path : (t, parse_error) result =
-  let cmd = Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path in
+  (* Use --lib-path for native .so parsers, --grammar-path for WASM/compiled grammars *)
+  let cmd =
+    (* Check if grammar looks like a native .so (exports tree_sitter_rust) *)
+    if Sys.file_exists grammar && not (Sys.is_directory grammar) then
+      (* Native parser - use --lib-path with --lang-name *)
+      Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name rust -x '%s' 2>/dev/null" grammar path
+    else
+      (* WASM or compiled grammar - use --grammar-path *)
+      Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path
+  in
   try
     let ic = Unix.open_process_in cmd in
     let xml_str = Buffer.create 4096 in
