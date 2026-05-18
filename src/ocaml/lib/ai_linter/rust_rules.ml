@@ -16,6 +16,10 @@ open Types
 let hallucinated_rust = [
   (* Python patterns *)
   ("len", "Rust: use .len() for collections");
+  ("range", "Rust: use for i in 0..n or (0..n).into_iter()");
+  ("unwrap_result", "Rust: use ? or match instead of unwrap_result");
+  ("dict", "Rust: use std::collections::HashMap");
+  ("list", "Rust: use Vec<T>");
   ("print", "Rust: use print!() or println!()");
   ("input", "Rust: use std::io::stdin().read_line()");
   ("list.append", "Rust: use Vec::push()");

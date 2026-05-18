@@ -95,7 +95,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
      with e ->
        Printf.eprintf "Gleam extraction error: %s\n" (Printexc.to_string e);
        None)
-  | "javascript" | "typescript" | "svelte" | "ocaml" ->
+  | "javascript" | "typescript" | "svelte" | "ocaml" | "rust" ->
     (* New languages: parse via tree-sitter → CatseyeAST → Security_node *)
     (try
       match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with

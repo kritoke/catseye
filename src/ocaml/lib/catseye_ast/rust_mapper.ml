@@ -340,8 +340,8 @@ let rec walk_item (n : xml) (file : string) : item list =
 let resolve_rust_grammar () : string option =
   Tree_sitter_xml.resolve_grammar ~lang:"rust" ~env_var:"TREE_SITTER_RUST_GRAMMAR"
 
-let parse_with_grammar ~grammar ~lang ~path : (t, parse_error) result =
-  let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name %s -x '%s' 2>/dev/null" grammar lang path in
+let parse_with_grammar ~grammar ~path : (t, parse_error) result =
+  let cmd = Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path in
   try
     let ic = Unix.open_process_in cmd in
     let xml_str = Buffer.create 4096 in
@@ -375,4 +375,4 @@ let parse_file ~(path : string) : (t, parse_error) result =
   | None ->
     Error (make_error ~file:path ~message:"Rust tree-sitter grammar not found. Set TREE_SITTER_RUST_GRAMMAR or install tree-sitter-rust.")
   | Some grammar ->
-    parse_with_grammar ~grammar ~lang:"rust" ~path
+    parse_with_grammar ~grammar ~path
