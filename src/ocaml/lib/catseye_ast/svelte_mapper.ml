@@ -142,9 +142,14 @@ let parse_file ~(path : string) : (t, parse_error) result =
               (match run_tree_sitter_on_string ~grammar:g ~lang:lang_name ~source:script_content with
                | None -> []
                | Some script_doc ->
+                 (* Wrap in <program> tag like JS mapper does *)
+                 let program = match find script_doc ~tag:"program" with
+                   | [p] -> p
+                   | _ -> script_doc
+                 in
                  List.concat_map (fun c ->
                    Javascript_mapper.walk_statement c path
-                 ) script_doc.children)
+                 ) program.children)
         in
         (* Extract template directives *)
         let template_items = extract_template_items doc path in
