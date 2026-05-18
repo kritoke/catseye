@@ -2,29 +2,78 @@
 
 **Multi-language static security analysis with taint tracking, code smell detection, and AI antipattern linting.**
 
-Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, and OCaml** — with language-specific security rules and antipattern databases for each.
+Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust** — with language-specific security rules and antipattern databases for each.
 
-> **v0.4.2** - Svelte 5 rune validation, path sensitivity, multi-language anti-patterns
+> **v0.4.2** - Svelte 5 rune validation, path sensitivity, multi-language anti-patterns, Rust support
 
-## Requirements
+## Installation
 
-- **OCaml** 5.x + **Dune** 3.x
-- **tree-sitter** + language grammars (JS, TS, Svelte, OCaml, Gleam)
-- **Crystal** 1.x (optional — needed only for Crystal language extraction)
-- **just** (task runner)
-- OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
+### Binary Releases (Linux & macOS)
 
-The easiest way to get all of these is `nix develop` (see [flake.nix](flake.nix) for the full dev shell). All tree-sitter grammars are included and configured automatically.
-
-## Quick Start
+Download pre-built binaries from the [Releases](https://github.com/catseye-scanner/catseye/releases) page:
 
 ```bash
-# With Nix (handles all dependencies including tree-sitter grammars)
+# Linux x86_64
+curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz | tar xz
+
+# Linux ARM64 (aarch64)
+curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz | tar xz
+
+# macOS Intel
+curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz | tar xz
+
+# macOS Apple Silicon
+curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz | tar xz
+```
+
+After extraction, run `./SETUP_GRAMMARS.sh` to install tree-sitter grammars:
+```bash
+cd catseye
+./SETUP_GRAMMARS.sh
+```
+
+### Nix (All Platforms)
+
+```nix
+# In your project
+cat > flake.nix << 'EOF'
+{
+  inputs.catseye.url = "github:catseye-scanner/catseye";
+  outputs = { self, nixpkgs, catseye }: {
+    devShells.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.mkShell {
+      buildInputs = [ catseye.packages.x86_64-linux.default ];
+    };
+  };
+}
+EOF
+```
+
+### Build from Source
+
+**Requirements:**
+- **OCaml** 5.x + **Dune** 3.x
+- **tree-sitter** + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
+- **Crystal** 1.x (optional — needed only for Crystal language extraction)
+- OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
+
+The easiest way to get all dependencies is `nix develop`:
+
+```bash
+# Clone and enter dev shell
+git clone https://github.com/catseye-scanner/catseye.git
+cd catseye
 nix develop
 
 # Build
 just build
 
+# Run tests
+just test
+```
+
+## Quick Start
+
+```bash
 # Scan a project (auto-detects all languages)
 just scan path/to/project/src
 
@@ -36,12 +85,9 @@ just scan-full path/to/project/src
 
 # JSON output
 just scan-json path/to/project/src
-
-# Run tests
-just test
 ```
 
-## Supported Languages
+## Language Support
 
 | Language   | Extensions                 | Security Rules |               AI Lint                |   Code Smells   | Extractor                      |
 | ---------- | -------------------------- | :------------: | :----------------------------------: | :-------------: | ------------------------------ |
@@ -51,7 +97,7 @@ just test
 | TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
 | Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
-| Rust       | `.rs`                      |   🔜 Future    |        ✅ 4 detectors (WASM)         |    🔜 Future    | tree-sitter (WASM)             |
+| Rust       | `.rs`                      |  ✅ Basic    |        ✅ 4 detectors (WASM)         | ✅ 16 detectors | tree-sitter (native)         |
 
 ## CLI Reference
 
@@ -62,7 +108,7 @@ catseye [options] <directory>
   -o, --output <path>        write results to file
   -r, --rules <path>         rules directory (default: rules/)
   --config <path>            config file path (default: .catseye.toml in target or parents)
-  --lang <lang>              all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml
+  --lang <lang>              all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml,rust
   --no-color                 disable colored output
   --no-cache                 disable extraction cache
   --clear-cache              clear cache and run full scan
@@ -89,13 +135,14 @@ catseye [options] <directory>
 
 Rules are KDL files — different rule sets per language, all using the same taint engine.
 
-| Rule                   | Severity |           Crystal/Gleam           |              JS/TS               |         Svelte         |
-| ---------------------- | -------- | :-------------------------------: | :------------------------------: | :--------------------: |
-| **SSRF**               | Critical | `HTTP::Client.get`, `hackney.get` |         `$fetch`, `$get`         |        `$fetch`        |
-| **CommandInjection**   | Critical |      `system`, `Process.run`      |      `child_process.$exec`       |           —            |
-| **PathTraversal**      | High     |     `File.read`, `File.write`     |    `$readFile`, `$writeFile`     |           —            |
-| **SQLInjection**       | Critical |       `db.exec`, `db.query`       |                —                 |           —            |
-| **XSS**                | Critical |                 —                 |  `innerHTML`, `document.write`   | `{@html}`, `innerHTML` |
+| Rule                   | Severity |           Crystal/Gleam           |              JS/TS               |         Svelte         |        Rust        |
+| ---------------------- | -------- | :-------------------------------: | :------------------------------: | :--------------------: | :----------------: |
+| **SSRF**               | Critical | `HTTP::Client.get`, `hackney.get` |         `$fetch`, `$get`         |        `$fetch`        |        —         |
+| **CommandInjection**   | Critical |      `system`, `Process.run`      |      `child_process.$exec`       |           —            | `std::process::Command` |
+| **PathTraversal**      | High     |     `File.read`, `File.write`     |    `$readFile`, `$writeFile`     |           —            |        —         |
+| **SQLInjection**       | Critical |       `db.exec`, `db.query`       |                —                 |           —            |        —         |
+| **XSS**                | Critical |                 —                 |  `innerHTML`, `document.write`   | `{@html}`, `innerHTML` |        —         |
+| **UnsafeBlock**        | High     |                 —                 |                —                 |           —            |   `unsafe {}`     |
 | **OpenRedirect**       | Medium   |           `redirect_to`           |  `$redirect`, `location.assign`  |           —            |
 | **PrototypePollution** | High     |                 —                 |    `$merge`, `Object.assign`     |           —            |
 | **EvalInjection**      | Critical |                 —                 | `eval`, `Function`, `setTimeout` |           —            |
@@ -124,13 +171,13 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 
 #### Svelte (40+ rules)
 
-| Category                 | Examples                                                                                                        |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| **Svelte 4→5 migration** | `createEventDispatcher` → callback props, `beforeUpdate`/`afterUpdate` → `$effect()`, Svelte 4 stores → runes   |
-| **Svelte 5 Rune Validation** | `$state()` without init, `$effect` without cleanup (setInterval), `$derived` reassignment                      |
-| **Framework confusion**  | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
-| **XSS**                  | `{@html}` with dynamic content, `innerHTML`, `document.write`                                                   |
-| **Antipatterns**         | `tick()` overuse, Svelte 4 store patterns in runes mode                                                         |
+| Category                     | Examples                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **Svelte 4→5 migration**     | `createEventDispatcher` → callback props, `beforeUpdate`/`afterUpdate` → `$effect()`, Svelte 4 stores → runes   |
+| **Svelte 5 Rune Validation** | `$state()` without init, `$effect` without cleanup (setInterval), `$derived` reassignment                       |
+| **Framework confusion**      | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
+| **XSS**                      | `{@html}` with dynamic content, `innerHTML`, `document.write`                                                   |
+| **Antipatterns**             | `tick()` overuse, Svelte 4 store patterns in runes mode                                                         |
 
 #### OCaml (55+ rules)
 

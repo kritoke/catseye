@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.4.2)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: catseye-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: catseye-linux-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: catseye-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: catseye-macos-aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Set up cross-compilation for ARM64 Linux
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          nix develop --command bash -c '
+            # Install ARM64 toolchain if needed
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq gcc-aarch64-linux-gnu libc6-dev-arm64-cross >/dev/null 2>&1 || true
+          '
+
+      - name: Build Extractors
+        run: |
+          nix develop --command bash -c '
+            mkdir -p bin
+            crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "Crystal not available"
+            crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
+          '
+
+      - name: Build OCaml Binary
+        id: build
+        run: |
+          nix develop --command bash -c '
+            cd src/ocaml
+            dune build --profile release
+            cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          '
+
+      - name: Package
+        run: |
+          mkdir -p release
+          cp bin/* release/
+          
+          # Include tree-sitter grammars from nix store
+          GRAMMAR_DIR=$(nix develop --command bash -c 'find /nix -maxdepth 3 -type d -name tree-sitter-grammars 2>/dev/null | head -1')
+          if [ -n "$GRAMMAR_DIR" ]; then
+            mkdir -p "release/grammars"
+            cp -r "$GRAMMAR_DIR"/* "release/grammars/" 2>/dev/null || true
+          fi
+          
+          # Create tarball
+          tar -czf "release/${{ matrix.artifact }}.tar.gz" -C release .
+          
+          # Create standalone scripts for grammars
+          cat > "release/SETUP_GRAMMARS.sh" << 'EOF'
+          #!/bin/bash
+          # Setup tree-sitter grammars for Catseye
+          # Run this once after installation
+          
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          GRAMMAR_DIR="$HOME/.local/share/catseye/grammars"
+          
+          mkdir -p "$GRAMMAR_DIR"
+          
+          # Copy grammars
+          if [ -d "$SCRIPT_DIR/grammars" ]; then
+            cp -r "$SCRIPT_DIR/grammars"/* "$GRAMMAR_DIR/" 2>/dev/null
+          fi
+          
+          echo "Grammars installed to $GRAMMAR_DIR"
+          EOF
+          chmod +x "release/SETUP_GRAMMARS.sh"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          release_name: Catseye ${{ github.event.inputs.version || github.ref_name }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset - Linux x86_64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/catseye-linux-x86_64.tar.gz
+          asset_name: catseye-linux-x86_64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Asset - Linux aarch64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/catseye-linux-aarch64.tar.gz
+          asset_name: catseye-linux-aarch64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Asset - macOS x86_64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/catseye-macos-x86_64.tar.gz
+          asset_name: catseye-macos-x86_64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Release Asset - macOS aarch64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/catseye-macos-aarch64.tar.gz
+          asset_name: catseye-macos-aarch64.tar.gz
+          asset_content_type: application/gzip
