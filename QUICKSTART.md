@@ -19,14 +19,15 @@ curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linu
 
 ## Download Binaries
 
-| System | Command |
-|--------|---------|
-| **Linux x86_64** | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz \| tar xz` |
-| **Linux ARM64** | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz \| tar xz` |
-| **macOS Intel** | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz \| tar xz` |
+| System                  | Command                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Linux x86_64**        | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz \| tar xz`  |
+| **Linux ARM64**         | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz \| tar xz` |
+| **macOS Intel**         | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz \| tar xz`  |
 | **macOS Apple Silicon** | `curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz \| tar xz` |
 
 After downloading, run:
+
 ```bash
 ./SETUP_GRAMMARS.sh
 ```
@@ -54,13 +55,16 @@ After downloading, run:
 ## What It Detects
 
 **Security vulnerabilities:**
+
 - SSRF, Command Injection, Path Traversal, SQL Injection, XSS
 
 **AI coding mistakes:**
+
 - Hallucinated APIs (Python `len()` in Rust, React hooks in Svelte, etc.)
 - Framework confusion (Vue in React, Svelte 4 in Svelte 5 code)
 
 **Code quality issues:**
+
 - Long methods, complex conditionals, dead code, feature envy
 
 **Supported languages:** Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust
