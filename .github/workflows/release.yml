@@ -24,27 +24,24 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
-          # Use existing default switch (already created by opam init)
           opam switch default -y 2>/dev/null || true
-
-      - name: Install npm packages
-        run: npm install -g tree-sitter-cli
+          opam install -y . 2>&1 | tail -30
 
       - name: Build
         run: |
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           eval $(opam env)
-          opam install --deps-only -y .
+          cd src/ocaml
           dune build --profile release
-          mkdir -p bin
-          cp _build/default/bin/main.exe bin/catseye-ocaml
+          mkdir -p ../../bin
+          cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          cd ../..
           crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
           crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
 
       - name: Package
-        run: |
-          tar -czf catseye-linux-x86_64.tar.gz bin/
+        run: tar -czf catseye-linux-x86_64.tar.gz bin/
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
