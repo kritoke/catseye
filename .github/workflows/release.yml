@@ -24,7 +24,8 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
-          opam switch create . ocaml-base-compiler.5.4.1 -y --disable-sandboxing
+          # Use existing default switch (already created by opam init)
+          opam switch default -y 2>/dev/null || true
 
       - name: Install npm packages
         run: npm install -g tree-sitter-cli
