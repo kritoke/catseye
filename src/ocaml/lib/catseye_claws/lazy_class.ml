@@ -106,6 +106,15 @@ let is_delegate_class_name (name : string) : bool =
    not (contains lower "class") &&  (* Exclude generic class names *)
    String.length name > 4
 
+(** Check if a class name is an Athena/web framework controller.
+    These are single-purpose route handlers by framework convention. *)
+let is_controller_class (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  contains lower "controller" ||
+  contains lower "endpoint" ||
+  (* Svelte/Vue/React component patterns *)
+  contains lower "component"
+
 (** Check if a class is a data-only class (only has getters/properties) *)
 let is_data_only_class (methods : Scope.scope list) : bool =
   List.for_all (fun (s : Scope.scope) ->
@@ -132,6 +141,7 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
       (* Exemptions *)
       if is_config_file file then None
       else if is_data_class_name name then None
+      else if is_controller_class name then None
       else if is_delegate_class_name name && method_count <= 5 then None
       else if method_count = 1 && is_data_only_class cs.methods then None
       else if method_count > 0 && method_count < threshold then

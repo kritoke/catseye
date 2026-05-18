@@ -19,11 +19,14 @@ open Scope
 
 (** Strings that indicate a decision point when they appear in a node name. *)
 let decision_patterns =
-  [ "if"; "unless"; "case"; "select"; "when"
+  [ "if"; "unless"; "case"; "select"
   ; "&&"; "||"; "and "; "or "
   ; "loop"; "while"; "for "; "each"
   ; "exception_handler"
   ]
+  (* Note: "when" is NOT a decision point. In Crystal/Ruby, `when`
+     clauses in a `case` are mutually exclusive — they don't add
+     independent decision paths. Only `case` itself counts as +1. *)
 
 (** Find substring [needle] in [haystack], returning start index or -1. *)
 let find_substring (haystack : string) (needle : string) : int =

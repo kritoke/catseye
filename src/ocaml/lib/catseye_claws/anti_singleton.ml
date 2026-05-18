@@ -23,7 +23,33 @@ let exempt_class_var_names = [
   "initialized";       (* @@initialized = false *)
   "cache";             (* @@cache = Hash.new *)
   "instance_cache";    (* @@instance_cache = {} *)
+  "mutex";             (* @@mutex = Mutex.new *)
+  "lock";              (* @@lock = Mutex.new *)
 ]
+
+(** Class names where class variables are idiomatic — application-wide
+    singletons that must share state across all instances (connection
+    pools, caches, registries, rate limiters). *)
+let is_singleton_class (name : string) : bool =
+  let lower = String.lowercase_ascii name in
+  List.exists (fun suffix ->
+    let slen = String.length suffix in
+    String.length lower >= slen
+    && String.sub lower (String.length lower - slen) slen = suffix
+  ) [
+    "manager";       (* SocketManager, ConnectionManager *)
+    "registry";      (* HandlerRegistry *)
+    "cache";         (* FaviconCache *)
+    "store";         (* StateStore, CleanupStore *)
+    "pool";          (* ConnectionPool *)
+    "limiter";       (* RateLimiter *)
+    "tracker";       (* RequestTracker *)
+    "monitor";       (* HealthMonitor *)
+    "counter";       (* RequestCounter *)
+    "provider";      (* ConfigProvider *)
+    "service";       (* FeedService, ContentService — app-wide services *)
+    "fetcher";       (* FeedFetcher — singleton workers *)
+  ]
 
 (** Check if a class variable name is exempt from AntiSingleton detection *)
 let is_exempt_class_var (name : string) : bool =
@@ -90,6 +116,9 @@ let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_c
 
       (* Skip config files entirely *)
       if is_config_file file then () else
+
+      (* Skip idiomatic singleton classes (managers, caches, stores, etc.) *)
+      if is_singleton_class cn.Security_node.name then () else
 
       let start_line = cn.Security_node.line in
       let end_line =

@@ -123,7 +123,21 @@ let build_class_scopes (nodes : Security_node.t list) : class_scope list =
         ) sorted in
         { def; body }
       ) methods_in_class in
-      let loc = end_line - start_line in
+      let loc =
+        (* For the last type_def in a file, count lines to the actual last
+           node rather than using 1000000. Fall back to counting all nodes
+           in the file to estimate a real end line. *)
+        let real_end =
+          if end_line >= 1000000 then
+            (* Find the max line among all nodes in this file *)
+            let max_line = List.fold_left (fun acc (n : Security_node.t) ->
+              max acc n.Security_node.line
+            ) start_line sorted in
+            max_line + 1  (* +1 for the closing end token *)
+          else end_line
+        in
+        real_end - start_line
+      in
       class_scopes := { class_node = td; methods = method_scopes; loc } :: !class_scopes
     ) type_defs
   ) by_file;

@@ -526,6 +526,13 @@ let is_known_literal (n : string) : bool =
   || n = "1000" || n = "0x0" || n = "0x1" || n = "0b0" || n = "0b1"
   || n = "0o0" || n = "0o1" || n = "0.0" || n = "1.0" || n = "0.5"
   || n = "2.0" || n = "-1.0"
+  (* HTTP status codes — universally understood domain constants *)
+  || List.mem n [
+    "200"; "201"; "202"; "204";
+    "301"; "302"; "304"; "307"; "308";
+    "400"; "401"; "403"; "404"; "405"; "406"; "408"; "409"; "410"; "411"; "413"; "415"; "418"; "422"; "425"; "426"; "428"; "429"; "431"; "451";
+    "500"; "501"; "502"; "503"; "504"; "505"; "506"; "507"; "508"; "511";
+  ]
 
 (** Contexts where a numeric literal is acceptable and not "magic":
     - RHS of an assignment to a screaming-case (constant) variable

@@ -111,6 +111,10 @@ let check_params (nodes : Security_node.t list) (config : Types.claws_config)
     We overcount by nature — the thresholds compensate.*)
 let scope_creators =
   [ "if"; "unless"; "case"; "do"; "begin"; "try"; "loop"; "while"; "each" ]
+  (* Note: "when" and "select" are NOT included here. In Crystal/Ruby,
+     `when` clauses in a `case` statement are mutually exclusive pattern
+     matches — they don't represent nested control flow. A `case` with
+     15 `when` branches is a flat decision tree, not depth 15. *)
 
 (** Find substring [needle] in [haystack], returning start index or -1. *)
 let find_substring (haystack : string) (needle : string) : int =

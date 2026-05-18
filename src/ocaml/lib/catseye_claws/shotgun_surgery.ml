@@ -20,7 +20,7 @@ open Catseye_types
 
 let default_envy_threshold = 5   (* 5+ calls to same class = potential envy *)
 
-(* Exempt patterns for helper/facade classes *)
+(* Exempt patterns for helper/facade classes and logging APIs *)
 let exempt_class_patterns = [
   "Dispatcher";
   "Router";
@@ -28,6 +28,8 @@ let exempt_class_patterns = [
   "Adapter";
   "Proxy";
   "Builder";
+  "Log";      (* Logging API — calling Log.info/Log.error frequently is correct *)
+  "Logger";   (* Same for Logger variants *)
 ]
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)

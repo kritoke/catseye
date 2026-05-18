@@ -301,10 +301,16 @@ let check_data_clumps (nodes : Security_node.t list)
     skip_*, no_*, verbose, debug, dry_run.
     These split the function's behavior and suggest decomposition. *)
 let flag_prefixes = [
-  "is_"; "should_"; "enable_"; "disable_"; "use_"; "include_";
-  "has_"; "allow_"; "force_"; "skip_"; "no_"; "with_";
+  "should_"; "enable_"; "disable_"; "use_"; "include_";
+  "allow_"; "force_"; "skip_"; "no_"; "with_";
 ]
 let flag_names = ["verbose"; "debug"; "dry_run"; "strict"; "quiet"]
+
+(* Note: is_* and has_* are NOT in flag_prefixes. These are commonly
+   used for DTO/record boolean properties (is_active, has_more, etc.)
+   which are data fields, not control flow flags. Only methods that
+   branch behavior based on these should be flagged, and that's better
+   detected by complexity analysis than by parameter naming. *)
 
 let is_flag_arg (name : string) : bool =
   let lower = String.lowercase_ascii name in
@@ -468,9 +474,23 @@ let check_dead_code (nodes : Security_node.t list)
                   || prev.Security_node.node_type = Security_node.Call)
             ) body
           in
+          let is_early_macro_terminator =
+            (* Athena and other framework macros expand `return` statements
+               at the top of method bodies. If a terminator appears before
+               any Assign or Call node in the body, it's likely a macro
+               artifact — the user code below is reachable through the
+               original method body. Only apply this heuristic when the
+               terminator is in the first 3 nodes of the body. *)
+            n.Security_node.node_type = Security_node.Terminator
+            && idx < 3
+            && List.exists (fun (later : Security_node.t) ->
+              later.Security_node.node_type = Security_node.Assign
+              || later.Security_node.node_type = Security_node.Call
+            ) body
+          in
           if remaining <= 2 then None  (* too close to end of function *)
           else if n.Security_node.node_type = Security_node.Terminator
-             && (nesting > 0 || is_inline_guard
+             && (nesting > 0 || is_inline_guard || is_early_macro_terminator
                  || is_conditional_terminator control_lines
                        n.Security_node.file n.Security_node.line)
           then
@@ -686,6 +706,10 @@ let build_local_vars (body : Security_node.t list) : string list =
    Not real domain targets - iteration artifacts.
    Also includes common loop iterator and exception variable names.
    Uses prefix match: 'item' matches 'items', 'entry' matches 'entries'. *)
+(* Generic data-access target names used in repository/DB patterns.
+   Not real domain targets - iteration artifacts.
+   Also includes common loop iterator and exception variable names.
+   Uses prefix match: 'item' matches 'items', 'entry' matches 'entries'. *)
 let is_generic_target (name : string) : bool =
   let lower = String.lowercase_ascii name in
   List.exists (fun prefix ->
@@ -715,6 +739,19 @@ let is_generic_target (name : string) : bool =
     "ex"; "exc"; "err"; "error"; "exception";
     (* Retry/attempt counters *)
     "retry"; "attempt";
+  ]
+  (* Crystal/Ruby stdlib types that cannot be reopened — accessing these
+     heavily is not "envy", it's the only way to use them. *)
+  || List.mem lower [
+    "uri"; "url"; "path"; "file"; "dir"; "io";
+    "json"; "xml"; "html"; "csv"; "yaml"; "toml";
+    "http"; "tcp"; "udp"; "ssl"; "tls"; "dns";
+    "time"; "date"; "datetime";
+    "array"; "hash"; "set"; "tuple"; "range"; "regex";
+    "string"; "int"; "float"; "bool"; "char"; "bytes";
+    "log"; "logger"; "fiber"; "channel"; "mutex";
+    "process"; "system"; "env"; "signal";
+    "socket"; "ip"; "openssl"; "base64";
   ]
 
 let check_feature_envy (nodes : Security_node.t list)

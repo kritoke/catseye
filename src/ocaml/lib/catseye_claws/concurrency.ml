@@ -124,17 +124,26 @@ let check_dead_letter (actions : channel_action list) : (string * string) list =
   ) actions;
   !results
 
-(** Check for Orphaned Spawn: spawn calls without rescue/ensure *)
+(** Check for Orphaned Spawn: spawn calls without rescue/ensure.
+    Checks both Call nodes (inline rescue) and Control nodes
+    (begin/rescue/end blocks, exception_handler nodes). *)
 let check_orphaned_spawn (body : Security_node.t list) : bool =
   let has_spawn = List.exists (fun (n : Security_node.t) ->
     n.Security_node.node_type = Security_node.Call
     && n.Security_node.name = "spawn"
   ) body in
   let has_rescue = List.exists (fun (n : Security_node.t) ->
-    n.Security_node.node_type = Security_node.Call
-    && (let name = n.Security_node.name in
-        String.length name >= 6 &&
-        String.sub name (String.length name - 6) 6 = "rescue")
+    (* Control nodes: exception_handler, rescue (from begin/rescue/end blocks) *)
+    (n.Security_node.node_type = Security_node.Control
+     && (n.Security_node.name = "exception_handler"
+         || n.Security_node.name = "rescue"
+         || n.Security_node.name = "begin"))
+    ||
+    (* Call nodes: inline rescue, rescue suffix *)
+    (n.Security_node.node_type = Security_node.Call
+     && (let name = n.Security_node.name in
+         String.length name >= 6 &&
+         String.sub name (String.length name - 6) 6 = "rescue"))
   ) body in
   let has_ensure = List.exists (fun (n : Security_node.t) ->
     n.Security_node.node_type = Security_node.Call
