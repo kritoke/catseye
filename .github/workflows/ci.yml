@@ -15,12 +15,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq opam tree-sitter
+          sudo apt-get install -y -qq opam curl
+          npm install -g tree-sitter-cli
 
       - name: Setup OCaml
         uses: ocaml/setup-ocaml@v2
         with:
-          opam-pin: false
+          ocaml-compiler: ocaml-base-compiler
 
       - name: Build
         run: |
