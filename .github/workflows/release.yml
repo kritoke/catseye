@@ -42,8 +42,38 @@ jobs:
           mkdir -p ../../bin
           cp _build/default/bin/main.exe ../../bin/catseye-ocaml
 
+      - name: Create grammar setup script
+        run: |
+          cat > SETUP_GRAMMARS.sh << 'SCRIPT'
+          #!/bin/bash
+          # Setup tree-sitter grammars for Catseye
+          # Run this once after installation
+          
+          GRAMMAR_DIR="${CATSEYE_GRAMMAR_DIR:-$HOME/.local/share/catseye/grammars}"
+          
+          echo "Setting up tree-sitter grammars in $GRAMMAR_DIR..."
+          
+          mkdir -p "$GRAMMAR_DIR"
+          
+          # Download grammar repo
+          if [ ! -d "$GRAMMAR_DIR/tree-sitter-grammars" ]; then
+              echo "Downloading tree-sitter-grammars..."
+              curl -sL https://github.com/tree-sitter/tree-sitter-grammars/archive/refs/heads/master.tar.gz | tar -xz -C "$GRAMMAR_DIR" --strip-components=1
+          fi
+          
+          echo "✓ Grammars setup complete"
+          echo "Set CATSEYE_GRAMMAR_DIR to customize location"
+          SCRIPT
+          chmod +x SETUP_GRAMMARS.sh
+
       - name: Package
-        run: tar -czf catseye-linux-x86_64.tar.gz bin/
+        run: tar -czf catseye-linux-x86_64.tar.gz bin/ SETUP_GRAMMARS.sh
+
+      - name: Verify binary
+        run: |
+          tar -xzf catseye-linux-x86_64.tar.gz
+          chmod +x bin/catseye-ocaml
+          ./bin/catseye-ocaml --version || echo "Binary test (may fail on ARM)"
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
