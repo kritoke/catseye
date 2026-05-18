@@ -30,8 +30,9 @@ jobs:
           # Get environment
           eval $(opam env)
           
-          # Install ALL dependencies needed for the project
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt ocaml_sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -40
+          # Install core dependencies first, then the rest
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt 2>&1 | tail -20
+          opam install -y ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
           
           # cd to ocaml dir and build
           cd src/ocaml
