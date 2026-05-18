@@ -11,24 +11,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install opam
         run: |
           sudo apt-get update -qq || true
-          sudo apt-get install -y -qq bubblewrap curl 2>/dev/null || true
-          curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh | sh
+          sudo apt-get install -y -qq curl build-essential bubblewrap
+          curl -sL https://github.com/ocaml/opam/releases/download/2.2.0/opam-2.2.0-x86_64-linux -o /tmp/opam
+          chmod +x /tmp/opam
+          sudo mv /tmp/opam /usr/local/bin/opam
 
       - name: Setup OCaml
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          opam init --disable-sandboxing --yes
-          opam switch create . ocaml-base-compiler.5.4.1 --yes
-          eval $(opam env)
+          export OPAMROOT=/home/runner/.opam
+          export PATH="$OPAMROOT/bin:$PATH"
+          opam init --disable-sandboxing --auto-setup -y
+          opam switch create . ocaml-base-compiler.5.4.1 -y
 
       - name: Install npm packages
         run: npm install -g tree-sitter-cli
 
       - name: Build
         run: |
+          export OPAMROOT=/home/runner/.opam
+          export PATH="$OPAMROOT/bin:$PATH"
           eval $(opam env)
           opam install --deps-only -y .
           dune build --profile release
