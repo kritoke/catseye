@@ -146,7 +146,9 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
           Array.iter (fun entry ->
             if not (should_skip entry) then begin
               let full = Filename.concat path entry in
-              walk full
+              (* Skip .svelte.ts files - Svelte 5 runes confuse JS parser *)
+              if Filename.check_suffix full ".svelte.ts" then ()
+              else walk full
             end
           ) entries
         end
@@ -155,7 +157,9 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
         Array.iter (fun entry ->
           if not (should_skip entry) then begin
             let full = Filename.concat path entry in
-            walk full
+            (* Skip .svelte.ts files - Svelte 5 runes confuse JS parser *)
+            if Filename.check_suffix full ".svelte.ts" then ()
+            else walk full
           end
         ) entries
       end
