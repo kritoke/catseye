@@ -22,6 +22,7 @@ jobs:
       - name: Setup OCaml
         run: |
           export OPAMROOT=/home/runner/.opam
+          export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
           opam switch default -y 2>/dev/null || true
           opam install -y . 2>&1 | tail -30
@@ -29,15 +30,11 @@ jobs:
       - name: Build
         run: |
           export OPAMROOT=/home/runner/.opam
-          export PATH="$OPAMROOT/bin:$PATH"
-          # Source opam env
-          . "$OPAMROOT/etc/opam-init/init.sh" 2>/dev/null || eval $(opam env)
-          
-          cd src/ocaml
-          dune build --profile release
-          mkdir -p ../../bin
-          cp _build/default/bin/main.exe ../../bin/catseye-ocaml
-          cd ../..
+          # Use opam exec to run commands with correct environment
+          opam exec -- dune build --profile release --context default
+          mkdir -p bin
+          opam exec -- cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
+          # Crystal extractor is optional
           crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
           crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
 
