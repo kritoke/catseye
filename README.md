@@ -51,7 +51,7 @@ just test
 | TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
 | Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
-| Rust       | `.rs`                      |    🔜 Future   |        ✅ 4 detectors (WASM)        | 🔜 Future      | tree-sitter (WASM)              |
+| Rust       | `.rs`                      |   🔜 Future    |        ✅ 4 detectors (WASM)         |    🔜 Future    | tree-sitter (WASM)             |
 
 ## CLI Reference
 
@@ -153,12 +153,12 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 
 #### Rust
 
-| Rule                   | What it catches                                              |
-| ---------------------- | -------------------------------------------------------------|
+| Rule                   | What it catches                                                |
+| ---------------------- | -------------------------------------------------------------- |
 | `HallucinatedFunction` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
-| `UnsafePanic`          | `unwrap()`, `expect()`, `panic!()` without error handling    |
-| `RustInefficiency`     | Unnecessary clones, `String::from(&var)`                     |
-| `TodoFound`            | `TODO`/`FIXME` in production code                             |
+| `UnsafePanic`          | `unwrap()`, `expect()`, `panic!()` without error handling      |
+| `RustInefficiency`     | Unnecessary clones, `String::from(&var)`                       |
+| `TodoFound`            | `TODO`/`FIXME` in production code                              |
 
 ### Code Smells (`--claws`)
 

@@ -166,13 +166,14 @@ let rec walk_expr (n : xml) : expr =
 
     (* For loops *)
     | "for_expression" ->
-      let _iter = match child_with_field n ~field:"value" with
+      let iter = match child_with_field n ~field:"value" with
         | Some i -> walk_expr i
-        | None -> { expr_value = EVar "?"; expr_location = loc } in
+        | None -> { expr_value = EUnit; expr_location = loc } in
       let body = match child_with_field n ~field:"body" with
         | Some b -> walk_expr b
         | None -> { expr_value = EBlock []; expr_location = loc } in
-      EFn ([PVar "iter"], body)
+      (* Return both iterator and body so collect_apps can traverse them *)
+      EBlock [iter; body]
 
     (* Let bindings *)
     | "let_declaration" ->
@@ -268,6 +269,13 @@ let rec walk_expr (n : xml) : expr =
     (* Break/continue *)
     | "break_expression" | "continue_expression" ->
       EVar "break"
+
+    (* Expression statement (wraps expressions with trailing semicolon) *)
+    | "expression_statement" ->
+      let children = List.filter (fun c -> c.text <> "") n.children in
+      (match children with
+       | [c] -> (walk_expr c).expr_value
+       | _ -> EUnit)
 
     (* Self *)
     | "self" ->
