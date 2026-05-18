@@ -4,7 +4,7 @@
 
 Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, and OCaml** — with language-specific security rules and antipattern databases for each.
 
-> **v0.4.2** - Path sensitivity, multi-language anti-patterns, property taint propagation
+> **v0.4.2** - Svelte 5 rune validation, path sensitivity, multi-language anti-patterns
 
 ## Requirements
 
@@ -127,6 +127,7 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 | Category                 | Examples                                                                                                        |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
 | **Svelte 4→5 migration** | `createEventDispatcher` → callback props, `beforeUpdate`/`afterUpdate` → `$effect()`, Svelte 4 stores → runes   |
+| **Svelte 5 Rune Validation** | `$state()` without init, `$effect` without cleanup (setInterval), `$derived` reassignment                      |
 | **Framework confusion**  | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
 | **XSS**                  | `{@html}` with dynamic content, `innerHTML`, `document.write`                                                   |
 | **Antipatterns**         | `tick()` overuse, Svelte 4 store patterns in runes mode                                                         |
