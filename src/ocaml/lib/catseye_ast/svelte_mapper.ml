@@ -75,8 +75,28 @@ let extract_script_block (doc : xml) : (string * string) option =
   let scripts = find doc ~tag:"script_element" in
   match scripts with
   | s :: _ ->
-    let text_children = List.filter (fun c -> c.text <> "") s.children in
-    let content = String.concat "" (List.map (fun c -> c.text) text_children) in
+    (* Extract only raw_text children which contain the actual script content *)
+    let raw_text = List.filter (fun c -> c.tag = "raw_text") s.children in
+    let content = String.concat "" (List.map (fun c -> c.text) raw_text) in
+    (* Unescape HTML entities from tree-sitter XML output: &lt; &gt; &amp; *)
+    let unescape s =
+      let len = String.length s in
+      let buf = Buffer.create len in
+      let i = ref 0 in
+      while !i < len do
+        let remaining = len - !i in
+        if remaining >= 4 && String.sub s !i 4 = "&lt;" then (
+          Buffer.add_char buf '<'; i := !i + 4)
+        else if remaining >= 4 && String.sub s !i 4 = "&gt;" then (
+          Buffer.add_char buf '>'; i := !i + 4)
+        else if remaining >= 5 && String.sub s !i 5 = "&amp;" then (
+          Buffer.add_char buf '&'; i := !i + 5)
+        else (
+          Buffer.add_char buf s.[!i]; incr i)
+      done;
+      Buffer.contents buf
+    in
+    let content = unescape content in
     let lang_attr = attr s "lang" in
     Some (content, lang_attr)
   | [] ->

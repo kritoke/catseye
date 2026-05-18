@@ -224,6 +224,59 @@ let check_svelte_hallucinations (all_apps : (string * int) list) (path : string)
     | None, None -> None
   ) all_apps
 
+(* ── 5. Svelte 5 Rune Validation ─────────────────────────────────────── *)
+
+(** Check for setInterval/setTimeout in an expression *)
+let rec check_expr e =
+  match e.expr_value with
+  | EApp (fn, _) ->
+    let name = expr_name fn in
+    name = "setInterval" || name = "setTimeout"
+  | EBlock es -> List.exists check_expr es
+  | EFn (_, body) -> check_expr body
+  | EIf (_, then_, else_) ->
+    check_expr then_ || (match else_ with Some e -> check_expr e | None -> false)
+  | ELet (_, e1, e2) -> check_expr e1 || check_expr e2
+  | ELetAssert (_, e1, e2) -> check_expr e1 || check_expr e2
+  | ECase (_, branches) -> List.exists (fun (_, e) -> check_expr e) branches
+  | _ -> false
+
+(** Check for $effect without cleanup for cleanup-requiring patterns (setInterval/setTimeout) *)
+let check_effect_cleanup (items : item list) (path : string) : T.finding list =
+  let findings = ref [] in
+  let rec walk e =
+    match e.expr_value with
+    | EApp (fn, args) when expr_name fn = "$effect" && List.length args > 0 ->
+      (match (List.hd args).expr_value with
+       | EFn (_, block_body) ->
+         (match block_body.expr_value with
+          | EBlock es ->
+            if List.exists check_expr es then
+              findings := e.expr_location.start.line :: !findings
+            else ()
+          | _ -> ())
+       | _ -> ())
+    | EApp (fn, args) -> walk fn; List.iter walk args
+    | ELet (_, e1, e2) | ELetAssert (_, e1, e2) -> walk e1; walk e2
+    | EIf (_, then_, else_) -> walk then_; Option.iter walk else_
+    | ECase (_, branches) -> List.iter (fun (_, e) -> walk e) branches
+    | EBlock es -> List.iter walk es
+    | EFn (_, body) -> walk body
+    | _ -> ()
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> walk body
+    | IConstant (PVar _, _, body) -> walk body
+    | _ -> ()
+  ) items;
+  List.map (fun line ->
+    { T.file = path; line; rule_id = "svelte5-effect-missing-cleanup";
+      severity = T.Warning;
+      message = "$effect with setInterval/setTimeout without cleanup return";
+      suggestion = Some "Return cleanup function: $effect(() => { const id = setInterval(...); return () => clearInterval(id); })" }
+  ) !findings
+
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
@@ -235,3 +288,4 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   @ check_xss all_apps all_vars path
   @ check_reactive_antipatterns all_apps path
   @ check_svelte_hallucinations all_apps path
+  @ check_effect_cleanup mod_.mod_items path

@@ -299,7 +299,41 @@ let rec walk_statement (n : xml) (file : string) : item list =
     (* Unwrap export — just process the inner declaration *)
     List.concat_map (fun c -> walk_statement c file) n.children
   | "expression_statement" ->
-    []  (* Expressions at statement level — not top-level items *)
+    (* Capture top-level rune calls ($effect, $state, $derived) as IConstant *)
+    (* Recursively find the outermost call expression and its function name *)
+    let rec find_rune_call n =
+      match n.tag with
+      | "call_expression" ->
+        (* Get function name from the function field *)
+        let fn_children = List.filter (fun c -> attr c "field" = "function") n.children in
+        (match fn_children with
+         | [fn_node] when fn_node.tag = "identifier" ->
+           if String.length fn_node.text > 0 && fn_node.text.[0] = '$' then
+             Some fn_node.text
+           else None
+         | _ -> None)
+      | "parenthesized_expression" ->
+        (* Unwrap parenthesized expressions *)
+        let non_text = List.filter (fun c -> c.tag <> "") n.children in
+        (match non_text with [inner] -> find_rune_call inner | _ -> None)
+      | "binary_expression" | "ternary_expression" ->
+        (* Ignore expressions that are just operations *)
+        None
+      | _ ->
+        (* Check children for call expressions *)
+        let rec check_children = function
+          | c :: rest ->
+            (match find_rune_call c with
+             | Some name -> Some name
+             | None -> check_children rest)
+          | [] -> None
+        in
+        check_children n.children
+    in
+    (match find_rune_call n with
+     | Some name ->
+       [{ item_value = IConstant (PVar name, None, walk_expr n file); item_location = range_of_xml n }]
+     | None -> [])
   | "statement_block" | "program" | "module" ->
     List.concat_map (fun c -> walk_statement c file) n.children
   | "if_statement" | "for_statement" | "while_statement" | "try_statement"
