@@ -19,24 +19,25 @@ jobs:
           chmod +x /tmp/opam
           sudo mv /tmp/opam /usr/local/bin/opam
 
-      - name: Setup OCaml
+      - name: Setup OCaml and build
         run: |
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
+          
+          # Initialize opam
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
-          opam switch default -y 2>/dev/null || true
+          
+          # Get environment
+          eval $(opam env)
+          
+          # Install dependencies from project
           opam install -y . 2>&1 | tail -30
-
-      - name: Build
-        run: |
-          export OPAMROOT=/home/runner/.opam
-          # Use opam exec to run commands with correct environment
-          opam exec -- dune build --profile release --context default
-          mkdir -p bin
-          opam exec -- cp src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
-          # Crystal extractor is optional
-          crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
-          crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
+          
+          # Build the project
+          cd src/ocaml
+          opam exec -- dune build --profile release
+          mkdir -p ../../bin
+          cp _build/default/bin/main.exe ../../bin/catseye-ocaml
 
       - name: Package
         run: tar -czf catseye-linux-x86_64.tar.gz bin/
