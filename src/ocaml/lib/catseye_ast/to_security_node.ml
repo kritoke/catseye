@@ -19,6 +19,7 @@ let lang_to_string = function
   | Svelte -> "svelte"
   | TypeScript -> "typescript"
   | JavaScript -> "javascript"
+  | Rust -> "rust"
   | Other s -> s
 
 (* ── Helpers ────────────────────────────────────────────────────────── *)

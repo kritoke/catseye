@@ -250,6 +250,7 @@ let translate (mod_ : Catseye_ast.Types.t) : il_unit =
     | Svelte -> "svelte"
     | TypeScript -> "typescript"
     | JavaScript -> "javascript"
+    | Rust -> "rust"
     | Other s -> s
   in
   let fns = List.concat_map walk_item mod_.mod_items in

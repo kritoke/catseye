@@ -601,6 +601,8 @@ let run (config : t) : int =
             List.map (convert_ai_finding ~lang:"javascript") (Ai_linter.Javascript_rules.analyze_module mod_)
            | Svelte ->
             List.map (convert_ai_finding ~lang:"svelte") (Ai_linter.Svelte_rules.analyze_module mod_)
+           | Rust ->
+            List.map (convert_ai_finding ~lang:"rust") (Ai_linter.Rust_rules.analyze_module mod_)
            | Other "ocaml" ->
             List.map (convert_ai_finding ~lang:"ocaml") (Ai_linter.Ocaml_rules.analyze_module mod_)
            | _ -> [])
