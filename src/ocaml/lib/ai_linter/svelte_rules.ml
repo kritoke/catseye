@@ -277,6 +277,89 @@ let check_effect_cleanup (items : item list) (path : string) : T.finding list =
       suggestion = Some "Return cleanup function: $effect(() => { const id = setInterval(...); return () => clearInterval(id); })" }
   ) !findings
 
+(* ── $derived reassignment check ─────────────────────────────────────── *)
+
+(** Extract variable name from a pattern (for let declarations) *)
+let rec extract_pattern_var (p : pattern) : string option =
+  match p with
+  | PVar name -> Some name
+  | PAlias (_, alias) -> Some alias
+  | PTuple ps | PList ps ->
+    (match ps with [p] -> extract_pattern_var p | _ -> None)
+  | PRecord fields ->
+    (match fields with [(_, p)] -> extract_pattern_var p | _ -> None)
+  | _ -> None
+
+(** Extract variable name from an expression (handles nested field access) *)
+let rec extract_lvalue (e : expr) : string option =
+  match e.expr_value with
+  | EVar name -> Some name
+  | EFieldAccess (recv, _) -> extract_lvalue recv  (* x.foo = ... → check x *)
+  | _ -> None
+
+(** Find all $derived declarations and their variable names *)
+let find_derived_vars (items : item list) : string list =
+  let derived_vars = ref [] in
+  let rec walk e =
+    match e.expr_value with
+    | EApp (fn, _) when expr_name fn = "$derived" -> ()  (* tracked via IConstant items *)
+    | ELet (lhs, rhs, _) ->
+      (match extract_pattern_var lhs with
+       | Some var_name when expr_name rhs = "$derived" ->
+         derived_vars := var_name :: !derived_vars
+       | _ -> ());
+      walk rhs
+    | EApp (fn, args) -> walk fn; List.iter walk args
+    | EBlock es -> List.iter walk es
+    | EIf (_, then_, else_) -> walk then_; Option.iter walk else_
+    | ECase (_, branches) -> List.iter (fun (_, e) -> walk e) branches
+    | EFn (_, body) -> walk body
+    | _ -> ()
+  in
+  (* Find $derived variables from IConstant items *)
+  List.iter (fun item ->
+    match item.item_value with
+    | IConstant (PVar name, _, body) ->
+      (* Check if the body is an ELet containing $derived *)
+      (match body.expr_value with
+       | ELet (lhs, rhs, _) ->
+         (match extract_pattern_var lhs, rhs.expr_value with
+          | Some var_name, EApp (fn, _) when expr_name fn = "$derived" ->
+            derived_vars := var_name :: !derived_vars
+          | _ -> ())
+       | EApp (fn, _) when expr_name fn = "$derived" ->
+         derived_vars := name :: !derived_vars
+       | _ -> ())
+    | IFunction (_, _, _, body) -> walk body
+    | _ -> ()
+  ) items;
+  !derived_vars
+
+(* ── $derived reassignment check ─────────────────────────────────────── *)
+
+(** Check for assignment to $derived variables *)
+let check_derived_reassignment (items : item list) (path : string) : T.finding list =
+  let derived_vars = find_derived_vars items in
+  let findings = ref [] in
+  
+  (* Look for assignment items like __assignment:doubled *)
+  List.iter (fun item ->
+    match item.item_value with
+    | IConstant (PVar name, _, _) ->
+      if String.length name > 13 && String.sub name 0 13 = "__assignment:" then
+        let var_name = String.sub name 13 (String.length name - 13) in
+        if List.mem var_name derived_vars then
+          findings := item.item_location.start.line :: !findings
+    | _ -> ()
+  ) items;
+  
+  List.map (fun line ->
+    { T.file = path; line; rule_id = "svelte5-derived-reassignment";
+      severity = T.Error;
+      message = "Cannot reassign $derived variable — $derived values are read-only";
+      suggestion = Some "Use $state() for mutable values, or recalculate with $derived" }
+  ) !findings
+
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
@@ -289,3 +372,4 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   @ check_reactive_antipatterns all_apps path
   @ check_svelte_hallucinations all_apps path
   @ check_effect_cleanup mod_.mod_items path
+  @ check_derived_reassignment mod_.mod_items path

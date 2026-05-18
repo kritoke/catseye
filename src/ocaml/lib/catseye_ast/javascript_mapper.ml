@@ -300,7 +300,7 @@ let rec walk_statement (n : xml) (file : string) : item list =
     List.concat_map (fun c -> walk_statement c file) n.children
   | "expression_statement" ->
     (* Capture top-level rune calls ($effect, $state, $derived) as IConstant *)
-    (* Recursively find the outermost call expression and its function name *)
+    (* Also capture assignment expressions for $derived reassignment detection *)
     let rec find_rune_call n =
       match n.tag with
       | "call_expression" ->
@@ -311,6 +311,13 @@ let rec walk_statement (n : xml) (file : string) : item list =
            if String.length fn_node.text > 0 && fn_node.text.[0] = '$' then
              Some fn_node.text
            else None
+         | _ -> None)
+      | "assignment_expression" ->
+        (* Capture assignment expressions for $derived reassignment detection *)
+        let left = List.filter (fun c -> attr c "field" = "left") n.children in
+        (match left with
+         | [l] when l.tag = "identifier" ->
+           Some ("__assignment:" ^ l.text)
          | _ -> None)
       | "parenthesized_expression" ->
         (* Unwrap parenthesized expressions *)
