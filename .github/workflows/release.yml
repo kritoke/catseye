@@ -22,7 +22,6 @@ jobs:
       - name: Setup OCaml
         run: |
           export OPAMROOT=/home/runner/.opam
-          export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>/dev/null || true
           opam switch default -y 2>/dev/null || true
           opam install -y . 2>&1 | tail -30
@@ -31,7 +30,9 @@ jobs:
         run: |
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
-          eval $(opam env)
+          # Source opam env
+          . "$OPAMROOT/etc/opam-init/init.sh" 2>/dev/null || eval $(opam env)
+          
           cd src/ocaml
           dune build --profile release
           mkdir -p ../../bin
