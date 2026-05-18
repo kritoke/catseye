@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -24,16 +27,16 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           
-          # Initialize opam - ignore darcs warning (it's just a warning)
+          # Initialize opam
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           
           # Get environment
           eval $(opam env)
           
-          # Install all dependencies - sqlite3 is the correct opam package name
+          # Install all dependencies
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -30
           
-          # cd to ocaml dir and build
+          # Build
           cd src/ocaml
           opam exec -- dune build --profile release
           mkdir -p ../../bin
