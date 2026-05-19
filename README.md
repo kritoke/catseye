@@ -4,34 +4,28 @@
 
 Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust** — with language-specific security rules and antipattern databases for each.
 
-> **v0.4.2** - Svelte 5 rune validation, path sensitivity, multi-language anti-patterns, Rust support
+> **v0.4.3** - SSRF sanitizers, improved URL validation tracking, Node.js 24 CI
 
 ## Installation
 
 ### Binary Releases (Linux & macOS)
 
-Download pre-built binaries from the [Releases](https://github.com/catseye-scanner/catseye/releases) page:
+Download pre-built binaries from the [Releases](https://github.com/kritoke/catseye/releases) page:
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/kritoke/catseye/releases/download/v0.4.3/catseye-linux-x86_64.tar.gz | tar xz
 
 # Linux ARM64 (aarch64)
-curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz | tar xz
+curl -L https://github.com/kritoke/catseye/releases/download/v0.4.3/catseye-linux-aarch64.tar.gz | tar xz
 
-# macOS Intel
-curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz | tar xz
-
-# macOS Apple Silicon
-curl -L https://github.com/catseye-scanner/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz | tar xz
+# macOS Apple Silicon (ARM64)
+curl -L https://github.com/kritoke/catseye/releases/download/v0.4.3/catseye-macos-aarch64.tar.gz | tar xz
 ```
 
-After extraction, run `./SETUP_GRAMMARS.sh` to install tree-sitter grammars:
+> **Note:** macOS Intel (x86_64) builds have been discontinued. Use macOS ARM64 for Apple Silicon Macs.
 
-```bash
-cd catseye
-./SETUP_GRAMMARS.sh
-```
+After extraction, run `./install-grammars.sh` to install tree-sitter grammars:
 
 ### Nix (All Platforms)
 
@@ -39,7 +33,7 @@ cd catseye
 # In your project
 cat > flake.nix << 'EOF'
 {
-  inputs.catseye.url = "github:catseye-scanner/catseye";
+  inputs.catseye.url = "github:kritoke/catseye";
   outputs = { self, nixpkgs, catseye }: {
     devShells.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.mkShell {
       buildInputs = [ catseye.packages.x86_64-linux.default ];
@@ -62,7 +56,7 @@ For detailed instructions on installing dependencies without Nix, see [install.m
 
 ```bash
 # Clone the repo
-git clone https://github.com/catseye-scanner/catseye.git
+git clone https://github.com/kritoke/catseye.git
 cd catseye
 
 # Build (uses tree-sitter grammars from nix by default)
@@ -261,7 +255,7 @@ What it doesn't do:
 ## Example Output
 
 ```
-  Catseye v0.4.2
+  Catseye v0.4.3
   Target:   ./src
   Files:    72 Crystal, 8 JavaScript, 5 TypeScript, 4 Svelte
 
