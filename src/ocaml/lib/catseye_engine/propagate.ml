@@ -35,17 +35,17 @@ let do_propagate (nodes : Security_node.t list) (db : Db.t)
       (* Pattern 1: direct var arg in the assign node *)
       let direct_hit = Db.check_assignment_taint node acc in
       match direct_hit with
-      | Some _ -> Db.add_record acc {
+      | Some source -> Db.add_record acc {
           var_name = node.Security_node.name
         ; file = node.Security_node.file
         ; line = node.Security_node.line
         ; description = node.Security_node.name
-            ^ " assigned from tainted: " ^ (Option.get direct_hit)
-        ; source_var = Option.get direct_hit
+            ^ " assigned from tainted: " ^ source
+        ; source_var = source
         ; field = None
-        ; status = Tainted { source = Option.get direct_hit
+        ; status = Tainted { source
                             ; field = None
-                            ; origin = From_var (Option.get direct_hit) }
+                            ; origin = From_var source }
         }
       | None ->
           (* Pattern 2: call args — look at the RHS call nodes *)
@@ -274,9 +274,6 @@ let propagate_uri_properties (nodes : Security_node.t list) (db : Db.t)
            | None -> ())
       | _ -> ()
   ) nodes;
-  (if !uri_found > 0 || !tainted_found > 0 then
-     Printf.eprintf "[propagate_uri_properties] URI calls: %d, tainted: %d\n" !uri_found !tainted_found
-  );
   !db_ref
 
 (* Propagate aliases *)

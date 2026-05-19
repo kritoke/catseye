@@ -20,14 +20,17 @@ let styled color config text =
 
 (* ── Severity helpers ────────────────────────────────────────────────── *)
 
-let severity_label = function
-  | "critical" | "high" | "Critical" | "High" -> "Error"
-  | "medium" | "low" | "Medium" | "Low" -> "Warning"
+let severity_label sev =
+  match String.lowercase_ascii sev with
+  | "critical" | "high" -> "Error"
+  | "medium" | "low" -> "Warning"
   | _ -> "Info"
 
-let severity_icon = function
-  | "critical" | "high" | "Critical" | "High" -> "🔴 "
-  | "medium" | "low" | "Medium" | "Low" -> "⚠️  "
+
+let severity_icon sev =
+  match String.lowercase_ascii sev with
+  | "critical" | "high" -> "🔴 "
+  | "medium" | "low" -> "⚠️  "
   | _ -> "ℹ️  "
 
 (* ── Extractors ─────────────────────────────────────────────────────── *)
@@ -45,7 +48,10 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
       really_input ic buf 0 len;
       close_in ic;
       Ok (Bytes.to_string buf)
-    with _ -> Error exit_code
+    with
+    | Sys_error msg -> Error (-2)
+    | End_of_file -> Error (-3)
+    | exn -> Error (-4)
   else Error exit_code
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
@@ -82,7 +88,10 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
        let json_str = Buffer.contents output in
        if json_str <> "" then
          try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
-         with _ -> None
+         with
+         | Yojson.Safe.Util.Type_error (msg, _) -> None
+         | Yojson.Json_error msg -> None
+         | Failure msg -> None
        else None)
   | "gleam" ->
     (try
@@ -238,7 +247,8 @@ let run_crows_nest (config : t) : Catseye_crowsnest.Aggregator.dep_result list o
       let cache_path = Filename.concat config.cache_dir "crowsnest.db" in
       let cache =
         try Some (Catseye_crowsnest.Cache.open_db cache_path)
-        with _ -> None
+        with
+        | Sys_error _ -> None
       in
       let results = match cache with
         | Some c -> Catseye_crowsnest.Aggregator.audit manifests ~cache:c ()
@@ -629,7 +639,9 @@ let run (config : t) : int =
       try match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
         | Ok mod_ -> Some mod_
         | Error _ -> None
-      with _ -> None
+      with
+      | Sys_error _ -> None
+      | Failure _ -> None
     ) sources in
     let claws_findings =
       if ast_modules <> [] then

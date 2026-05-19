@@ -3,6 +3,17 @@
 # Place in project root as .catseye.toml
 # Auto-discovered by walking up from the target directory
 
+[scan]
+# Additional directories to exclude from scanning
+# Default exclusions: node_modules, .git, vendor, spec, dist, .svelte-kit, build, .next, _build, _opam, test
+exclude = ["test", "__pycache__"]
+
+# Maximum file size to scan (bytes)
+# max_file_size = 1_000_000
+
+# Parallelism (0 = auto-detect CPU count)
+# parallelism = 0
+
 [taint]
 # Additional taint source names (comma-separated)
 extra_sources = "user_id,session_id,cookie_value"

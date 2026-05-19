@@ -25,14 +25,14 @@ jobs:
         run: |
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
-          
+
           # Initialize opam
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           eval $(opam env)
-          
+
           # Install dependencies
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
-          
+
           # Build
           cd src/ocaml
           dune build

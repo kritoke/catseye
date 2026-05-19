@@ -63,11 +63,6 @@ rule "SSRF" severity="High" {
             sanitizer "URI.encode"
             fix "connection.get(URI.parse({arg0}))"
         }
-        sink "http_client.get" arg=0 {
-            sanitizer "URI.parse"
-            sanitizer "URI.encode"
-            fix "http_client.get(URI.parse({arg0}))"
-        }
         sink "hackney.get" arg=0 {
             fix "Validate URL with allowlist before request"
         }
