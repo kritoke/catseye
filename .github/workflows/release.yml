@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          node-version: '24'
 
       - name: Install dependencies
         run: |
@@ -45,41 +47,19 @@ jobs:
           echo "Installing tree-sitter grammars..."
           echo "Destination: $GRAMMAR_DIR"
 
-          # Install grammars via npm packages
-          # These packages contain pre-built .wasm parsers and .json schemas
-          for lang in javascript typescript rust python go; do
-            echo "  Installing $lang..."
-            TMP=$(mktemp -d)
-            if npm pack "@tree-sitter-grammars/tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
-              PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
-              if [ -n "$PKG" ]; then
-                mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
-                tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
-              fi
-            fi
-            rm -rf "$TMP"
-          done
-
-          # Also try the official tree-sitter packages
-          for lang in javascript typescript; do
-            if [ ! -d "$GRAMMAR_DIR/tree-sitter-$lang" ]; then
-              echo "  Installing $lang (official)..."
-              TMP=$(mktemp -d)
-              if npm pack "tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
-                PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
-                if [ -n "$PKG" ]; then
-                  mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
-                  tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
-                fi
-              fi
-              rm -rf "$TMP"
-            fi
-          done
+          # Install grammars via npx tree-sitter install-language
+          # This downloads pre-built WASM parsers from tree-sitter repositories
+          if command -v npx &> /dev/null; then
+            for lang in javascript typescript rust python go svelte; do
+              echo "  Installing $lang..."
+              npx --yes tree-sitter-cli@latest install-language "$lang" 2>/dev/null || true
+            done
+          fi
 
           echo ""
           echo "✓ Grammar installation complete"
-          echo "  Location: $GRAMMAR_DIR"
           echo "  Set CATSEYE_GRAMMAR_DIR to customize"
+          echo "  Run 'npx tree-sitter-cli install-language <lang>' to add more"
           SCRIPT
           chmod +x install-grammars.sh
 
@@ -95,6 +75,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          node-version: '24'
 
       - name: Install deps
         run: |
@@ -129,15 +111,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
-            target: x86_64
-            artifact: catseye-macos-x86_64
           - os: macos-14
             target: arm64
             artifact: catseye-macos-aarch64
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          node-version: '24'
 
       - name: Install deps
         run: |
