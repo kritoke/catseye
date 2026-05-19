@@ -49,9 +49,9 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
       close_in ic;
       Ok (Bytes.to_string buf)
     with
-    | Sys_error msg -> Error (-2)
+    | Sys_error _ -> Error (-2)
     | End_of_file -> Error (-3)
-    | exn -> Error (-4)
+    | _ -> Error (-4)
   else Error exit_code
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
@@ -89,9 +89,9 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
        if json_str <> "" then
          try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
          with
-         | Yojson.Safe.Util.Type_error (msg, _) -> None
-         | Yojson.Json_error msg -> None
-         | Failure msg -> None
+         | Yojson.Safe.Util.Type_error (_, _) -> None
+         | Yojson.Json_error _ -> None
+         | Failure _ -> None
        else None)
   | "gleam" ->
     (try
