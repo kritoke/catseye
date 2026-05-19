@@ -325,6 +325,135 @@ let check_unused_lets (items : item list) (path : string) : T.finding list =
   in
   walk items
 
+(* ── 8. Verbose Option Pattern ──────────────────────────────────────── *)
+
+(** Detect nested pattern matching on option types where let* would be cleaner *)
+let count_option_matches (e : expr) : int =
+  let rec count (depth : int) (e : expr) : int =
+    match e.expr_value with
+    | ECase (scrut, branches) ->
+      (* Check if this is matching on an option *)
+      let scrut_is_option = 
+        match scrut.expr_value with
+        | EApp (fn, _) -> 
+          let name = expr_name fn in
+          String.length name > 0 && (name = "Some" || name = "Option.some" ||
+            String.ends_with ~suffix:".some" name || name = "Some")
+        | _ -> false
+      in
+      if scrut_is_option then
+        let child_max = List.fold_left (fun acc (_, body) -> max acc (count (depth + 1) body)) 0 branches in
+        depth + child_max
+      else
+        List.fold_left (fun acc (_, body) -> max acc (count depth body)) 0 branches
+    | EBlock es -> List.fold_left (fun acc x -> max acc (count depth x)) 0 es
+    | ELet (_, e1, e2) -> max (count depth e1) (count depth e2)
+    | EIf (_, then_, else_) -> 
+      max (count depth then_) (match else_ with Some e -> count depth e | None -> 0)
+    | _ -> 0
+  in
+  count 1 e
+
+let check_verbose_option (items : item list) (path : string) : T.finding list =
+  let rec check (e : expr) : (string * int) list =
+    match e.expr_value with
+    | ECase (_, branches) ->
+      let count = count_option_matches e in
+      let self = if count >= 2 then [(Printf.sprintf "Nested option matching (depth %d) — consider let*" count, e.expr_location.start.line)] else [] in
+      self @ List.concat_map (fun (_, body) -> check body) branches
+    | EBlock es -> List.concat_map check es
+    | ELet (_, e1, e2) -> check e1 @ check e2
+    | EIf (_, then_, else_) -> check then_ @ (match else_ with Some x -> check x | None -> [])
+    | EFn (_, body) -> check body
+    | _ -> []
+  in
+  List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+      List.map (fun (msg, line) ->
+        { T.file = path; line; rule_id = "ocaml-verbose-option";
+          severity = T.Hint;
+          message = msg;
+          suggestion = Some "Use let* for cleaner option handling" }
+      ) (check body)
+    | _ -> []
+  ) items
+
+(* ── 9. Non-tail Recursive Functions ───────────────────────────────── *)
+
+let rec find_recursive_calls (name : string) (e : expr) : int list =
+  match e.expr_value with
+  | EApp (fn, _) when expr_name fn = name ->
+    [e.expr_location.start.line]
+  | ECase (_, branches) -> List.concat_map (fun (_, body) -> find_recursive_calls name body) branches
+  | EIf (_, then_, else_) ->
+    find_recursive_calls name then_ @ (match else_ with Some e -> find_recursive_calls name e | None -> [])
+  | ELet (_, e1, e2) -> find_recursive_calls name e1 @ find_recursive_calls name e2
+  | EBlock es -> List.concat_map (find_recursive_calls name) es
+  | EFn (_, body) -> find_recursive_calls name body
+  | _ -> []
+
+let check_non_tail_recursive (items : item list) (path : string) : T.finding list =
+  let rec analyze_fn (name : string) (body : expr) : T.finding option =
+    let calls = find_recursive_calls name body in
+    if List.length calls > 3 && not (is_simple_tail_recursive body name) then
+      Some { T.file = path; line = body.expr_location.start.line; 
+            rule_id = "ocaml-non-tail-recursive";
+            severity = T.Warning;
+            message = Printf.sprintf "Function '%s' has %d recursive calls — ensure tail-recursive for large inputs" name (List.length calls);
+            suggestion = Some "Use accumulator parameter for tail recursion" }
+    else None
+  and is_simple_tail_recursive (e : expr) (name : string) : bool =
+    match e.expr_value with
+    | EIf (_, then_, else_) ->
+      is_simple_tail_recursive then_ name && 
+      (match else_ with Some e -> is_simple_tail_recursive e name | None -> true)
+    | ELet (_, _, body) -> is_simple_tail_recursive body name
+    | ECase (_, branches) -> 
+      List.for_all (fun (_, body) -> is_simple_tail_recursive body name) branches
+    | EBlock es -> (match List.rev es with [] -> true | last :: _ -> is_simple_tail_recursive last name)
+    | EApp (fn, _) -> expr_name fn = name  (* Direct tail call *)
+    | _ -> false
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) when String.length name > 0 && name.[0] <> '_' ->
+      analyze_fn name body
+    | _ -> None
+  ) items
+
+(* ── 10. Redundant Boolean Comparison ────────────────────────────────── *)
+
+(** Detect patterns like `if x = y then true else false` which should be `x = y` *)
+let check_redundant_bool (items : item list) (path : string) : T.finding list =
+  let rec find_bool_comparisons (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EIf (cond, then_e, else_e) ->
+      let self = (match then_e.expr_value, else_e with
+       | ELiteral (LString "True"), Some x when x.expr_value = ELiteral (LString "False") ->
+         [(expr_name cond, e.expr_location.start.line)]
+       | ELiteral (LString "False"), Some x when x.expr_value = ELiteral (LString "True") ->
+         [(expr_name cond, e.expr_location.start.line)]
+       | _ -> []) in
+      self @ find_bool_comparisons then_e @ (match else_e with Some x -> find_bool_comparisons x | None -> [])
+    | EBlock es -> List.concat_map find_bool_comparisons es
+    | ELet (_, e1, e2) -> find_bool_comparisons e1 @ find_bool_comparisons e2
+    | ECase (_, branches) -> List.concat_map (fun (_, body) -> find_bool_comparisons body) branches
+    | EFn (_, body) -> find_bool_comparisons body
+    | _ -> []
+  in
+  List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+      List.map (fun (cond, line) ->
+        { T.file = path; line; rule_id = "ocaml-redundant-if-bool";
+          severity = T.Hint;
+          message = Printf.sprintf "Redundant 'if %s then true else false' — just use '%s'" cond cond;
+          suggestion = Some "Use the boolean expression directly" }
+      ) (find_bool_comparisons body)
+    | _ -> []
+  ) items
+
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
@@ -350,3 +479,6 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   @ check_hardcoded_secrets mod_.mod_items path
   @ check_todo all_apps path
   @ check_unused_lets mod_.mod_items path
+  @ check_verbose_option mod_.mod_items path
+  @ check_non_tail_recursive mod_.mod_items path
+  @ check_redundant_bool mod_.mod_items path
