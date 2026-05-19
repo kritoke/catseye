@@ -16,6 +16,8 @@ let known_sanitizers = [
   "Path.dirname"; "String.strip"; "String.trim"; "String.slice"; "Int.parse";
   "Float.parse"; "validator."; "sanitize."; "escape."; "encode."; "cgi.escape";
   "html.escape";
+  (* SSRF validation functions — these sanitize URLs *)
+  "check_ssrf"; "check_ssrf_url"; "validate_url"; "is_valid_url"; "allowlisted_url?"; "valid_url?"; "url_valid?";
   (* Hash/digest functions produce deterministic output — safe for filenames *)
   "Digest::MD5.hexdigest"; "Digest::SHA256.hexdigest";
   "Base64.encode"; "Base64.strict_encode";

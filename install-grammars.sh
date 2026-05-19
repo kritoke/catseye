@@ -11,32 +11,32 @@ echo "Destination: $GRAMMAR_DIR"
 # Install grammars via npm packages
 # These packages contain pre-built .wasm parsers and .json schemas
 for lang in javascript typescript rust python go; do
-    echo "  Installing $lang..."
-    TMP=$(mktemp -d)
-    if npm pack "@tree-sitter-grammars/tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
-        PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
-        if [ -n "$PKG" ]; then
-            mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
-            tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
-        fi
-    fi
-    rm -rf "$TMP"
+	echo "  Installing $lang..."
+	TMP=$(mktemp -d)
+	if npm pack "@tree-sitter-grammars/tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
+		PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
+		if [ -n "$PKG" ]; then
+			mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
+			tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
+		fi
+	fi
+	rm -rf "$TMP"
 done
 
 # Also try the official tree-sitter packages
 for lang in javascript typescript; do
-    if [ ! -d "$GRAMMAR_DIR/tree-sitter-$lang" ]; then
-        echo "  Installing $lang (official)..."
-        TMP=$(mktemp -d)
-        if npm pack "tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
-            PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
-            if [ -n "$PKG" ]; then
-                mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
-                tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
-            fi
-        fi
-        rm -rf "$TMP"
-    fi
+	if [ ! -d "$GRAMMAR_DIR/tree-sitter-$lang" ]; then
+		echo "  Installing $lang (official)..."
+		TMP=$(mktemp -d)
+		if npm pack "tree-sitter-$lang" --pack-destination "$TMP" 2>/dev/null; then
+			PKG=$(ls "$TMP"/tree-sitter-$lang-*.tgz 2>/dev/null | head -1)
+			if [ -n "$PKG" ]; then
+				mkdir -p "$GRAMMAR_DIR/tree-sitter-$lang"
+				tar -xzf "$PKG" -C "$GRAMMAR_DIR/tree-sitter-$lang" --strip-components=1 2>/dev/null || true
+			fi
+		fi
+		rm -rf "$TMP"
+	fi
 done
 
 echo ""
