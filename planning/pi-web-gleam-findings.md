@@ -6,16 +6,16 @@ Files: 33 Gleam files, 2250 nodes
 
 ## Summary
 
-| Category | Count | Severity |
-|----------|-------|----------|
-| `unused-let` | ~100 | Info |
-| `nested-case` | 11 | Warning |
-| `guard-after-wildcard` | 10 | Info |
-| `nested-function` | 7 | Info |
-| `tuple-abuse` | 2 | Info |
-| `non-exhaustive-case` | 2 | Warning |
-| `redundant-single-case` | 2 | Info |
-| `implicit-return-discard` | 1 | Info |
+| Category                  | Count | Severity |
+| ------------------------- | ----- | -------- |
+| `unused-let`              | ~100  | Info     |
+| `nested-case`             | 11    | Warning  |
+| `guard-after-wildcard`    | 10    | Info     |
+| `nested-function`         | 7     | Info     |
+| `tuple-abuse`             | 2     | Info     |
+| `non-exhaustive-case`     | 2     | Warning  |
+| `redundant-single-case`   | 2     | Info     |
+| `implicit-return-discard` | 1     | Info     |
 
 ## Priority Findings
 
@@ -23,18 +23,18 @@ Files: 33 Gleam files, 2250 nodes
 
 These indicate complex control flow that may be hard to read and maintain.
 
-| File | Line | Nesting Depth |
-|------|------|---------------|
-| `parser.gleam` | 112 | **6 levels** (worst) |
-| `parser.gleam` | 382 | 4 levels |
-| `parser.gleam` | 653 | 3 levels |
-| `parser.gleam` | 705 | 3 levels |
-| `streaming_bar.gleam` | 20 | 4 levels |
-| `streaming_bar.gleam` | 124 | 3 levels |
-| `ansi_to_lustre.gleam` | 58 | 3 levels |
-| `ansi_to_lustre.gleam` | 111 | 3 levels |
-| `markdown_renderer.gleam` | 54 | 3 levels |
-| `text_cleaner.gleam` | 216 | 3 levels |
+| File                      | Line | Nesting Depth        |
+| ------------------------- | ---- | -------------------- |
+| `parser.gleam`            | 112  | **6 levels** (worst) |
+| `parser.gleam`            | 382  | 4 levels             |
+| `parser.gleam`            | 653  | 3 levels             |
+| `parser.gleam`            | 705  | 3 levels             |
+| `streaming_bar.gleam`     | 20   | 4 levels             |
+| `streaming_bar.gleam`     | 124  | 3 levels             |
+| `ansi_to_lustre.gleam`    | 58   | 3 levels             |
+| `ansi_to_lustre.gleam`    | 111  | 3 levels             |
+| `markdown_renderer.gleam` | 54   | 3 levels             |
+| `text_cleaner.gleam`      | 216  | 3 levels             |
 
 **Recommendation**: Consider extracting pattern-matching logic into helper functions or combining patterns.
 
@@ -42,10 +42,10 @@ These indicate complex control flow that may be hard to read and maintain.
 
 Large tuples that should be named records for clarity.
 
-| File | Line | Elements |
-|------|------|----------|
-| `api.gleam` | 113 | 5 elements |
-| `api.gleam` | 125 | 5 elements |
+| File        | Line | Elements   |
+| ----------- | ---- | ---------- |
+| `api.gleam` | 113  | 5 elements |
+| `api.gleam` | 125  | 5 elements |
 
 **Recommendation**: Create a named record type instead of tuples.
 
@@ -53,10 +53,10 @@ Large tuples that should be named records for clarity.
 
 Case expressions with only one branch, likely missing Error variants.
 
-| File | Line |
-|------|------|
-| `parser.gleam` | 434 |
-| `text_cleaner.gleam` | 435 |
+| File                 | Line |
+| -------------------- | ---- |
+| `parser.gleam`       | 434  |
+| `text_cleaner.gleam` | 435  |
 
 **Recommendation**: Add Error branch or use a let binding instead.
 
@@ -64,15 +64,15 @@ Case expressions with only one branch, likely missing Error variants.
 
 Unreachable code after wildcard patterns.
 
-| File | Lines |
-|------|-------|
-| `decoder.gleam` | 105, 131, 236 |
-| `fragment.gleam` | 128 |
-| `ansi_to_lustre.gleam` | 124, 282 |
-| `code_highlight.gleam` | 48 |
-| `text_cleaner.gleam` | 197 |
-| `streaming_bar.gleam` | 109 |
-| `tool_call.gleam` | 52 |
+| File                   | Lines         |
+| ---------------------- | ------------- |
+| `decoder.gleam`        | 105, 131, 236 |
+| `fragment.gleam`       | 128           |
+| `ansi_to_lustre.gleam` | 124, 282      |
+| `code_highlight.gleam` | 48            |
+| `text_cleaner.gleam`   | 197           |
+| `streaming_bar.gleam`  | 109           |
+| `tool_call.gleam`      | 52            |
 
 **Recommendation**: Move wildcard to last position or remove unreachable branches.
 
@@ -80,14 +80,14 @@ Unreachable code after wildcard patterns.
 
 Anonymous functions that should be extracted for testability.
 
-| File | Line | Statements |
-|------|------|------------|
-| `app.gleam` | 78 | 6 |
-| `json_helpers.gleam` | 149 | 5 |
-| `view.gleam` | 123 | 4 |
-| `text_cleaner.gleam` | 159 | 3 |
-| `text_cleaner.gleam` | 266 | 3 |
-| `workspace_picker.gleam` | 56 | 3 |
+| File                     | Line | Statements |
+| ------------------------ | ---- | ---------- |
+| `app.gleam`              | 78   | 6          |
+| `json_helpers.gleam`     | 149  | 5          |
+| `view.gleam`             | 123  | 4          |
+| `text_cleaner.gleam`     | 159  | 3          |
+| `text_cleaner.gleam`     | 266  | 3          |
+| `workspace_picker.gleam` | 56   | 3          |
 
 **Recommendation**: Extract as named functions.
 
@@ -96,6 +96,7 @@ Anonymous functions that should be extracted for testability.
 Variables assigned but never used. Many are likely intermediate results from decoding/parsing.
 
 **Top files by count:**
+
 - `view_fragment.gleam`: 9 unused bindings
 - `parser.gleam`: 12 unused bindings
 - `text_cleaner.gleam`: 15 unused bindings

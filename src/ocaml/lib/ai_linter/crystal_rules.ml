@@ -1389,6 +1389,46 @@ let detect_float_equality (m : t) =
 
 (* ── Category 21: Idiomatic Crystal ─────────────────────────────────── *)
 
+(** Rule: Sequential Blocking Calls
+    Detects 3+ blocking calls in a function that could be parallelized.
+    AI often writes sequential HTTP/DB calls instead of using Fibers. *)
+let detect_sequential_blocking (m : t) =
+  let blocking_prefixes = [
+    "HTTP::Client"; "DB."; "File."; "Process";
+  ] in
+  let is_blocking (name : string) =
+    List.exists (fun prefix ->
+      String.length name >= String.length prefix &&
+      String.sub name 0 (String.length prefix) = prefix
+    ) blocking_prefixes
+  in
+  let rec collect_blocking_calls (e : expr) : string list =
+    match e.expr_value with
+    | EApp (fn, args) ->
+        let name = get_full_name fn in
+        let self_calls = if is_blocking name then [name] else [] in
+        self_calls @ List.concat_map collect_blocking_calls args
+    | EBlock es -> List.concat_map collect_blocking_calls es
+    | ELet (_, e1, e2) -> collect_blocking_calls e1 @ collect_blocking_calls e2
+    | EIf (_, then_, else_) ->
+        collect_blocking_calls then_ @
+        (match else_ with Some e -> collect_blocking_calls e | None -> [])
+    | _ -> []
+  in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (name, _, _, body) ->
+        let blocking_calls = collect_blocking_calls body in
+        let count = List.length blocking_calls in
+        if count >= 3 then
+          findings := (Printf.sprintf
+            "Function '%s' has %d sequential blocking calls — consider parallelizing with spawn/fiber"
+            name count, item.item_location.start.line) :: !findings
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (** Rule: Empty String Comparison
     Detects str == "" or str != "" instead of str.empty?.
     AI often generates string comparisons instead of using the idiomatic method. *)
@@ -1563,6 +1603,7 @@ let all () = [
   ("float-equality", T.Warning, detect_float_equality);
 
   (* Idiomatic Crystal *)
+  ("sequential-blocking", T.Hint, detect_sequential_blocking);
   ("empty-string-comparison", T.Hint, detect_empty_string_comparison);
   ("negated-comparison", T.Hint, detect_negated_comparison);
 

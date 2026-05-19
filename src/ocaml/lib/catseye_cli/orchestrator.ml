@@ -606,7 +606,8 @@ let run (config : t) : int =
           (match mod_.mod_lang with
            | Gleam ->
             List.map (convert_ai_finding ~lang:"gleam") (Ai_linter.Gleam_rules.analyze_module mod_)
-           | Crystal -> []
+           | Crystal ->
+            List.map (convert_ai_finding ~lang:"crystal") (Ai_linter.Crystal_rules.analyze_module mod_)
            | JavaScript | TypeScript ->
             List.map (convert_ai_finding ~lang:"javascript") (Ai_linter.Javascript_rules.analyze_module mod_)
            | Svelte ->
