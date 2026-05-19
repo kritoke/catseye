@@ -4,12 +4,12 @@
 
 Download the binary for your system:
 
-| Platform | Download |
-|----------|----------|
-| **Linux x86_64** | [catseye-linux-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz) |
-| **Linux ARM64** | [catseye-linux-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz) |
-| **macOS x86_64** | [catseye-macos-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz) |
-| **macOS ARM64** | [catseye-macos-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz) |
+| Platform         | Download                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Linux x86_64** | [catseye-linux-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz)   |
+| **Linux ARM64**  | [catseye-linux-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz) |
+| **macOS x86_64** | [catseye-macos-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz)   |
+| **macOS ARM64**  | [catseye-macos-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz) |
 
 ```bash
 # Example for Linux x86_64:
@@ -48,11 +48,11 @@ This downloads the required language parsers.
 
 ## What It Detects
 
-| Category | Examples |
-|----------|----------|
-| **Security** | SSRF, Command Injection, Path Traversal, SQL Injection, XSS |
+| Category        | Examples                                                       |
+| --------------- | -------------------------------------------------------------- |
+| **Security**    | SSRF, Command Injection, Path Traversal, SQL Injection, XSS    |
 | **AI Mistakes** | Hallucinated APIs, Framework confusion (React in Svelte, etc.) |
-| **Code Smells** | Long methods, Feature envy, Deep inheritance |
+| **Code Smells** | Long methods, Feature envy, Deep inheritance                   |
 
 **Supported:** Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust
 
