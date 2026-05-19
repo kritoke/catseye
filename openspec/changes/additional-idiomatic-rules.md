@@ -8,6 +8,7 @@ rules with additional TIPS-style rules for patterns AI commonly generates incorr
 ## Gleam Additional Rules
 
 ### 1. Pipeline Overuse
+
 Long pipelines (5+) become hard to read. AI often chains too many operations.
 
 ```gleam
@@ -32,6 +33,7 @@ render(transform(validated, format))
 **Rule:** `pipeline-steps-overload` (Hint) — 5+ steps
 
 ### 2. Result in List.map
+
 Using `map` on Results instead of `map2` or traversal.
 
 ```gleam
@@ -49,6 +51,7 @@ list
 **Rule:** `result-in-map` (Warning) — `list.map` on Result-typed values
 
 ### 3. List.flatten on Singleton Lists
+
 `list.flatten` on known single-element lists.
 
 ```gleam
@@ -65,6 +68,7 @@ list
 **Rule:** `list-flatten-singleton` (Hint) — flatten called on single-element sources
 
 ### 4. Debug Print in Library Code
+
 `io.debug`, `io.println` in library code (not examples/tests).
 
 ```gleam
@@ -83,19 +87,21 @@ pub fn process(data) {
 **Rule:** `debug-in-library` (Warning) — `io.debug` outside examples/tests
 
 ### 5. Todo with Message
+
 `todo as "message"` indicates incomplete implementation; plain `todo` is cleaner.
 
 ```gleam
 // Non-idiomatic
 todo as "implement this"
 
-// Idiomatic  
+// Idiomatic
 todo
 ```
 
 **Rule:** `todo-with-message` (Hint) — `todo as` pattern
 
 ### 6. Redundant type annotations
+
 Verbose type annotations that the compiler can infer.
 
 ```gleam
@@ -113,6 +119,7 @@ fn add(a, b) {
 **Rule:** `redundant-type-annotation` (Hint) — Only for simple cases where inference is obvious
 
 ### 7. Missing Error Context
+
 Result types without descriptive Error variants.
 
 ```gleam
@@ -136,6 +143,7 @@ type MyError {
 ## Crystal Additional Rules
 
 ### 1. Nilable Instance Vars Without Check
+
 Accessing `@ivar` that could be nil without nil-checking.
 
 ```crystal
@@ -159,6 +167,7 @@ end
 **Rule:** `nilable-ivar-access` (Warning) — `@ivar` access on potentially nil instance var
 
 ### 2. Missing `?` on Potentially Nil
+
 Crystal methods often return nil, not using `?` on safe methods.
 
 ```crystal
@@ -174,6 +183,7 @@ items.find! { |x| x.id == id }  # if you want it to raise
 **Rule:** `missing-safe-call` (Hint) — Method chain without `?` on potentially nil intermediate
 
 ### 3. Parallel Assignment Confusion
+
 Multiple assignment where sequential would be clearer.
 
 ```crystal
@@ -189,6 +199,7 @@ a, b = temp, other(temp)
 **Rule:** `parallel-assign-side-effects` (Warning) — Side-effecting calls in parallel assignment
 
 ### 4. Case When True/False
+
 Using case/when as an if replacement.
 
 ```crystal
@@ -205,6 +216,7 @@ result = condition ? "yes" : "no"
 **Rule:** `case-when-bool` (Hint) — case/when with boolean conditions
 
 ### 5. Macro Interpolation in Loop
+
 Macros evaluated in loops without proper escaping.
 
 ```crystal
@@ -222,6 +234,7 @@ end
 **Rule:** `macro-loop-interpolation` (Warning) — Loop variable interpolation in macro
 
 ### 6. String Concatenation in Loop
+
 Using `+` or string interpolation in loops instead of `String.build`.
 
 ```crystal
@@ -242,6 +255,7 @@ end
 **Rule:** `string-concat-loop` (Hint) — String concatenation in loop
 
 ### 7. Class Instance Var Without Type
+
 Untyped instance variables can lead to runtime errors.
 
 ```crystal
@@ -267,6 +281,7 @@ end
 **Rule:** `untyped-instance-var` (Hint) — Instance var without type declaration
 
 ### 8. Missing `do...end` on Multi-line Blocks
+
 Single-line blocks with complex logic.
 
 ```crystal
@@ -288,18 +303,21 @@ end
 ## Implementation Priority
 
 ### High Priority
+
 1. Gleam: `result-in-map` — Common AI mistake
 2. Gleam: `pipeline-steps-overload` — Readability
 3. Crystal: `string-concat-loop` — Performance
 4. Crystal: `nilable-ivar-access` — Safety
 
 ### Medium Priority
+
 5. Gleam: `generic-error-type` — API design
 6. Gleam: `debug-in-library` — Code hygiene
 7. Crystal: `missing-safe-call` — Nil safety
 8. Crystal: `parallel-assign-side-effects` — Correctness
 
 ### Low Priority
+
 9. Gleam: `list-flatten-singleton` — Minor style
 10. Gleam: `todo-with-message` — Minor style
 11. Crystal: `case-when-bool` — Style

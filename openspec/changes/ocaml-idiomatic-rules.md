@@ -9,6 +9,7 @@ commonly produces.
 ## Problem
 
 AI code generators often produce OCaml that:
+
 1. Uses verbose pattern matching where `Option.bind` or `let*` would suffice
 2. Writes recursive functions with mutable state where tail-recursive solutions exist
 3. Uses `List.hd` / `List.tl` instead of pattern matching
@@ -20,14 +21,14 @@ AI code generators often produce OCaml that:
 
 ## Proposed Rules
 
-| Rule ID | Description | Threshold |
-|---------|-------------|-----------|
-| `ocaml-verbose-option` | Nested `match` on options where `let*` would be cleaner | 2+ nested option matches |
-| `ocaml-non-tail-recursive` | Recursive functions without tail recursion in loops | List/array iteration |
-| `ocaml-list-rev-append` | `List.append` in loop (O(n²)) instead of rev+cons | Loop with append |
-| `ocaml-redundant-if-bool` | `if x = y then true else false` pattern | Function body |
-| `ocaml-list-length-empty` | `List.length l > 0` instead of `l <> []` | Comparison |
-| `ocaml-failwith-error` | `failwith` in library code instead of Result/Error type | Function returning Result |
+| Rule ID                    | Description                                             | Threshold                 |
+| -------------------------- | ------------------------------------------------------- | ------------------------- |
+| `ocaml-verbose-option`     | Nested `match` on options where `let*` would be cleaner | 2+ nested option matches  |
+| `ocaml-non-tail-recursive` | Recursive functions without tail recursion in loops     | List/array iteration      |
+| `ocaml-list-rev-append`    | `List.append` in loop (O(n²)) instead of rev+cons       | Loop with append          |
+| `ocaml-redundant-if-bool`  | `if x = y then true else false` pattern                 | Function body             |
+| `ocaml-list-length-empty`  | `List.length l > 0` instead of `l <> []`                | Comparison                |
+| `ocaml-failwith-error`     | `failwith` in library code instead of Result/Error type | Function returning Result |
 
 ## Implementation Plan
 
@@ -40,6 +41,7 @@ AI code generators often produce OCaml that:
 ## Example Patterns
 
 ### `ocaml-verbose-option` (TIPS-style)
+
 ```ocaml
 (* Non-idiomatic: nested match on options *)
 let result = match opt1 with
@@ -55,6 +57,7 @@ Some (process v2)
 ```
 
 ### `ocaml-list-rev-append` (Performance)
+
 ```ocaml
 (* Non-idiomatic: O(n²) list building *)
 let rec build_list n acc =
@@ -68,6 +71,7 @@ let rec build_list n acc =
 ```
 
 ### `ocaml-failwith-error` (Error Handling)
+
 ```ocaml
 (* Non-idiomatic: exceptions in library *)
 let parse config =

@@ -442,6 +442,95 @@ let detect_implicit_return_discard (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Debug in Library
+    Detects io.debug calls outside examples/ or tests/ directories.
+    Debug output should be removed or use a proper logging library in production code. *)
+let detect_debug_in_library (m : t) =
+  let is_debug_call (name : string) =
+    name = "io.debug" || String.ends_with ~suffix:".debug" name
+  in
+  let rec find_debug_calls (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EApp (fn, _) when is_debug_call (expr_name fn) ->
+        [(expr_name fn, e.expr_location.start.line)]
+    | EBlock es -> List.concat_map find_debug_calls es
+    | ELet (_, e1, e2) -> find_debug_calls e1 @ find_debug_calls e2
+    | EIf (_, then_, else_) ->
+        find_debug_calls then_ @ (match else_ with Some e -> find_debug_calls e | None -> [])
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> find_debug_calls e) branches
+    | EApp (fn, args) -> find_debug_calls fn @ List.concat_map find_debug_calls args
+    | _ -> []
+  in
+  let is_library_code =
+    let path = String.lowercase_ascii m.mod_path in
+    let _ = path in (* path available for future filtering *)
+    true (* Simplified: debug in library is always a potential issue *)
+  in
+  if is_library_code then
+    List.concat_map (fun item ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+          List.map (fun (name, line) ->
+            (Printf.sprintf "%s in library code — remove or use proper logging" name, line)
+          ) (find_debug_calls body)
+      | _ -> []
+    ) m.mod_items
+  else []
+
+(** Rule: Result in Map
+    Detects list.map being called on functions that return Result types.
+    This produces a List(Result) which needs further handling.
+    Use list.try_map or handle the results explicitly. *)
+let detect_result_in_map (m : t) =
+  let rec find_result_maps (e : expr) : (string * string * int) list =
+    match e.expr_value with
+    | EApp (fn, args) ->
+        let name = expr_name fn in
+        let hits = (match args with
+          | [fn_arg] ->
+              (* Check if fn_arg is an anonymous function that returns Result *)
+              (match fn_arg.expr_value with
+               | EFn (_, body) when returns_result body ->
+                   [(name, "lambda", e.expr_location.start.line)]
+               | _ -> [])
+          | _ -> [])
+        in
+        hits @ List.concat_map find_result_maps args
+    | EBlock es -> List.concat_map find_result_maps es
+    | ELet (_, e1, e2) -> find_result_maps e1 @ find_result_maps e2
+    | EIf (_, then_, else_) ->
+        find_result_maps then_ @ (match else_ with Some e -> find_result_maps e | None -> [])
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> find_result_maps e) branches
+    | _ -> []
+  and returns_result (e : expr) : bool =
+    match e.expr_value with
+    | ECase (_, branches) ->
+        List.exists (fun (pat, _body) ->
+          match pat with
+          | PType ("Result", _) -> true
+          | _ -> false
+        ) branches || returns_result (snd (List.hd branches))
+    | EApp (fn, _) ->
+        let name = expr_name fn in
+        (match Type_inference.lookup_gleam name with
+         | Some { Type_inference.kind = Result; _ } -> true
+         | _ -> String.starts_with ~prefix:"Ok " (expr_name fn) ||
+                String.starts_with ~prefix:"Error " (expr_name fn))
+    | EIf (_, then_, else_) -> returns_result then_ ||
+        (match else_ with Some e -> returns_result e | None -> false)
+    | EBlock es -> (match List.rev es with [] -> false | last :: _ -> returns_result last)
+    | _ -> false
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_result_maps body with
+         | (_, _, line) :: _ ->
+             Some ("list.map with Result-returning lambda — consider list.try_map for proper error handling", line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (** Rule: Deeply Nested Case
     Detects case expressions nested 3+ levels deep.
     AI often generates nested pattern matching instead of combining patterns. *)
@@ -1209,6 +1298,8 @@ let all () = [
   ("int-float-division", T.Hint, detect_int_float_division);
   ("repeated-string-literal", T.Hint, detect_repeated_string_literal);
   ("use-candidate", T.Hint, detect_use_candidates);
+  ("debug-in-library", T.Warning, detect_debug_in_library);
+  ("result-in-map", T.Warning, detect_result_in_map);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

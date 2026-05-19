@@ -9,6 +9,7 @@ commonly produces.
 ## Problem
 
 AI code generators often produce Rust that:
+
 1. Uses `.clone()` unnecessarily instead of borrowing
 2. Writes `.unwrap()` that can panic instead of proper error handling
 3. Uses `for i in 0..n` loops where `.iter()` would work
@@ -22,16 +23,16 @@ AI code generators often produce Rust that:
 
 ## Proposed Rules
 
-| Rule ID | Description | Threshold |
-|---------|-------------|-----------|
-| `rust-unwrap-panic` | `.unwrap()` calls that can panic | Function with external input |
-| `rust-unnecessary-clone` | `.clone()` where borrow would work | Function argument |
-| `rust-redundant-box` | `Box::new(x)` where `x` doesn't need heap | Expression |
-| `rust-vec-new-push` | `Vec::new()` + `.push()` instead of `vec![]` | Function body |
-| `rust-is-some-match` | `if x.is_some() { ... x.unwrap() ... }` instead of `if let Some(v) = x` | Expression |
-| `rust-match-default` | `match x { Some(v) => v, None => default }` instead of `unwrap_or(default)` | Expression |
-| `rust-for-range-index` | `for i in 0..vec.len()` where `.iter()` suffices | Loop |
-| `rust-missing-question` | Nested `match` / `unwrap` on Results instead of `?` | Expression |
+| Rule ID                  | Description                                                                 | Threshold                    |
+| ------------------------ | --------------------------------------------------------------------------- | ---------------------------- |
+| `rust-unwrap-panic`      | `.unwrap()` calls that can panic                                            | Function with external input |
+| `rust-unnecessary-clone` | `.clone()` where borrow would work                                          | Function argument            |
+| `rust-redundant-box`     | `Box::new(x)` where `x` doesn't need heap                                   | Expression                   |
+| `rust-vec-new-push`      | `Vec::new()` + `.push()` instead of `vec![]`                                | Function body                |
+| `rust-is-some-match`     | `if x.is_some() { ... x.unwrap() ... }` instead of `if let Some(v) = x`     | Expression                   |
+| `rust-match-default`     | `match x { Some(v) => v, None => default }` instead of `unwrap_or(default)` | Expression                   |
+| `rust-for-range-index`   | `for i in 0..vec.len()` where `.iter()` suffices                            | Loop                         |
+| `rust-missing-question`  | Nested `match` / `unwrap` on Results instead of `?`                         | Expression                   |
 
 ## Implementation Plan
 
@@ -44,6 +45,7 @@ AI code generators often produce Rust that:
 ## Example Patterns
 
 ### `rust-unwrap-panic` (Safety - ERROR level)
+
 ```rust
 // Non-idiomatic: panic on invalid input
 fn parse_config(s: &str) -> Config {
@@ -65,6 +67,7 @@ fn parse_config(s: &str) -> Result<Config, ConfigError> {
 ```
 
 ### `rust-missing-question` (TIPS-style)
+
 ```rust
 // Non-idiomatic: nested matches
 fn process(data: &[u8]) -> Result<String> {
@@ -87,6 +90,7 @@ fn process(data: &[u8]) -> Result<String> {
 ```
 
 ### `rust-vec-new-push` (Style)
+
 ```rust
 // Non-idiomatic
 let mut ids = Vec::new();
@@ -101,6 +105,7 @@ let ids: Vec<_> = items.into_iter().map(|item| item.id).collect();
 ```
 
 ### `rust-is-some-match` (Style)
+
 ```rust
 // Non-idiomatic
 if value.is_some() {
