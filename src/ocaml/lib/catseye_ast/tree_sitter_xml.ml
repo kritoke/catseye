@@ -203,9 +203,13 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
   match Sys.getenv env_var with
   | path -> Some path
   | exception Not_found ->
-    (* 2. Grammar directory from env *)
-    let exe_dir = Filename.dirname (Sys.executable_name) in
-    (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
+    (* 2. User tree-sitter directory (~/.tree-sitter/) *)
+    let user_so = Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
+    if Sys.file_exists user_so then Some user_so
+    else
+      (* 3. Grammar directory from env *)
+      let exe_dir = Filename.dirname (Sys.executable_name) in
+      (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
      | dir ->
        (* Try .so first, then .wasm for WASM-based grammars *)
        let so_path = Filename.concat dir (lang ^ ".so") in
@@ -214,11 +218,11 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
        else if Sys.file_exists wasm_path then Some wasm_path
        else None
      | exception Not_found ->
-       (* 3. Bundled grammars next to executable *)
+       (* 4. Bundled grammars next to executable *)
        let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
        if Sys.file_exists bundled then Some bundled
        else
-         (* 4. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
+         (* 5. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
          let discovered =
            try
              let ic = Unix.open_process_in
@@ -234,6 +238,6 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
          (match discovered with
           | Some p -> Some p
           | None ->
-            (* 5. CWD fallback *)
+            (* 6. CWD fallback *)
             let local = Filename.concat (Sys.getcwd ()) (lang ^ "_parser.so") in
             if Sys.file_exists local then Some local else None))

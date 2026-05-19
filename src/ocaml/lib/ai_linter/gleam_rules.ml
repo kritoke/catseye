@@ -1064,6 +1064,66 @@ let detect_repeated_string_literal (m : t) =
   ) lit_locations;
   List.sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) !findings
 
+(** Rule: Use Expression Candidate
+    Detects patterns where the `use` keyword could improve readability.
+    This is a TIPS-style rule — suggests refactoring opportunities, not errors.
+    
+    Patterns detected:
+    1. Nested anonymous functions (3+ levels) that could use `use` for continuation-passing
+    2. Callback chains where each callback returns a Result and passes to the next
+       
+    Example transformation:
+    
+      Before (callback pyramid):
+        fetch_user(id, fn(user):
+          fetch_orders(user.id, fn(orders):
+            render(orders)
+          end)
+        end)
+      
+      After (use expression):
+        use user <- fetch_user(id)
+        use orders <- fetch_orders(user.id)
+        render(orders) *)
+let detect_use_candidates (m : t) =
+  (* Count chain depth of function calls with anonymous function arguments *)
+  let rec callback_chain_depth (e : expr) : int =
+    match e.expr_value with
+    | EApp (_, args) ->
+        let last_arg = try List.hd (List.rev args) with Failure _ -> { expr_value = EUnit; expr_location = { start = { line = 0; column = 0; byte_offset = 0 }; end_ = { line = 0; column = 0; byte_offset = 0 } } } in
+        (match last_arg.expr_value with
+         | EFn (_, body) ->
+             (* This arg is a callback — depth is 1 + depth of body *)
+             1 + callback_chain_depth body
+         | _ ->
+             (* Check if any arg contains callbacks *)
+             List.fold_left (fun acc a -> max acc (callback_chain_depth a)) 0 args)
+    | EBlock es ->
+        (match List.rev es with
+         | [] -> 0
+         | last :: _ -> callback_chain_depth last)
+    | ELet (_, e1, e2) -> max (callback_chain_depth e1) (callback_chain_depth e2)
+    | ELetAssert (_, e1, e2) -> max (callback_chain_depth e1) (callback_chain_depth e2)
+    | EUse (_, e1, e2) -> max (callback_chain_depth e1) (callback_chain_depth e2)
+    | EIf (_, then_, else_) ->
+        max (callback_chain_depth then_) (match else_ with Some e -> callback_chain_depth e | None -> 0)
+    | ECase (_, branches) ->
+        List.fold_left (fun acc (_, e) -> max acc (callback_chain_depth e)) 0 branches
+    | _ -> 0
+  in
+  
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let depth = callback_chain_depth body in
+        if depth >= 3 then
+          Some (Printf.sprintf
+            "Callback chain with %d nested functions — consider `use` for cleaner continuation-passing style"
+            depth, item.item_location.start.line)
+        else None
+    | _ -> None
+  ) m.mod_items
+
 (* ── Category 5: The Mute Trap (Security) ──────────────────────────── *)
 
 (** Rule: Hardcoded Secrets *)
@@ -1148,6 +1208,7 @@ let all () = [
   ("useless-let-binding", T.Hint, detect_useless_let_binding);
   ("int-float-division", T.Hint, detect_int_float_division);
   ("repeated-string-literal", T.Hint, detect_repeated_string_literal);
+  ("use-candidate", T.Hint, detect_use_candidates);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);

@@ -349,15 +349,12 @@ let extract file_path =
   | Error e -> Error e
   | Ok grammar ->
   (* grammar is the path to the .so parser file, or the parser directory in nix *)
-  (* Use grammar directly as --lib-path if it's a .so file, otherwise dirname *)
+  (* Pass grammar directly for .so files, dirname for nix store parser dirs *)
   let lib_path = if Filename.check_suffix grammar ".so" then grammar
     else Filename.dirname grammar in
   let cmd = Printf.sprintf
     "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null"
     lib_path file_path in
-  if true then (
-    flush stderr
-  );
   let (out, inp, err) = Unix.open_process_full cmd (Unix.environment ()) in
   let buf = Buffer.create 8192 in
   (try while true do Buffer.add_channel buf out 4096 done

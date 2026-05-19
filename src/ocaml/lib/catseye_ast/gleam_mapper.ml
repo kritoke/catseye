@@ -134,9 +134,14 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         EApp (fn_expr, args)
 
     (* Anonymous function *)
-    | "fn" ->
-        let params = children_where n ~f:(fun c -> c.tag = "parameter") in
-        let body = match children_with_field n ~field:"body" with
+    | "fn" | "anonymous_function" ->
+        let fn_node = if n.tag = "anonymous_function" then
+          (match children_with_tag n ~tag:"fn" with
+           | [f] -> f
+           | _ -> n)
+        else n in
+        let params = children_where fn_node ~f:(fun c -> c.tag = "parameter") in
+        let body = match children_with_field fn_node ~field:"body" with
         | [b] -> expr_of_xml ~depth:d b
         | _ -> { expr_value = EUnit; expr_location = loc }
         in
@@ -320,7 +325,10 @@ let parse_file ~(path : string) : (t, parse_error) result =
   | None ->
       Error (make_error ~file:path ~message:"Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")
   | Some grammar ->
-      let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" grammar path in
+      (* Use grammar directly for .so files, dirname for nix store parser dirs *)
+      let lib_path = if Filename.check_suffix grammar ".so" then grammar
+        else Filename.dirname grammar in
+      let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" lib_path path in
       (try
         let ic = Unix.open_process_in cmd in
         let xml_str = Buffer.create 4096 in

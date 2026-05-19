@@ -166,16 +166,16 @@ Catches patterns common in AI-generated code.
 
 ### Gleam (15 detectors)
 
-| Rule                     | What it catches                                              |
-| ------------------------ | ------------------------------------------------------------ |
-| `panic-call`             | `panic` used instead of `Result`                             |
-| `list-wrap-unnecessary`  | `List.wrap` on collections                                   |
-| `unused-let`             | Bindings that appear unused (note: some are used by runtime) |
-| `guard-after-wildcard`   | Guard clauses after wildcard patterns                        |
-| `tuple-abuse`            | Tuples with >3 elements (use named records)                  |
-| `non-exhaustive-case`    | Case expressions with only one branch                        |
-| `nested-case`            | Case nested >2 levels deep                                   |
-| `redundant-single-case`  | Single-branch case expressions                               |
+| Rule                    | What it catches                                              |
+| ----------------------- | ------------------------------------------------------------ |
+| `panic-call`            | `panic` used instead of `Result`                             |
+| `list-wrap-unnecessary` | `List.wrap` on collections                                   |
+| `unused-let`            | Bindings that appear unused (note: some are used by runtime) |
+| `guard-after-wildcard`  | Guard clauses after wildcard patterns                        |
+| `tuple-abuse`           | Tuples with >3 elements (use named records)                  |
+| `non-exhaustive-case`   | Case expressions with only one branch                        |
+| `nested-case`           | Case nested >2 levels deep                                   |
+| `redundant-single-case` | Single-branch case expressions                               |
 
 ### Rust (4 detectors)
 
