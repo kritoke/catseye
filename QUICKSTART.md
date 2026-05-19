@@ -4,11 +4,11 @@
 
 Download the binary for your system:
 
-| Platform          | Download                                                                                                                    |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| **Linux x86_64**  | [catseye-linux-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz)   |
-| **Linux ARM64**   | [catseye-linux-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz)    |
-| **macOS ARM64**   | [catseye-macos-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz)    |
+| Platform         | Download                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Linux x86_64** | [catseye-linux-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz)   |
+| **Linux ARM64**  | [catseye-linux-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz) |
+| **macOS ARM64**  | [catseye-macos-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz) |
 
 ```bash
 # Example for Linux x86_64:
