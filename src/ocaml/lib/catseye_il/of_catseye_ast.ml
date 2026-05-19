@@ -85,7 +85,7 @@ let rec translate_expr (e : expr) : il_expr =
     (match List.rev es with
      | [] -> IELiteral "()"
      | last :: _ -> translate_expr last)
-  | EAssignment _ | ELet _ | ELetAssert _ ->
+  | EAssignment _ | ELet _ | ELetAssert _ | EUse _ ->
     IEUnknown "<assign_expr>"
   | EError msg -> IEUnknown ("error:" ^ msg)
   | ETryCatchFinally _ -> IEUnknown "<try>"

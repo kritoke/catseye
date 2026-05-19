@@ -194,6 +194,17 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     let ensure_nodes = match ensure_body with Some e -> walk_expr e file lang | None -> [] in
     let else_nodes = match else_body with Some e -> walk_expr e file lang | None -> [] in
     try_nodes @ rescue_nodes @ ensure_nodes @ else_nodes
+  | EUse (_pat, val_expr, body) ->
+    (* use pattern <- value; body
+       Treat as a call node so taint propagation works through the value *)
+    let name = "use" in
+    let assign_node = make_node
+      ~node_type:Security_node.Assign ~name ~args:[]
+      ~line:e.expr_location.start.line ~file ~language:lang in
+    let call_node = make_node
+      ~node_type:Security_node.Call ~name ~args:[]
+      ~line:e.expr_location.start.line ~file ~language:lang in
+    walk_expr val_expr file lang @ walk_expr body file lang @ [assign_node; call_node]
   | EUnknown _ -> []
 
 (* ── Item → node list ───────────────────────────────────────────────── *)

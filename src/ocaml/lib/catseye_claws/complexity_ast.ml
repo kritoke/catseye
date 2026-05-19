@@ -44,7 +44,7 @@ let rec count_decisions (expr : expr) : int =
     (* Each branch is a decision point *)
     List.length branches
     + List.fold_left (fun acc (_, body) -> acc + count_decisions body) 0 branches
-  | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
+  | ELet (_, e1, e2) | ELetAssert (_, e1, e2) | EUse (_, e1, e2) ->
     count_decisions e1 + count_decisions e2
   | EAssignment (e1, e2) ->
     count_decisions e1 + count_decisions e2

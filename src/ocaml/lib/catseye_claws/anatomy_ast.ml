@@ -142,7 +142,7 @@ let rec nesting_depth (expr : expr) : int =
     nesting_depth e1
   | EBlock es ->
     List.fold_left (fun acc e -> max acc (nesting_depth e)) 0 es
-  | EError _ | EUnknown _ | ETryCatchFinally _ ->
+  | EError _ | EUnknown _ | ETryCatchFinally _ | EUse _ ->
     0
 
 (** Check nesting depth for each function scope. *)

@@ -83,6 +83,7 @@ type expr_value =
   | ECase of expr * (pattern * expr) list
   | ELet of pattern * expr * expr
   | ELetAssert of pattern * expr * expr
+  | EUse of pattern * expr * expr  (* use pattern <- value (continuation body) *)
   | EAssignment of expr * expr
   | EBinOp of expr * string * expr
   | EUnOp of string * expr

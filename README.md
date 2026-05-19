@@ -128,7 +128,6 @@ catseye [options] <directory>
 
 > **Full rule reference:** See [RULES.md](RULES.md) for complete tables of all security rules, code smells, and AI antipatterns.
 
-
 ### Security Rules (taint-based)
 
 Rules are KDL files — different rule sets per language, all using the same taint engine.

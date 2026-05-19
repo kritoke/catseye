@@ -172,6 +172,25 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
            not a child of this node. Return just the binding. *)
         ELet (pat, val_expr, { expr_value = EUnit; expr_location = loc })
 
+    (* Use expression: use pattern <- value (continuation style) *)
+    | "use" ->
+        let pat = match children_with_field n ~field:"assignments" with
+        | [assignments] ->
+          (* assignments contains use_assignment nodes *)
+          (match children_with_tag assignments ~tag:"use_assignment" with
+           | [a] -> pattern_of_xml a
+           | _ -> PVar "_")
+        | _ -> PVar "_"
+        in
+        let val_expr = match children_with_field n ~field:"value" with
+        | [v] -> expr_of_xml ~depth:d v
+        | _ -> { expr_value = EUnit; expr_location = loc }
+        in
+        (* Body is continuation: use x <- f(y) 
+           The body is typically the next expression in the block *)
+        EUse (pat, val_expr, { expr_value = EUnit; expr_location = loc })
+
+
     (* Panic — treat as a function call *)
     | "panic" ->
         EApp ({ expr_value = EVar "panic"; expr_location = loc }, [])
