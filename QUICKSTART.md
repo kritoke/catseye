@@ -1,17 +1,33 @@
 # Catseye Quick Start
 
-## Download & Install
+## Download
+
+Download the binary for your system:
+
+| Platform | Download |
+|----------|----------|
+| **Linux x86_64** | [catseye-linux-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz) |
+| **Linux ARM64** | [catseye-linux-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-aarch64.tar.gz) |
+| **macOS x86_64** | [catseye-macos-x86_64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-x86_64.tar.gz) |
+| **macOS ARM64** | [catseye-macos-aarch64.tar.gz](https://github.com/kritoke/catseye/releases/latest/download/catseye-macos-aarch64.tar.gz) |
 
 ```bash
-# Download the latest release
+# Example for Linux x86_64:
 curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linux-x86_64.tar.gz | tar xz
-
-# Setup tree-sitter grammars
-chmod +x SETUP_GRAMMARS.sh
-./SETUP_GRAMMARS.sh
 ```
 
-**That's it.** No Nix, no OCaml, no dependencies.
+---
+
+## Setup Grammars
+
+Tree-sitter grammars are needed for parsing. Run:
+
+```bash
+chmod +x install-grammars.sh
+./install-grammars.sh
+```
+
+This downloads the required language parsers.
 
 ---
 
@@ -21,10 +37,10 @@ chmod +x SETUP_GRAMMARS.sh
 # Security scan
 ./bin/catseye-ocaml --ai-lint your-project/
 
-# Security + code smells
+# Security + code smells (Claws)
 ./bin/catseye-ocaml --ai-lint --claws your-project/
 
-# JSON output (for CI/CD)
+# JSON output (CI/CD)
 ./bin/catseye-ocaml --ai-lint -f json your-project/ > results.json
 ```
 
@@ -35,8 +51,8 @@ chmod +x SETUP_GRAMMARS.sh
 | Category | Examples |
 |----------|----------|
 | **Security** | SSRF, Command Injection, Path Traversal, SQL Injection, XSS |
-| **AI Mistakes** | Hallucinated APIs, Framework confusion (Vue in React, Svelte 4 in Svelte 5) |
-| **Code Smells** | Long methods, Complex conditionals, Feature envy |
+| **AI Mistakes** | Hallucinated APIs, Framework confusion (React in Svelte, etc.) |
+| **Code Smells** | Long methods, Feature envy, Deep inheritance |
 
 **Supported:** Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust
 
@@ -45,9 +61,11 @@ chmod +x SETUP_GRAMMARS.sh
 ## Build from Source
 
 ```bash
-# Requires: opam, dune, tree-sitter
+# Requires: opam, dune
+git clone https://github.com/kritoke/catseye
+cd catseye
 opam install --deps-only .
 cd src/ocaml && dune build
 ```
 
-Need help? [GitHub](https://github.com/kritoke/catseye)
+For more, see [install.md](install.md)
