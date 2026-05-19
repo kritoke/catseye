@@ -531,6 +531,51 @@ let detect_result_in_map (m : t) =
     | _ -> None
   ) m.mod_items
 
+(** Rule: Pipeline Steps Overload
+    Detects 5+ step pipelines that are hard to read.
+    AI often chains too many operations in a single pipeline.
+    Suggest breaking into named intermediate variables. *)
+let detect_pipeline_steps_overload (m : t) =
+  let max_steps = 5 in
+  let rec count_pipeline_steps (e : expr) : int =
+    match e.expr_value with
+    | EApp (fn, [arg]) when expr_name fn = "|>" ->
+        1 + count_pipeline_steps arg
+    | EApp (fn, [arg]) when String.length (expr_name fn) > 0 && expr_name fn <> "<>" ->
+        max (count_pipeline_steps fn) (count_pipeline_steps arg)
+    | EBlock es -> List.fold_left (fun acc e -> max acc (count_pipeline_steps e)) 0 es
+    | ELet (_, e1, e2) -> max (count_pipeline_steps e1) (count_pipeline_steps e2)
+    | EIf (_, then_, else_) ->
+        max (count_pipeline_steps then_)
+          (match else_ with Some e -> count_pipeline_steps e | None -> 0)
+    | ECase (_, branches) ->
+        List.fold_left (fun acc (_, e) -> max acc (count_pipeline_steps e)) 0 branches
+    | _ -> 0
+  in
+  let rec find_long_pipelines (e : expr) : (int * int) list =
+    match e.expr_value with
+    | EApp (fn, [arg]) when expr_name fn = "|>" ->
+        let steps = count_pipeline_steps e in
+        if steps > max_steps then [(steps, e.expr_location.start.line)]
+        else find_long_pipelines arg
+    | EApp (fn, args) ->
+        List.concat_map find_long_pipelines (fn :: args)
+    | EBlock es -> List.concat_map find_long_pipelines es
+    | ELet (_, e1, e2) -> find_long_pipelines e1 @ find_long_pipelines e2
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_long_pipelines body with
+         | (steps, line) :: _ ->
+             Some (Printf.sprintf
+               "Pipeline chain has %d steps (max %d) — break into named intermediates for readability"
+               steps max_steps, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
 (** Rule: Deeply Nested Case
     Detects case expressions nested 3+ levels deep.
     AI often generates nested pattern matching instead of combining patterns. *)
@@ -1174,6 +1219,70 @@ let detect_repeated_string_literal (m : t) =
         use user <- fetch_user(id)
         use orders <- fetch_orders(user.id)
         render(orders) *)
+
+(** Rule: List Flatten Singleton
+    Detects List.flatten being called on a list that could be a list of lists.
+    If you're wrapping a single item in a list, just return the item.
+    AI often adds unnecessary List.flatten. *)
+let detect_list_flatten_singleton (m : t) =
+  let rec find_flatten (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EApp (fn, [arg]) when expr_name fn = "List.flatten" ->
+        (match arg.expr_value with
+         | EList [_single] ->
+             (* Single element list being flattened — likely unnecessary *)
+             [(Printf.sprintf "List.flatten on a single-element list is unnecessary",
+               e.expr_location.start.line)]
+         | _ -> [])
+    | EBlock es -> List.concat_map find_flatten es
+    | ELet (_, e1, e2) -> find_flatten e1 @ find_flatten e2
+    | EIf (_, then_, else_) ->
+        find_flatten then_ @ (match else_ with Some e -> find_flatten e | None -> [])
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> find_flatten e) branches
+    | EApp (fn, args) -> find_flatten fn @ List.concat_map find_flatten args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_flatten body with
+         | (msg, line) :: _ -> Some (msg, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Rule: Todo with Message
+    Detects todo calls without descriptive messages.
+    AI often uses bare `todo` which provides no context.
+    Using `todo as "description"` is much more helpful. *)
+let detect_todo_with_message (m : t) =
+  let rec find_bare_todo (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EApp (fn, []) when expr_name fn = "todo" ->
+        [("Bare 'todo' without message — use 'todo as \"description\"' for better error messages",
+          e.expr_location.start.line)]
+    | EBlock es -> List.concat_map find_bare_todo es
+    | ELet (_, e1, e2) -> find_bare_todo e1 @ find_bare_todo e2
+    | EIf (_, then_, else_) ->
+        find_bare_todo then_ @ (match else_ with Some e -> find_bare_todo e | None -> [])
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> find_bare_todo e) branches
+    | EApp (fn, args) -> find_bare_todo fn @ List.concat_map find_bare_todo args
+    | _ -> []
+  in
+  List.filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        (match find_bare_todo body with
+         | (msg, line) :: _ -> Some (msg, line)
+         | [] -> None)
+    | _ -> None
+  ) m.mod_items
+
+(** Note: detect_redundant_type_annotation intentionally omitted
+    Type annotations in Gleam are generally good practice and Gleam requires
+    them on public functions. Private functions can omit them, but it's
+    not necessarily an antipattern to include them for documentation. *)
+
 let detect_use_candidates (m : t) =
   (* Count chain depth of function calls with anonymous function arguments *)
   let rec callback_chain_depth (e : expr) : int =
@@ -1283,7 +1392,7 @@ let all () = [
   ("nested-case", T.Warning, detect_nested_case);
   ("guard-after-wildcard", T.Warning, detect_guard_after_wildcard);
   ("tuple-abuse", T.Hint, detect_tuple_abuse);
-  ("complex-pipeline", T.Hint, detect_complex_pipeline);
+  ("pipeline-steps-overload", T.Hint, detect_pipeline_steps_overload);
   ("assert-density", T.Warning, detect_assert_density);
   ("shadow-variable", T.Hint, detect_shadow_variable);
   ("let-assert-on-result", T.Warning, detect_let_assert_on_result);
@@ -1300,6 +1409,8 @@ let all () = [
   ("use-candidate", T.Hint, detect_use_candidates);
   ("debug-in-library", T.Warning, detect_debug_in_library);
   ("result-in-map", T.Warning, detect_result_in_map);
+  ("list-flatten-singleton", T.Hint, detect_list_flatten_singleton);
+  ("todo-with-message", T.Hint, detect_todo_with_message);
 
   (* The Mute Trap *)
   ("hardcoded-secrets", T.Error, detect_hardcoded_secrets);
