@@ -318,35 +318,46 @@ let grammar_path () =
   match env_result with
   | Some path -> Ok path
   | None ->
-    (* Auto-discover: find in nix store or common paths *)
-    let discovered = try
-      let ic = Unix.open_process_in
-        "find /nix/store -maxdepth 2 -name parser -path '*tree-sitter-gleam*' 2>/dev/null | head -1"
-      in
-      let line = try Some (input_line ic) with End_of_file -> None in
-      let _ = Unix.close_process_in ic in
-      (match line with
-       | Some p when Sys.file_exists p -> Some p
-       | _ -> None)
-    with _ -> None in
-    (match discovered with
-     | Some p -> Ok p
-     | None ->
-       let common = [
-         "/usr/lib/tree-sitter-gleam/parser";
-         "/usr/local/lib/tree-sitter-gleam/parser";
-       ] in
-       (match List.find_opt Sys.file_exists common with
-        | Some p -> Ok p
-        | None -> Error (`Msg "Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")))
+    (* Auto-discover: check user tree-sitter directory first (has WASM/so parsers) *)
+    let so_path = "/home/kritoke/.tree-sitter/gleam.so" in
+    if Sys.file_exists so_path then Ok so_path
+    else begin
+      (* Fall back to nix store - use maxdepth 3 to find parsers in subdirs *)
+      let discovered = try
+        let cmd = Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" "gleam" in
+        let ic = Unix.open_process_in cmd in
+        let line = try Some (input_line ic) with End_of_file -> None in
+        let _ = Unix.close_process_in ic in
+        (match line with
+         | Some p when Sys.file_exists p -> Some p
+         | _ -> None)
+      with _ -> None in
+      (match discovered with
+       | Some p -> Ok p
+       | None ->
+         let common = [
+           "/usr/lib/tree-sitter-gleam/parser";
+           "/usr/local/lib/tree-sitter-gleam/parser";
+         ] in
+         (match List.find_opt Sys.file_exists common with
+          | Some p -> Ok p
+          | None -> Error (`Msg "Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")))
+    end
 
 let extract file_path =
   match grammar_path () with
   | Error e -> Error e
   | Ok grammar ->
+  (* grammar is the path to the .so parser file, or the parser directory in nix *)
+  (* Use grammar directly as --lib-path if it's a .so file, otherwise dirname *)
+  let lib_path = if Filename.check_suffix grammar ".so" then grammar
+    else Filename.dirname grammar in
   let cmd = Printf.sprintf
     "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null"
-    grammar file_path in
+    lib_path file_path in
+  if true then (
+    flush stderr
+  );
   let (out, inp, err) = Unix.open_process_full cmd (Unix.environment ()) in
   let buf = Buffer.create 8192 in
   (try while true do Buffer.add_channel buf out 4096 done
