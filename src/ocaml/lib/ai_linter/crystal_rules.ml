@@ -1488,6 +1488,85 @@ let detect_negated_comparison (m : t) =
   ) m.mod_items;
   !findings
 
+(** Rule: String Concatenation in Loop
+    Detects string concatenation inside iterator blocks (.each, .map, etc.).
+    This is inefficient as it creates a new string object each iteration.
+    Use String.build or Array.join instead. *)
+let detect_string_concat_loop (m : t) =
+  let findings = ref [] in
+  (* Detect string concatenation inside iterator blocks *)
+  let rec find_concat_in_iter (e : expr) : unit =
+    match e.expr_value with
+    | EBlock es -> List.iter find_concat_in_iter es
+    | EApp (fn, [arg]) when is_iterator_method (get_full_name fn) ->
+        (match arg.expr_value with
+         | EFn (_, body) -> find_concat_in_iter body
+         | _ -> ())
+    | EApp (fn, _) when is_string_concat (get_full_name fn) ->
+        findings := (get_full_name fn, e.expr_location.start.line) :: !findings
+    | ELet (_, _, body) -> find_concat_in_iter body
+    | EIf (_, then_, else_) ->
+        find_concat_in_iter then_; (match else_ with Some x -> find_concat_in_iter x | None -> ())
+    | ECase (_, branches) -> List.iter (fun (_, body) -> find_concat_in_iter body) branches
+    | _ -> ()
+  and is_iterator_method (name : string) =
+    List.mem name ["each"; "map"; "select"; "reject"; "transform"; "each_with_index"]
+  and is_string_concat (name : string) =
+    name = "String.+" || name = "+@" || name = "+" || String.ends_with ~suffix:".<<" name
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> find_concat_in_iter body
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Nilable Instance Var Access Without Check
+    Detects accesses to instance variables without defensive checks.
+    This is a heuristic rule - actual nil-safety depends on type declarations. *)
+let detect_nilable_ivar_access (m : t) =
+  let findings = ref [] in
+  let rec find_ivar_accesses (e : expr) : (string * int) list =
+    match e.expr_value with
+    | EFieldAccess ({ expr_value = EVar name; _ }, field)
+      when String.length name > 0 && name.[0] = '@' ->
+        [(name ^ "." ^ field, e.expr_location.start.line)]
+    | EVar name when String.length name > 0 && name.[0] = '@' ->
+        [(name, e.expr_location.start.line)]
+    | EBlock es -> List.concat_map find_ivar_accesses es
+    | ELet (_, _, body) -> find_ivar_accesses body
+    | EApp (fn, args) ->
+        List.concat_map find_ivar_accesses (fn :: args)
+    | EIf (_, then_, else_) ->
+        find_ivar_accesses then_ @ (match else_ with Some x -> find_ivar_accesses x | None -> [])
+    | ECase (_, branches) ->
+        List.concat_map (fun (_, body) -> find_ivar_accesses body) branches
+    | _ -> []
+  in
+  let rec has_defensive_check (e : expr) : bool =
+    match e.expr_value with
+    | EApp (fn, _) ->
+        let name = get_full_name fn in
+        name = "not_nil!" || name = "try" || String.ends_with ~suffix:".try" name
+    | EIf (_, then_, else_) ->
+        has_defensive_check then_ || (match else_ with Some x -> has_defensive_check x | None -> false)
+    | ECase (_, branches) ->
+        List.exists (fun (_, body) -> has_defensive_check body) branches
+    | _ -> false
+  in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) ->
+        let ivar_accesses = find_ivar_accesses body in
+        List.iter (fun (ivar, line) ->
+          if not (has_defensive_check body) then
+            findings := (Printf.sprintf
+              "Instance var '%s' access — verify nil-safety" ivar, line) :: !findings
+        ) ivar_accesses
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
 (* ── Category 22: Final Sweep ─────────────────────────────────────────── *)
 
 (** Rule: Redundant Self
@@ -1606,6 +1685,8 @@ let all () = [
   ("sequential-blocking", T.Hint, detect_sequential_blocking);
   ("empty-string-comparison", T.Hint, detect_empty_string_comparison);
   ("negated-comparison", T.Hint, detect_negated_comparison);
+  ("string-concat-loop", T.Hint, detect_string_concat_loop);
+  ("nilable-ivar-access", T.Hint, detect_nilable_ivar_access);
 
   (* Final Sweep *)
   ("redundant-self", T.Hint, detect_redundant_self);
