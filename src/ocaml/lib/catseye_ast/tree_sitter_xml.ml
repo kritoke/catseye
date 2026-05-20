@@ -199,45 +199,46 @@ let children_with_field (n : xml) ~(field : string) : xml list =
     The find command looks for 'parser' binary files in tree-sitter-* directories.
 *)
 let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
-  (* 1. Explicit env var *)
-  match Sys.getenv env_var with
-  | path -> Some path
-  | exception Not_found ->
-    (* 2. User tree-sitter directory (~/.tree-sitter/) *)
-    let user_so = Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
-    if Sys.file_exists user_so then Some user_so
-    else
-      (* 3. Grammar directory from env *)
-      let exe_dir = Filename.dirname (Sys.executable_name) in
-      (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
-     | dir ->
-       (* Try .so first, then .wasm for WASM-based grammars *)
-       let so_path = Filename.concat dir (lang ^ ".so") in
-       let wasm_path = Filename.concat dir (lang ^ ".wasm") in
-       if Sys.file_exists so_path then Some so_path
-       else if Sys.file_exists wasm_path then Some wasm_path
-       else None
+  (* 1. User tree-sitter directory first (~/.tree-sitter/{lang}.so) *)
+  (* Native parsers compiled from npm packages are more reliable than nix store *)
+  let user_so = Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
+  if Sys.file_exists user_so then Some user_so
+  else
+    (* 2. Explicit env var *)
+    (match Sys.getenv env_var with
+     | path -> Some path
      | exception Not_found ->
-       (* 4. Bundled grammars next to executable *)
-       let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
-       if Sys.file_exists bundled then Some bundled
-       else
-         (* 5. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
-         let discovered =
-           try
-             let ic = Unix.open_process_in
-               (Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" lang)
-             in
-             let line = try Some (input_line ic) with End_of_file -> None in
-             let _ = Unix.close_process_in ic in
-             (match line with
-              | Some p when Sys.file_exists p -> Some p
-              | _ -> None)
-           with _ -> None
-         in
-         (match discovered with
-          | Some p -> Some p
-          | None ->
-            (* 6. CWD fallback *)
-            let local = Filename.concat (Sys.getcwd ()) (lang ^ "_parser.so") in
-            if Sys.file_exists local then Some local else None))
+       (* 3. Grammar directory from env *)
+       (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
+        | dir ->
+          (* Try .so first, then .wasm for WASM-based grammars *)
+          let so_path = Filename.concat dir (lang ^ ".so") in
+          let wasm_path = Filename.concat dir (lang ^ ".wasm") in
+          if Sys.file_exists so_path then Some so_path
+          else if Sys.file_exists wasm_path then Some wasm_path
+          else None
+        | exception Not_found ->
+          (* 4. Bundled grammars next to executable *)
+          let exe_dir = Filename.dirname (Sys.executable_name) in
+          let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
+          if Sys.file_exists bundled then Some bundled
+          else
+            (* 5. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
+            let discovered =
+              try
+                let ic = Unix.open_process_in
+                  (Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" lang)
+                in
+                let line = try Some (input_line ic) with End_of_file -> None in
+                let _ = Unix.close_process_in ic in
+                (match line with
+                 | Some p when Sys.file_exists p -> Some p
+                 | _ -> None)
+              with _ -> None
+            in
+            (match discovered with
+             | Some p -> Some p
+             | None ->
+               (* 6. CWD fallback *)
+               let local = Filename.concat (Sys.getcwd ()) (lang ^ "_parser.so") in
+               if Sys.file_exists local then Some local else None)))

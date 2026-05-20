@@ -45,12 +45,19 @@ let text_of (n : xml) = String.trim n.text
 let rec walk_expr (n : xml) (file : string) : expr =
   let loc = range_of_xml n in
   let v = match n.tag with
-    (* Identifiers *)
-    | "value_name" | "value_path" | "constructor_name" | "constructor_path"
-    | "type_constructor" | "module_name" | "module_path" ->
+    (* Identifiers - leaf nodes get text directly *)
+    | "value_name" | "constructor_name" | "type_constructor" | "module_name" | "long_identifier" | "identifier" ->
       EVar (text_of n)
-    | "long_identifier" | "identifier" ->
-      EVar (text_of n)
+    (* Container nodes - get text from innermost child *)
+    | "value_path" | "constructor_path" ->
+      let rec find_name_node (node : xml) =
+        if node.tag = "value_name" || node.tag = "constructor_name" then Some (text_of node)
+        else List.fold_left (fun acc c -> match acc with Some _ -> acc | None -> find_name_node c) None node.children
+      in
+      (match find_name_node n with
+       | Some name -> EVar name
+       | None -> EVar (text_of n))
+    | "module_path" -> EVar (text_of n)
     
     (* Literals *)
     | "string" | "character" ->
@@ -224,7 +231,9 @@ let rec walk_expr (n : xml) (file : string) : expr =
     (* Parenthesized — unwrap *)
     | "parenthesized_expression" ->
       (match List.filter (fun c -> c.tag <> "(" && c.tag <> ")") n.children with
-       | [inner] -> (walk_expr inner file).expr_value
+       | [inner] ->
+         let inner_expr = walk_expr inner file in
+         inner_expr.expr_value
        | _ -> EUnit)
     
     | _ -> EUnknown n.tag

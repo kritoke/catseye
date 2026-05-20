@@ -329,38 +329,28 @@ let check_unused_lets (items : item list) (path : string) : T.finding list =
 
 (** Detect nested pattern matching on option types where let* would be cleaner *)
 let count_option_matches (e : expr) : int =
-  let rec count (depth : int) (e : expr) : int =
+  let rec max_nested_depth (depth : int) (e : expr) : int =
     match e.expr_value with
-    | ECase (scrut, branches) ->
-      (* Check if this is matching on an option *)
-      let scrut_is_option = 
-        match scrut.expr_value with
-        | EApp (fn, _) -> 
-          let name = expr_name fn in
-          String.length name > 0 && (name = "Some" || name = "Option.some" ||
-            String.ends_with ~suffix:".some" name || name = "Some")
-        | _ -> false
-      in
-      if scrut_is_option then
-        let child_max = List.fold_left (fun acc (_, body) -> max acc (count (depth + 1) body)) 0 branches in
-        depth + child_max
-      else
-        List.fold_left (fun acc (_, body) -> max acc (count depth body)) 0 branches
-    | EBlock es -> List.fold_left (fun acc x -> max acc (count depth x)) 0 es
-    | ELet (_, e1, e2) -> max (count depth e1) (count depth e2)
+    | ECase (_, branches) ->
+      let branch_depths = List.map (fun (_, body) -> max_nested_depth (depth + 1) body) branches in
+      List.fold_left max depth branch_depths
+    | EBlock es -> List.fold_left (fun acc x -> max acc (max_nested_depth depth x)) 0 es
+    | ELet (_, e1, e2) -> max (max_nested_depth depth e1) (max_nested_depth depth e2)
     | EIf (_, then_, else_) -> 
-      max (count depth then_) (match else_ with Some e -> count depth e | None -> 0)
-    | _ -> 0
+      max (max_nested_depth depth then_) (match else_ with Some e -> max_nested_depth depth e | None -> 0)
+    | _ -> depth
   in
-  count 1 e
+  max_nested_depth 1 e
 
 let check_verbose_option (items : item list) (path : string) : T.finding list =
   let rec check (e : expr) : (string * int) list =
     match e.expr_value with
-    | ECase (_, branches) ->
+    | ECase _ ->
+      (* Only report if this is a top-level verbosely matched expression *)
       let count = count_option_matches e in
       let self = if count >= 2 then [(Printf.sprintf "Nested option matching (depth %d) — consider let*" count, e.expr_location.start.line)] else [] in
-      self @ List.concat_map (fun (_, body) -> check body) branches
+      (* Don't recurse into branches - count_option_matches already traverses them *)
+      self
     | EBlock es -> List.concat_map check es
     | ELet (_, e1, e2) -> check e1 @ check e2
     | EIf (_, then_, else_) -> check then_ @ (match else_ with Some x -> check x | None -> [])
@@ -369,13 +359,26 @@ let check_verbose_option (items : item list) (path : string) : T.finding list =
   in
   List.concat_map (fun item ->
     match item.item_value with
-    | IFunction (_, _, _, body) ->
+    | IFunction (_, _, _, body) | IConstant (_, _, body) ->
       List.map (fun (msg, line) ->
         { T.file = path; line; rule_id = "ocaml-verbose-option";
           severity = T.Hint;
           message = msg;
           suggestion = Some "Use let* for cleaner option handling" }
       ) (check body)
+    | IModule (_, subs) ->
+      (* Recurse into submodules *)
+      List.concat_map (fun sub ->
+        match sub.item_value with
+        | IFunction (_, _, _, body) | IConstant (_, _, body) ->
+          List.map (fun (msg, line) ->
+            { T.file = path; line; rule_id = "ocaml-verbose-option";
+              severity = T.Hint;
+              message = msg;
+              suggestion = Some "Use let* for cleaner option handling" }
+          ) (check body)
+        | _ -> []
+      ) subs
     | _ -> []
   ) items
 

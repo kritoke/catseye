@@ -55,8 +55,9 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
   else Error exit_code
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
-  (* JS/TS/Svelte always use AST bridge — they have no flat extractor *)
-  if config.ast_bridge || match src.lang with "javascript" | "typescript" | "svelte" -> true | _ -> false then begin
+  (* JS/TS/Svelte/OCaml always use AST bridge — they have no flat extractor *)
+  let use_bridge = config.ast_bridge || match src.lang with "javascript" | "typescript" | "svelte" | "ocaml" -> true | _ -> false in
+  if use_bridge then begin
     (* Bridge path: parse → CatseyeAST.t → Security_node.t *)
     try
       match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
