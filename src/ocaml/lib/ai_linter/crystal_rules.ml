@@ -61,8 +61,6 @@ let hallucinated_methods : method_entry list = [
     category = "Ghost Scent"; lang = `Ruby };
   { name = "Logger.info"; correct = "Crystal uses Log (require \"log\"), not Logger";
     category = "Ghost Scent"; lang = `Ruby };
-  { name = "File.exists?"; correct = "File.file? or File.exists? (deprecated in newer Crystal)";
-    category = "Ghost Scent"; lang = `Ruby };
   { name = "Array.pluck"; correct = "Array.map(&.field) — no pluck method in Crystal";
     category = "Ghost Scent"; lang = `JS };
   { name = "nil.to_s"; correct = "Use safe navigation: object&.to_s";
@@ -83,10 +81,8 @@ let hallucinated_methods : method_entry list = [
     category = "Mixing Ecosystems"; lang = `Ruby };
   { name = "require \"pry\""; correct = "Crystal uses ic (interactive crystal) for REPL";
     category = "Mixing Ecosystems"; lang = `Ruby };
-  { name = "JSON.parse"; correct = "JSON.parse returns JSON::Any, not Hash — use .as_h or .as_a";
-    category = "Happy Path"; lang = `Crystal };
-  { name = "HTTP::Client.get"; correct = "HTTP::Client.get exists but doesn't accept params: keyword";
-    category = "Ghost Scent"; lang = `Ruby };
+  (* JSON.parse and HTTP::Client.get are valid Crystal — removed from hallucination DB
+     to avoid false positives. The ignored-return detector handles misuse of these APIs. *)
 
   (* JavaScript/Lodash methods *)
   { name = "_.map"; correct = "Array.map { |x| ... } — no underscore.js in Crystal";
@@ -111,8 +107,8 @@ let hallucinated_methods : method_entry list = [
     category = "Mixing Ecosystems"; lang = `Elixir };
 
   (* Deprecated Crystal patterns *)
-  { name = "String.new"; correct = "Use string literals directly — String.new is redundant";
-    category = "Tangle"; lang = `Crystal };
+  (* String.new removed — valid Crystal for Bytes/Slice(UInt8) -> String conversion.
+     The deprecated-syntax detector handles puts/p/pp separately. *)
   { name = "puts"; correct = "Use pp for debug output; remove puts in production code";
     category = "Legacy"; lang = `Crystal };
   { name = "p"; correct = "Use pp for debug output; remove p in production code";
@@ -189,9 +185,7 @@ let detect_deprecated_syntax (m : t) =
           if name = "p" then
             findings := ("p used for debugging", line) :: !findings;
           if name = "pp" then
-            findings := ("pp used for debugging", line) :: !findings;
-          if name = "String.new" then
-            findings := ("String.new often redundant", line) :: !findings
+            findings := ("pp used for debugging", line) :: !findings
         ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
@@ -347,19 +341,11 @@ let detect_sleep_in_prod (m : t) =
 
 (* ── Category 4: The Tangle ─────────────────────────────────────────── *)
 
-(** Rule 4.1: Redundant Conversions *)
-let detect_redundant_conversion (m : t) =
-  let findings = ref [] in
-  List.iter (fun item ->
-    match item.item_value with
-    | IFunction (_, _, _, body) ->
-        List.iter (fun (name, line) ->
-          if name = "String.new" then
-            findings := ("String.new redundant - use literal", line) :: !findings
-        ) (collect_app_names body)
-    | _ -> ()
-  ) m.mod_items;
-  !findings
+(** Rule 4.1: Redundant Conversions
+    String.new removed — valid Crystal for Bytes/Slice(UInt8) -> String conversion.
+    Kept as placeholder for future redundant conversion patterns. *)
+let detect_redundant_conversion (_m : t) =
+  []
 
 (* ── Category 5: The Mute Trap (Security) ───────────────────────────── *)
 
@@ -416,12 +402,19 @@ let detect_hardcoded_secrets (m : t) =
 let detect_hardcoded_urls (m : t) =
   let is_urlish (s : string) =
     String.length s >= 8 &&
-    (String.sub s 0 7 = "http://" || String.sub s 0 8 = "https://")
+    (String.sub s 0 7 = "http://" || String.sub s 0 8 = "https://") &&
+    (* Skip URL normalization prefixes — not actual endpoints *)
+    not (s = "http://" || s = "https://" || s = "http://www." || s = "https://www.")
+  in
+  let is_loopback_or_meta (s : string) =
+    (* Skip well-known meta-addresses used in security checks *)
+    s = "0.0.0.0" || s = "127.0.0.1" || s = "255.255.255.255" || s = "0.0.0.1"
   in
   let is_ipish (s : string) =
     let parts = String.split_on_char '.' s in
     List.length parts = 4 &&
-    List.for_all (fun p -> try let _ = int_of_string p in true with _ -> false) parts
+    List.for_all (fun p -> try let _ = int_of_string p in true with _ -> false) parts &&
+    not (is_loopback_or_meta s)
   in
   let rec collect_suspicious_strings (e : expr) : (string * int) list =
     match e.expr_value with
@@ -1530,9 +1523,13 @@ let detect_nilable_ivar_access (m : t) =
     match e.expr_value with
     | EFieldAccess ({ expr_value = EVar name; _ }, field)
       when String.length name > 0 && name.[0] = '@' ->
-        [(name ^ "." ^ field, e.expr_location.start.line)]
+        (* Skip @@ class variables — Crystal guarantees initialization at class load *)
+        if String.length name >= 2 && name.[1] = '@' then []
+        else [(name ^ "." ^ field, e.expr_location.start.line)]
     | EVar name when String.length name > 0 && name.[0] = '@' ->
-        [(name, e.expr_location.start.line)]
+        (* Skip @@ class variables — Crystal guarantees initialization at class load *)
+        if String.length name >= 2 && name.[1] = '@' then []
+        else [(name, e.expr_location.start.line)]
     | EBlock es -> List.concat_map find_ivar_accesses es
     | ELet (_, _, body) -> find_ivar_accesses body
     | EApp (fn, args) ->

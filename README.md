@@ -84,15 +84,15 @@ just scan-json path/to/project/src
 
 ## Language Support
 
-| Language   | Extensions                 | Security Rules |               AI Lint                |   Code Smells   | Extractor                      |
-| ---------- | -------------------------- | :------------: | :----------------------------------: | :-------------: | ------------------------------ |
-| Crystal    | `.cr`                      |  ✅ 12 rules   |    ✅ 45 detectors     | ✅ 16 detectors | Crystal extractor + AST bridge |
-| Gleam      | `.gleam`                   |  ✅ 12 rules   |    ✅ 36 detectors     | ✅ 16 detectors | tree-sitter                    |
-| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations  | ✅ 16 detectors | tree-sitter                    |
-| TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   | ✅ (shares JS rules)   | ✅ 16 detectors | tree-sitter                    |
-| Svelte     | `.svelte`                  |  ✅ XSS/SSRF   |    ✅ 12 rules         | ✅ 16 detectors | tree-sitter (two-pass)         |
-| OCaml      | `.ml` `.mli`               |    ✅ Basic    |    ✅ 18 rules         | ✅ 16 detectors | tree-sitter                    |
-| Rust       | `.rs`                      |    ✅ Basic    |    ✅ 3 detectors      | ✅ 16 detectors | tree-sitter (native)           |
+| Language   | Extensions                 | Security Rules |        AI Lint        |   Code Smells   | Extractor                      |
+| ---------- | -------------------------- | :------------: | :-------------------: | :-------------: | ------------------------------ |
+| Crystal    | `.cr`                      |  ✅ 12 rules   |    ✅ 45 detectors    | ✅ 16 detectors | Crystal extractor + AST bridge |
+| Gleam      | `.gleam`                   |  ✅ 12 rules   |    ✅ 36 detectors    | ✅ 16 detectors | tree-sitter                    |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations | ✅ 16 detectors | tree-sitter                    |
+| TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   | ✅ (shares JS rules)  | ✅ 16 detectors | tree-sitter                    |
+| Svelte     | `.svelte`                  |  ✅ XSS/SSRF   |      ✅ 12 rules      | ✅ 16 detectors | tree-sitter (two-pass)         |
+| OCaml      | `.ml` `.mli`               |    ✅ Basic    |      ✅ 18 rules      | ✅ 16 detectors | tree-sitter                    |
+| Rust       | `.rs`                      |    ✅ Basic    |    ✅ 3 detectors     | ✅ 16 detectors | tree-sitter (native)           |
 
 ## CLI Reference
 
@@ -177,36 +177,36 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 
 #### OCaml (18 rules)
 
-| Category                    | Rule ID                    | What it catches                                          |
-| --------------------------- | -------------------------- | -------------------------------------------------------- |
-| **Hallucinated functions**  | `hallucinated-method`      | Haskell/Scala/Python APIs (`foldl`, `putStrLn`, `range`) |
-| **Unsafe operations**       | `unsafe-obj-magic`         | `Obj.magic` — unsafe type coercion                       |
-|                             | `unsafe-deserialization`   | `Marshal.from_channel`, `Marshal.from_string`            |
-|                             | `command-injection`        | `Sys.command`, `Unix.exec*` with untrusted input         |
-| **Partial functions**       | `partial-function`         | `List.hd`, `List.tl`, `List.assoc`, `Option.get`         |
-| **Best practices**          | `ocaml-verbose-option`     | Nested `match` on options → use `let*`                   |
-|                             | `ocaml-non-tail-recursive` | Recursive functions without tail optimization            |
-|                             | `ocaml-redundant-if-bool`  | `if x then true else false` → just `x`                  |
-|                             | `unused-binding`           | `let` bindings that are never used                       |
-|                             | `hardcoded-secrets`        | API key patterns in source code                          |
+| Category                   | Rule ID                    | What it catches                                          |
+| -------------------------- | -------------------------- | -------------------------------------------------------- |
+| **Hallucinated functions** | `hallucinated-method`      | Haskell/Scala/Python APIs (`foldl`, `putStrLn`, `range`) |
+| **Unsafe operations**      | `unsafe-obj-magic`         | `Obj.magic` — unsafe type coercion                       |
+|                            | `unsafe-deserialization`   | `Marshal.from_channel`, `Marshal.from_string`            |
+|                            | `command-injection`        | `Sys.command`, `Unix.exec*` with untrusted input         |
+| **Partial functions**      | `partial-function`         | `List.hd`, `List.tl`, `List.assoc`, `Option.get`         |
+| **Best practices**         | `ocaml-verbose-option`     | Nested `match` on options → use `let*`                   |
+|                            | `ocaml-non-tail-recursive` | Recursive functions without tail optimization            |
+|                            | `ocaml-redundant-if-bool`  | `if x then true else false` → just `x`                   |
+|                            | `unused-binding`           | `let` bindings that are never used                       |
+|                            | `hardcoded-secrets`        | API key patterns in source code                          |
 
 #### Crystal & Gleam
 
-| Rule                    | Languages | What it catches                                       |
-| ----------------------- | --------- | ----------------------------------------------------- |
-| `hallucinated-stdlib`   | Crystal   | Calls to methods that don't exist (45-entry database) |
-| `hardcoded-secrets`     | Both      | API key patterns (Stripe, GitHub, AWS, JWT, Slack)    |
-| `hardcoded-urls`        | Crystal   | Hardcoded http:// and IP addresses                    |
-| `deprecated-syntax`     | Crystal   | `puts`, `p`, `pp` in production code                  |
-| `sequential-blocking`   | Crystal   | 3+ sequential HTTP/DB/File blocking calls             |
-| `string-concat-loop`    | Crystal   | String concatenation inside iterators                 |
-| `nilable-ivar-access`   | Crystal   | Instance variable accesses that may need nil checks   |
-| `panic-call`            | Gleam     | `panic` used instead of `Result`                      |
-| `list-wrap-unnecessary` | Gleam     | `List.wrap` on collections                            |
-| `debug-in-library`      | Gleam     | `io.debug` in non-example/test code                   |
-| `result-in-map`         | Gleam     | `list.map` on Result values                           |
-| `pipeline-steps-overload`| Gleam    | 5+ step pipelines                                      |
-| `use-candidate`         | Gleam     | 3+ nested anonymous functions — suggest `use`         |
+| Rule                      | Languages | What it catches                                       |
+| ------------------------- | --------- | ----------------------------------------------------- |
+| `hallucinated-stdlib`     | Crystal   | Calls to methods that don't exist (45-entry database) |
+| `hardcoded-secrets`       | Both      | API key patterns (Stripe, GitHub, AWS, JWT, Slack)    |
+| `hardcoded-urls`          | Crystal   | Hardcoded http:// and IP addresses                    |
+| `deprecated-syntax`       | Crystal   | `puts`, `p`, `pp` in production code                  |
+| `sequential-blocking`     | Crystal   | 3+ sequential HTTP/DB/File blocking calls             |
+| `string-concat-loop`      | Crystal   | String concatenation inside iterators                 |
+| `nilable-ivar-access`     | Crystal   | Instance variable accesses that may need nil checks   |
+| `panic-call`              | Gleam     | `panic` used instead of `Result`                      |
+| `list-wrap-unnecessary`   | Gleam     | `List.wrap` on collections                            |
+| `debug-in-library`        | Gleam     | `io.debug` in non-example/test code                   |
+| `result-in-map`           | Gleam     | `list.map` on Result values                           |
+| `pipeline-steps-overload` | Gleam     | 5+ step pipelines                                     |
+| `use-candidate`           | Gleam     | 3+ nested anonymous functions — suggest `use`         |
 
 #### Rust (3 detectors)
 

@@ -139,140 +139,140 @@ Catches patterns common in AI-generated code.
 
 ### Svelte (11 rules)
 
-| Rule ID                         | What it catches                                                         |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| `svelte4-store`                 | Svelte 4 `writable()`/`readable()`/`derived()` stores — use runes      |
-| `svelte4-store-pattern`         | Svelte 4 store patterns (subscribe, update)                            |
-| `svelte4-event-dispatcher`      | `createEventDispatcher` — Svelte 5 uses callback props                 |
-| `svelte4-lifecycle`             | `beforeUpdate`/`afterUpdate` — use `$effect()`                         |
-| `svelte-xss`                    | `{@html}` with dynamic content                                         |
-| `dom-xss`                       | `innerHTML`/`document.write` with dynamic content                      |
-| `framework-xss`                 | React/Vue/Angular XSS patterns in Svelte                               |
-| `hallucinated-method`           | React hooks (`useState`), Vue directives (`v-if`) in Svelte            |
-| `svelte5-state-missing-init`    | `$state()` without initial value                                       |
-| `svelte5-effect-missing-cleanup`| `$effect` with `setInterval`/`setTimeout` without cleanup              |
-| `svelte5-derived-reassignment`  | Assignment to `$derived` variable (read-only)                          |
-| `tick-usage`                    | `tick()` overuse — often unnecessary                                    |
+| Rule ID                          | What it catches                                                   |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `svelte4-store`                  | Svelte 4 `writable()`/`readable()`/`derived()` stores — use runes |
+| `svelte4-store-pattern`          | Svelte 4 store patterns (subscribe, update)                       |
+| `svelte4-event-dispatcher`       | `createEventDispatcher` — Svelte 5 uses callback props            |
+| `svelte4-lifecycle`              | `beforeUpdate`/`afterUpdate` — use `$effect()`                    |
+| `svelte-xss`                     | `{@html}` with dynamic content                                    |
+| `dom-xss`                        | `innerHTML`/`document.write` with dynamic content                 |
+| `framework-xss`                  | React/Vue/Angular XSS patterns in Svelte                          |
+| `hallucinated-method`            | React hooks (`useState`), Vue directives (`v-if`) in Svelte       |
+| `svelte5-state-missing-init`     | `$state()` without initial value                                  |
+| `svelte5-effect-missing-cleanup` | `$effect` with `setInterval`/`setTimeout` without cleanup         |
+| `svelte5-derived-reassignment`   | Assignment to `$derived` variable (read-only)                     |
+| `tick-usage`                     | `tick()` overuse — often unnecessary                              |
 
 ### OCaml (18 rules)
 
-| Category                    | Rule ID                    | What it catches                                          |
-| --------------------------- | -------------------------- | -------------------------------------------------------- |
-| **Hallucinated functions**  | `hallucinated-method`      | Haskell/Scala/Python APIs (`foldl`, `putStrLn`, `range`) |
-| **Unsafe operations**       | `unsafe-obj-magic`         | `Obj.magic` — unsafe type coercion                       |
-|                             | `unsafe-obj`               | `Obj.set_field`, `Obj.truncate` — unsafe mutation        |
-|                             | `unsafe-deserialization`   | `Marshal.from_channel`, `Marshal.from_string`            |
-|                             | `unsafe-serialization`     | `Marshal.to_channel` — binary serialization risks        |
-|                             | `command-injection`        | `Sys.command`, `Sys.chdir` with untrusted input          |
-|                             | `command-exec`             | `Unix.exec*` family — replaces current process           |
-|                             | `unchecked-file-access`    | File I/O without permission checking                     |
-| **Partial functions**       | `partial-function`         | `List.hd`, `List.tl`, `List.assoc`, `Option.get`         |
-| **Common mistakes**         | `exception-usage`          | `failwith`, `raise` — prefer `Result.t`                  |
-|                             | `bounds-check`             | `Array.get`/`String.get` without bounds checking         |
-|                             | `format-string`            | Printf format string issues                              |
-| **Best practices**          | `ocaml-verbose-option`     | Nested `match` on options → use `let*`                   |
-|                             | `ocaml-non-tail-recursive` | Recursive functions without tail optimization            |
-|                             | `ocaml-redundant-if-bool`  | `if x then true else false` → just `x`                  |
-|                             | `unused-binding`           | `let` bindings that are never used                       |
-|                             | `hardcoded-secrets`        | API key patterns in source code                          |
-|                             | `todo-in-code`             | `TODO`/`FIXME` in production code                        |
+| Category                   | Rule ID                    | What it catches                                          |
+| -------------------------- | -------------------------- | -------------------------------------------------------- |
+| **Hallucinated functions** | `hallucinated-method`      | Haskell/Scala/Python APIs (`foldl`, `putStrLn`, `range`) |
+| **Unsafe operations**      | `unsafe-obj-magic`         | `Obj.magic` — unsafe type coercion                       |
+|                            | `unsafe-obj`               | `Obj.set_field`, `Obj.truncate` — unsafe mutation        |
+|                            | `unsafe-deserialization`   | `Marshal.from_channel`, `Marshal.from_string`            |
+|                            | `unsafe-serialization`     | `Marshal.to_channel` — binary serialization risks        |
+|                            | `command-injection`        | `Sys.command`, `Sys.chdir` with untrusted input          |
+|                            | `command-exec`             | `Unix.exec*` family — replaces current process           |
+|                            | `unchecked-file-access`    | File I/O without permission checking                     |
+| **Partial functions**      | `partial-function`         | `List.hd`, `List.tl`, `List.assoc`, `Option.get`         |
+| **Common mistakes**        | `exception-usage`          | `failwith`, `raise` — prefer `Result.t`                  |
+|                            | `bounds-check`             | `Array.get`/`String.get` without bounds checking         |
+|                            | `format-string`            | Printf format string issues                              |
+| **Best practices**         | `ocaml-verbose-option`     | Nested `match` on options → use `let*`                   |
+|                            | `ocaml-non-tail-recursive` | Recursive functions without tail optimization            |
+|                            | `ocaml-redundant-if-bool`  | `if x then true else false` → just `x`                   |
+|                            | `unused-binding`           | `let` bindings that are never used                       |
+|                            | `hardcoded-secrets`        | API key patterns in source code                          |
+|                            | `todo-in-code`             | `TODO`/`FIXME` in production code                        |
 
 ### Crystal (45 detectors)
 
-| Rule                       | What it catches                                                   |
-| -------------------------- | ----------------------------------------------------------------- |
-| `hallucinated-stdlib`      | Calls to methods that don't exist in Crystal standard library     |
-| `hardcoded-secrets`        | API key patterns (Stripe, GitHub, AWS, JWT, Slack)                |
-| `hardcoded-urls`           | Hardcoded http:// and IP addresses                                |
-| `deprecated-syntax`        | `puts`, `p`, `pp` in production code                              |
-| `sequential-blocking`      | 3+ sequential HTTP/DB/File blocking calls in a function           |
-| `string-concat-loop`       | String concatenation inside iterator blocks                       |
-| `nilable-ivar-access`      | Instance variable accesses that may need nil checks               |
-| `callback-hell`            | Deeply nested callbacks (3+ levels)                               |
-| `blanket-rescue`           | Rescue without specific exception type                            |
-| `complex-conditional`      | Complex boolean expressions in conditionals                       |
-| `data-clump`               | 3+ parameters always passed together                              |
-| `empty-catch`              | Empty rescue blocks                                               |
-| `feature-envy`             | Methods calling another class 5+ times                            |
-| `flag-argument`            | Boolean parameters that control method behavior                   |
-| `float-equality`           | Direct float equality comparisons                                 |
-| `global-variable`          | `$GLOBAL` variable usage                                          |
-| `ignored-return`           | Discarding return values that may indicate errors                 |
-| `infinite-recursion`       | Recursive calls without base case                                 |
-| `magic-string`             | Unnamed string constants in conditionals                          |
-| `manual-loop`              | Manual while/loop where iterators exist                           |
-| `message-chain`            | Method chains ≥ 5 links                                           |
-| `missing-else`             | If without else branch (potential logic gap)                      |
-| `nested-ternary`           | Nested ternary operators                                          |
-| `nil-chaser`               | Excessive nil checks in chain                                     |
-| `open-rescue`              | Rescue without specific exception type                            |
-| `primitive-obsession`      | Using primitives instead of domain types                          |
-| `redundant-conversion`     | Unnecessary type conversions                                      |
-| `redundant-self`           | Unnecessary `self.` prefix                                        |
-| `string-interpolation-query`| String interpolation in SQL-like contexts                        |
-| `too-many-params`          | Functions with 5+ parameters                                      |
-| `type-checker-abuse`       | Overuse of `is_a?`/`responds_to?` checks                          |
-| `unreachable-code`         | Code after return/raise/break                                     |
-| `unsafe-pointer`           | Pointer arithmetic or unsafe operations                           |
-| `debug-print`              | Debug print statements left in code                               |
-| `debug-require`            | Development-only requires in production                           |
-| `duplicate-validation`     | Repeated validation rules                                         |
-| `empty-string-comparison`  | Comparing to `""` instead of `.empty?`                           |
-| `long-method`              | Methods exceeding 30 body nodes                                   |
-| `negated-comparison`       | Double negation or confusing negated comparisons                  |
-| `reassignment-in-condition`| Variable reassignment inside conditional                          |
-| `repeated-regex`           | Same regex pattern repeated multiple times                        |
-| `sleep-in-prod`            | `sleep` calls in production code                                  |
-| `dead-code-after-error`    | Code after raise/error that can never execute                     |
-| `hardcoded-port`           | Hardcoded port numbers                                            |
+| Rule                         | What it catches                                               |
+| ---------------------------- | ------------------------------------------------------------- |
+| `hallucinated-stdlib`        | Calls to methods that don't exist in Crystal standard library |
+| `hardcoded-secrets`          | API key patterns (Stripe, GitHub, AWS, JWT, Slack)            |
+| `hardcoded-urls`             | Hardcoded http:// and IP addresses                            |
+| `deprecated-syntax`          | `puts`, `p`, `pp` in production code                          |
+| `sequential-blocking`        | 3+ sequential HTTP/DB/File blocking calls in a function       |
+| `string-concat-loop`         | String concatenation inside iterator blocks                   |
+| `nilable-ivar-access`        | Instance variable accesses that may need nil checks           |
+| `callback-hell`              | Deeply nested callbacks (3+ levels)                           |
+| `blanket-rescue`             | Rescue without specific exception type                        |
+| `complex-conditional`        | Complex boolean expressions in conditionals                   |
+| `data-clump`                 | 3+ parameters always passed together                          |
+| `empty-catch`                | Empty rescue blocks                                           |
+| `feature-envy`               | Methods calling another class 5+ times                        |
+| `flag-argument`              | Boolean parameters that control method behavior               |
+| `float-equality`             | Direct float equality comparisons                             |
+| `global-variable`            | `$GLOBAL` variable usage                                      |
+| `ignored-return`             | Discarding return values that may indicate errors             |
+| `infinite-recursion`         | Recursive calls without base case                             |
+| `magic-string`               | Unnamed string constants in conditionals                      |
+| `manual-loop`                | Manual while/loop where iterators exist                       |
+| `message-chain`              | Method chains ≥ 5 links                                       |
+| `missing-else`               | If without else branch (potential logic gap)                  |
+| `nested-ternary`             | Nested ternary operators                                      |
+| `nil-chaser`                 | Excessive nil checks in chain                                 |
+| `open-rescue`                | Rescue without specific exception type                        |
+| `primitive-obsession`        | Using primitives instead of domain types                      |
+| `redundant-conversion`       | Unnecessary type conversions                                  |
+| `redundant-self`             | Unnecessary `self.` prefix                                    |
+| `string-interpolation-query` | String interpolation in SQL-like contexts                     |
+| `too-many-params`            | Functions with 5+ parameters                                  |
+| `type-checker-abuse`         | Overuse of `is_a?`/`responds_to?` checks                      |
+| `unreachable-code`           | Code after return/raise/break                                 |
+| `unsafe-pointer`             | Pointer arithmetic or unsafe operations                       |
+| `debug-print`                | Debug print statements left in code                           |
+| `debug-require`              | Development-only requires in production                       |
+| `duplicate-validation`       | Repeated validation rules                                     |
+| `empty-string-comparison`    | Comparing to `""` instead of `.empty?`                        |
+| `long-method`                | Methods exceeding 30 body nodes                               |
+| `negated-comparison`         | Double negation or confusing negated comparisons              |
+| `reassignment-in-condition`  | Variable reassignment inside conditional                      |
+| `repeated-regex`             | Same regex pattern repeated multiple times                    |
+| `sleep-in-prod`              | `sleep` calls in production code                              |
+| `dead-code-after-error`      | Code after raise/error that can never execute                 |
+| `hardcoded-port`             | Hardcoded port numbers                                        |
 
 ### Gleam (36 detectors)
 
-| Rule                       | What it catches                                                          |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `panic-call`               | `panic` used instead of `Result`                                         |
-| `list-wrap-unnecessary`    | `List.wrap` on collections                                               |
-| `unused-let`               | Bindings that appear unused (note: some are used by runtime)             |
-| `useless-let-binding`      | Let bindings with identical value                                        |
-| `guard-after-wildcard`     | Guard clauses after wildcard patterns                                    |
-| `tuple-abuse`              | Tuples with >3 elements (use named records)                              |
-| `non-exhaustive-case`      | Case expressions with only one branch                                    |
-| `nested-case`              | Case nested >2 levels deep                                               |
-| `redundant-single-case`    | Single-branch case expressions                                           |
-| `use-candidate`            | 3+ nested anonymous functions — suggest `use`                            |
-| `debug-in-library`         | `io.debug` in non-example/test code                                      |
-| `result-in-map`            | `list.map` on Result values                                              |
-| `pipeline-steps-overload`  | 5+ step pipelines                                                         |
-| `list-flatten-singleton`   | Unnecessary `List.flatten`                                                |
-| `todo-with-message`        | Bare `todo` without message                                              |
-| `implicit-return-discard`  | Last expression in function discarded implicitly                         |
-| `hardcoded-secrets`        | API key patterns in source code                                          |
-| `todo-in-code`             | `TODO`/`FIXME` in production code                                        |
-| `assert-density`           | Too many `assert` statements (suggest proper test framework)             |
-| `bool-return-check`        | Functions returning bool unnecessarily                                    |
-| `deprecated-result-check`  | Using deprecated result checking patterns                                 |
-| `discard-result`           | Discarding Result values without handling                                 |
-| `equals-true`              | Explicit `== True` comparison (redundant)                                |
-| `hallucinated-or-default`  | Non-existent Gleam function in `option.or_else` pattern                  |
-| `hallucinated-to-list`     | Non-existent `to_list` method (Gleam uses `to_list` on specific types)   |
-| `ignored-result`           | Result values ignored without handling                                   |
-| `int-float-division`       | Integer division when float was expected                                  |
-| `let-assert`               | `let assert` in non-test code (panics on failure)                         |
-| `let-assert-on-result`     | `let assert` on Result type (should use `use`)                            |
-| `nested-function`          | Nested function definitions (consider extracting)                        |
-| `repeated-string-literal`  | Same string literal repeated multiple times                               |
-| `shadow-variable`          | Variable shadowing in nested scopes                                       |
-| `string-concat-chain`      | Long string concatenation chains                                         |
-| `typescript-interface`     | TypeScript-style interface patterns in Gleam                              |
-| `var-keyword`              | JavaScript `var` keyword detection                                        |
+| Rule                      | What it catches                                                        |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `panic-call`              | `panic` used instead of `Result`                                       |
+| `list-wrap-unnecessary`   | `List.wrap` on collections                                             |
+| `unused-let`              | Bindings that appear unused (note: some are used by runtime)           |
+| `useless-let-binding`     | Let bindings with identical value                                      |
+| `guard-after-wildcard`    | Guard clauses after wildcard patterns                                  |
+| `tuple-abuse`             | Tuples with >3 elements (use named records)                            |
+| `non-exhaustive-case`     | Case expressions with only one branch                                  |
+| `nested-case`             | Case nested >2 levels deep                                             |
+| `redundant-single-case`   | Single-branch case expressions                                         |
+| `use-candidate`           | 3+ nested anonymous functions — suggest `use`                          |
+| `debug-in-library`        | `io.debug` in non-example/test code                                    |
+| `result-in-map`           | `list.map` on Result values                                            |
+| `pipeline-steps-overload` | 5+ step pipelines                                                      |
+| `list-flatten-singleton`  | Unnecessary `List.flatten`                                             |
+| `todo-with-message`       | Bare `todo` without message                                            |
+| `implicit-return-discard` | Last expression in function discarded implicitly                       |
+| `hardcoded-secrets`       | API key patterns in source code                                        |
+| `todo-in-code`            | `TODO`/`FIXME` in production code                                      |
+| `assert-density`          | Too many `assert` statements (suggest proper test framework)           |
+| `bool-return-check`       | Functions returning bool unnecessarily                                 |
+| `deprecated-result-check` | Using deprecated result checking patterns                              |
+| `discard-result`          | Discarding Result values without handling                              |
+| `equals-true`             | Explicit `== True` comparison (redundant)                              |
+| `hallucinated-or-default` | Non-existent Gleam function in `option.or_else` pattern                |
+| `hallucinated-to-list`    | Non-existent `to_list` method (Gleam uses `to_list` on specific types) |
+| `ignored-result`          | Result values ignored without handling                                 |
+| `int-float-division`      | Integer division when float was expected                               |
+| `let-assert`              | `let assert` in non-test code (panics on failure)                      |
+| `let-assert-on-result`    | `let assert` on Result type (should use `use`)                         |
+| `nested-function`         | Nested function definitions (consider extracting)                      |
+| `repeated-string-literal` | Same string literal repeated multiple times                            |
+| `shadow-variable`         | Variable shadowing in nested scopes                                    |
+| `string-concat-chain`     | Long string concatenation chains                                       |
+| `typescript-interface`    | TypeScript-style interface patterns in Gleam                           |
+| `var-keyword`             | JavaScript `var` keyword detection                                     |
 
 ### Rust (3 detectors)
 
-| Rule                   | What it catches                                                |
-| ---------------------- | -------------------------------------------------------------- |
-| `RustHallucination`    | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
-| `UnsafePanic`          | `unwrap()`, `expect()`, `panic!()` without error handling      |
-| `RustInefficiency`     | Unnecessary clones, `String::from(&var)`                       |
+| Rule                | What it catches                                                |
+| ------------------- | -------------------------------------------------------------- |
+| `RustHallucination` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
+| `UnsafePanic`       | `unwrap()`, `expect()`, `panic!()` without error handling      |
+| `RustInefficiency`  | Unnecessary clones, `String::from(&var)`                       |
 
 ---
 

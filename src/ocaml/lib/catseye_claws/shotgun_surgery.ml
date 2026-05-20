@@ -30,6 +30,8 @@ let exempt_class_patterns = [
   "Builder";
   "Log";      (* Logging API — calling Log.info/Log.error frequently is correct *)
   "Logger";   (* Same for Logger variants *)
+  "Time";     (* Time is core stdlib — scheduling/expiry/rate-limiting naturally uses it heavily *)
+  "StateStore"; (* Central app state — controllers/services naturally read/write frequently *)
 ]
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
