@@ -540,21 +540,39 @@ let check_feature_envy (scopes : Ast_scope.ast_scope list) : Finding.t list =
 
 (* ── MagicNumber ─────────────────────────────────────────────────────── *)
 
+(** Strip Rust integer type suffixes from numeric literals.
+    Rust uses suffixes like 1i64, 0usize, 100u32, -1isize, etc.
+    Without stripping, these don't match the known-literal set. *)
+let strip_rust_int_suffix (n : string) : string =
+  let suffixes = ["i8"; "i16"; "i32"; "i64"; "i128"; "isize";
+                  "u8"; "u16"; "u32"; "u64"; "u128"; "usize";
+                  "f32"; "f64"] in
+  let stripped = ref n in
+  List.iter (fun sfx ->
+    let sfx_len = String.length sfx in
+    if String.length !stripped > sfx_len &&
+       String.sub !stripped (String.length !stripped - sfx_len) sfx_len = sfx
+    then
+      stripped := String.sub !stripped 0 (String.length !stripped - sfx_len)
+  ) suffixes;
+  !stripped
+
 (** Numbers that are not considered "magic" — well-known constants or common patterns. *)
 let is_known_literal (n : string) : bool =
-  n = "0" || n = "1" || n = "-1" || n = "2" || n = "10" || n = "100"
-  || n = "1000" || n = "0x0" || n = "0x1" || n = "0b0" || n = "0b1"
-  || n = "0o0" || n = "0o1" || n = "0.0" || n = "1.0" || n = "0.5"
-  || n = "2.0" || n = "-1.0"
+  let base = strip_rust_int_suffix n in
+  base = "0" || base = "1" || base = "-1" || base = "2" || base = "10" || base = "100"
+  || base = "1000" || base = "0x0" || base = "0x1" || base = "0b0" || base = "0b1"
+  || base = "0o0" || base = "0o1" || base = "0.0" || base = "1.0" || base = "0.5"
+  || base = "2.0" || base = "-1.0"
   (* Domain-specific constants commonly used as literals:
      - PIN codes: 4-6 digits (banking, auth)
      - Validation limits: 60-120 seconds/minutes
      - Index boundaries: 0, 1 (-1 for "before first")
      - Array access: 0
      - Loop counters: 0, 1, 2 *)
-  || List.mem n ["4"; "5"; "6"; "60"; "120"; "-1"]
+  || List.mem base ["4"; "5"; "6"; "60"; "120"; "-1"]
   (* HTTP status codes — universally understood domain constants *)
-  || List.mem n [
+  || List.mem base [
     "200"; "201"; "202"; "204";
     "301"; "302"; "304"; "307"; "308";
     "400"; "401"; "403"; "404"; "405"; "406"; "408"; "409"; "410"; "411"; "413"; "415"; "418"; "422"; "425"; "426"; "428"; "429"; "431"; "451";

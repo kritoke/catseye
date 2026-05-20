@@ -139,7 +139,6 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : finding list =
                 in
                 check_patterns fn_name unsafe_patterns
               else [] in
-            let () = if fn_name <> "" && (fn_name = "unwrap" || fn_name = "Result.unwrap" || fn_name = "option.unwrap" || fn_name = ".unwrap") then Printf.eprintf "DEBUG check: fn=%s found_unsafe=%d found_method=%d\n" fn_name (List.length found_unsafe) (List.length found_method) in
             let results = (List.map (fun _ ->
               { rule_id = "UnsafePanic"; severity = Error;
                 file = ""; line; 
