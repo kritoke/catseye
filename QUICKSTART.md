@@ -40,7 +40,10 @@ This downloads the required language parsers using `npx tree-sitter-cli`.
 
 # With all checks enabled
 ./catseye-ocaml --rules src/ocaml/rules --cfg --claws --ai-lint /path/to/project
-
-# JSON output
-./catseye-ocaml --format json -o results.json /path/to/project
 ```
+
+## Additional Documentation
+
+- [RULES.md](RULES.md) — Complete rule reference
+- [install.md](install.md) — Build from source instructions
+- [README.md](README.md) — Full documentation

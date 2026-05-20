@@ -4,7 +4,7 @@
 
 Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust** — with language-specific security rules and antipattern databases for each.
 
-> **v0.4.3** - SSRF sanitizers, improved URL validation tracking, Node.js 24 CI
+> **v0.4.4** - OCaml idiomatic rules, updated Crystal/Gleam/Svelte detectors, OCaml verbose-option detection
 
 ## Installation
 
@@ -86,13 +86,13 @@ just scan-json path/to/project/src
 
 | Language   | Extensions                 | Security Rules |               AI Lint                |   Code Smells   | Extractor                      |
 | ---------- | -------------------------- | :------------: | :----------------------------------: | :-------------: | ------------------------------ |
-| Crystal    | `.cr`                      |  ✅ 12 rules   |     ✅ 37-entry hallucination DB     | ✅ 16 detectors | Crystal extractor + AST bridge |
-| Gleam      | `.gleam`                   |  ✅ 12 rules   |           ✅ 12 detectors            | ✅ 16 detectors | tree-sitter                    |
-| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations + antipatterns | ✅ 16 detectors | tree-sitter                    |
-| TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   |         ✅ (shares JS rules)         | ✅ 16 detectors | tree-sitter                    |
-| Svelte     | `.svelte`                  |  ✅ XSS/SSRF   | ✅ Svelte 4→5 + framework confusion  | ✅ 16 detectors | tree-sitter (two-pass)         |
-| OCaml      | `.ml` `.mli`               |    ✅ Basic    |  ✅ 55+ hallucinations + unsafe ops  | ✅ 16 detectors | tree-sitter                    |
-| Rust       | `.rs`                      |    ✅ Basic    |        ✅ 4 detectors (WASM)         | ✅ 16 detectors | tree-sitter (native)           |
+| Crystal    | `.cr`                      |  ✅ 12 rules   |    ✅ 45 detectors     | ✅ 16 detectors | Crystal extractor + AST bridge |
+| Gleam      | `.gleam`                   |  ✅ 12 rules   |    ✅ 36 detectors     | ✅ 16 detectors | tree-sitter                    |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations  | ✅ 16 detectors | tree-sitter                    |
+| TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   | ✅ (shares JS rules)   | ✅ 16 detectors | tree-sitter                    |
+| Svelte     | `.svelte`                  |  ✅ XSS/SSRF   |    ✅ 12 rules         | ✅ 16 detectors | tree-sitter (two-pass)         |
+| OCaml      | `.ml` `.mli`               |    ✅ Basic    |    ✅ 18 rules         | ✅ 16 detectors | tree-sitter                    |
+| Rust       | `.rs`                      |    ✅ Basic    |    ✅ 3 detectors      | ✅ 16 detectors | tree-sitter (native)           |
 
 ## CLI Reference
 
@@ -116,7 +116,7 @@ catseye [options] <directory>
   --predator-vision          enable reachability analysis (live/dormant/safe)
   --crows-nest               enable supply chain audit (Crystal shard.yml + Gleam gleam.toml only; very limited CVE data)
   --claws                    enable code smell detection
-  --ai-lint                  enable AI antipattern detection (Gleam, Crystal, Rust)
+  --ai-lint                  enable AI antipattern detection (Crystal, Gleam, Svelte, OCaml, Rust)
   --suppress <rules>         comma-separated rule IDs to suppress (e.g., unused-let,InsecureRandom)
   --include-deps             include shard dependencies in scan (Crystal only)
   -p, --parallelism <n>      parallel workers (0 = auto)
@@ -166,7 +166,7 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 | **Best practices**       | `alert()`, `debugger`, `console.log` left in code, `document.write()` deprecated                                                   |
 | **Code quality**         | `==` instead of `===`, deep `.then()` chains (4+), `escape()`/`unescape()` deprecated, incomplete `.replace()` sanitization        |
 
-#### Svelte (40+ rules)
+#### Svelte (12 rules)
 
 | Category                     | Examples                                                                                                        |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -174,36 +174,47 @@ Catches patterns common in AI-generated code: hallucinated method calls, framewo
 | **Svelte 5 Rune Validation** | `$state()` without init, `$effect` without cleanup (setInterval), `$derived` reassignment                       |
 | **Framework confusion**      | React hooks (`useState`, `useEffect`), Vue directives (`v-if`, `v-for`, `v-model`), Angular (`ngModel`, `ngIf`) |
 | **XSS**                      | `{@html}` with dynamic content, `innerHTML`, `document.write`                                                   |
-| **Antipatterns**             | `tick()` overuse, Svelte 4 store patterns in runes mode                                                         |
 
-#### OCaml (55+ rules)
+#### OCaml (18 rules)
 
-| Category                   | Examples                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Hallucinated functions** | Haskell: `foldl` → `List.fold_left`, `putStrLn` → `print_endline`, `getLine` → `read_line`. Scala: `println`, `asInstanceOf`. Python: `range`, `len`, `strip` |
-| **Unsafe operations**      | `Obj.magic`, `Obj.set_field`, `Marshal.from_channel`, `Sys.command`                                                                                           |
-| **Common mistakes**        | `Option.get` (raises on None), `List.hd`/`List.tl` (partial), `Hashtbl.find` (raises Not_found)                                                               |
-| **Best practices**         | `failwith`/`raise` → use `Result.t`, Printf without `open Printf`                                                                                             |
+| Category                    | Rule ID                    | What it catches                                          |
+| --------------------------- | -------------------------- | -------------------------------------------------------- |
+| **Hallucinated functions**  | `hallucinated-method`      | Haskell/Scala/Python APIs (`foldl`, `putStrLn`, `range`) |
+| **Unsafe operations**       | `unsafe-obj-magic`         | `Obj.magic` — unsafe type coercion                       |
+|                             | `unsafe-deserialization`   | `Marshal.from_channel`, `Marshal.from_string`            |
+|                             | `command-injection`        | `Sys.command`, `Unix.exec*` with untrusted input         |
+| **Partial functions**       | `partial-function`         | `List.hd`, `List.tl`, `List.assoc`, `Option.get`         |
+| **Best practices**          | `ocaml-verbose-option`     | Nested `match` on options → use `let*`                   |
+|                             | `ocaml-non-tail-recursive` | Recursive functions without tail optimization            |
+|                             | `ocaml-redundant-if-bool`  | `if x then true else false` → just `x`                  |
+|                             | `unused-binding`           | `let` bindings that are never used                       |
+|                             | `hardcoded-secrets`        | API key patterns in source code                          |
 
 #### Crystal & Gleam
 
 | Rule                    | Languages | What it catches                                       |
 | ----------------------- | --------- | ----------------------------------------------------- |
-| `hallucinated-stdlib`   | Crystal   | Calls to methods that don't exist (37-entry database) |
+| `hallucinated-stdlib`   | Crystal   | Calls to methods that don't exist (45-entry database) |
 | `hardcoded-secrets`     | Both      | API key patterns (Stripe, GitHub, AWS, JWT, Slack)    |
 | `hardcoded-urls`        | Crystal   | Hardcoded http:// and IP addresses                    |
 | `deprecated-syntax`     | Crystal   | `puts`, `p`, `pp` in production code                  |
+| `sequential-blocking`   | Crystal   | 3+ sequential HTTP/DB/File blocking calls             |
+| `string-concat-loop`    | Crystal   | String concatenation inside iterators                 |
+| `nilable-ivar-access`   | Crystal   | Instance variable accesses that may need nil checks   |
 | `panic-call`            | Gleam     | `panic` used instead of `Result`                      |
 | `list-wrap-unnecessary` | Gleam     | `List.wrap` on collections                            |
+| `debug-in-library`      | Gleam     | `io.debug` in non-example/test code                   |
+| `result-in-map`         | Gleam     | `list.map` on Result values                           |
+| `pipeline-steps-overload`| Gleam    | 5+ step pipelines                                      |
+| `use-candidate`         | Gleam     | 3+ nested anonymous functions — suggest `use`         |
 
-#### Rust
+#### Rust (3 detectors)
 
-| Rule                   | What it catches                                                |
-| ---------------------- | -------------------------------------------------------------- |
-| `HallucinatedFunction` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
-| `UnsafePanic`          | `unwrap()`, `expect()`, `panic!()` without error handling      |
-| `RustInefficiency`     | Unnecessary clones, `String::from(&var)`                       |
-| `TodoFound`            | `TODO`/`FIXME` in production code                              |
+| Rule                | What it catches                                                |
+| ------------------- | -------------------------------------------------------------- |
+| `RustHallucination` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
+| `UnsafePanic`       | `unwrap()`, `expect()`, `panic!()` without error handling      |
+| `RustInefficiency`  | Unnecessary clones, `String::from(&var)`                       |
 
 ### Code Smells (`--claws`)
 
