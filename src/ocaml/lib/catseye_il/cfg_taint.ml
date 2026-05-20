@@ -124,20 +124,20 @@ let matches_source (lv : lval) (sources : source_def list) : bool =
 (* ── Transfer function ────────────────────────────────────────────── *)
 
 (* Forward declare with mutual recursion *)
-let rec transfer_node (state : taint_state) (node : il_node)
+let rec transfer_node (taint_state : taint_state) (node : il_node)
     (sources : source_def list) (rules : rule_def list)
     (file : string) (lang : string) (dom_ctx : dom_ctx) : taint_state =
   match node with
   | ILAssign (lv, expr, _pos) ->
     (* If RHS is tainted, propagate to LHS *)
-    if is_expr_tainted state expr then taint_lval state lv
+    if is_expr_tainted taint_state expr then taint_lval taint_state lv
     else
       (* Check if the RHS returns a source — direct source variable or source call *)
       (match expr with
        | IECall (fn_name, args, _) ->
          (* Function call that returns a source — e.g., params = get_params() *)
          let src_names = List.map (fun (s : source_def) -> s.name) sources in
-         if List.mem fn_name src_names then taint_lval state lv
+         if List.mem fn_name src_names then taint_lval taint_state lv
          else
            (* Check if receiver is a source: params.[]() means params[key] *)
            let receiver_tainted =
@@ -145,10 +145,10 @@ let rec transfer_node (state : taint_state) (node : il_node)
              String.length fn_name > 3 &&
              String.sub fn_name (String.length fn_name - 3) 3 = ".[]" &&
              let receiver = String.sub fn_name 0 (String.length fn_name - 3) in
-             is_tainted state (LVVar receiver)
+             is_tainted taint_state (LVVar receiver)
              || List.exists (fun (s : source_def) -> receiver = s.name) sources
            in
-           if receiver_tainted then taint_lval state lv
+           if receiver_tainted then taint_lval taint_state lv
            else
              (* If any arg is a source, taint the result *)
              let tainted_arg = List.exists (fun a ->
@@ -156,61 +156,61 @@ let rec transfer_node (state : taint_state) (node : il_node)
                | Some a_lv -> matches_source a_lv sources
                | None -> false
              ) args in
-             if tainted_arg then taint_lval state lv else state
+             if tainted_arg then taint_lval taint_state lv else taint_state
        | _ ->
          match lval_of_expr expr with
          | Some expr_lv when matches_source expr_lv sources ->
-           taint_lval state lv
-         | _ -> state)
+           taint_lval taint_state lv
+         | _ -> taint_state)
 
   | ILCall (result_lv, fn_name, args, pos) ->
     (* Check if this call matches a sink with tainted args *)
-    let new_findings = check_call_sinks fn_name args pos file lang rules state dom_ctx in
+    let new_findings = check_call_sinks fn_name args pos file lang rules taint_state dom_ctx in
     (* Propagate taint through call if result is assigned *)
-    let any_tainted = List.exists (is_expr_tainted state) args in
+    let any_tainted = List.exists (is_expr_tainted taint_state) args in
     let receiver_tainted =
       match String.index_opt fn_name '.' with
       | Some idx ->
         let receiver = String.sub fn_name 0 idx in
-        is_tainted state (LVVar receiver)
+        is_tainted taint_state (LVVar receiver)
         || List.exists (fun (s : source_def) -> receiver = s.name) sources
       | None -> false
     in
     let interpolation_tainted =
-      fn_name = "<interpolation>" && not (LvalSet.is_empty state.tainted)
+      fn_name = "<interpolation>" && not (LvalSet.is_empty taint_state.tainted)
     in
     let state' = match result_lv with
       | Some lv when any_tainted || receiver_tainted || interpolation_tainted ->
-        taint_lval state lv
-      | _ -> state
+        taint_lval taint_state lv
+      | _ -> taint_state
     in
     (* O(1) append: cons new findings onto existing list *)
     state'.findings <- new_findings @ state'.findings;
     state'
 
   | ILBranch (_, then_block, else_block, _) ->
-    let then_state = transfer_block state then_block sources rules file lang dom_ctx in
+    let then_state = transfer_block taint_state then_block sources rules file lang dom_ctx in
     let else_state = match else_block with
-      | Some eb -> transfer_block state eb sources rules file lang dom_ctx
-      | None -> state
+      | Some eb -> transfer_block taint_state eb sources rules file lang dom_ctx
+      | None -> taint_state
     in
     union_state then_state else_state
 
   | ILReturn (_expr, _) ->
-    state
+    taint_state
 
   | ILThrow (_, _) ->
-    state
+    taint_state
 
   | ILResume (block, _) ->
-    transfer_block state block sources rules file lang dom_ctx
+    transfer_block taint_state block sources rules file lang dom_ctx
 
-and transfer_block (state : taint_state) (block : il_block)
+and transfer_block (taint_state : taint_state) (block : il_block)
     (sources : source_def list) (rules : rule_def list)
     (file : string) (lang : string) (dom_ctx : dom_ctx) : taint_state =
   List.fold_left (fun st node ->
     transfer_node st node sources rules file lang dom_ctx
-  ) state block
+  ) taint_state block
 
 (* Check a call against all sink rules *)
 and check_call_sinks (fn_name : string) (args : il_expr list)
@@ -219,26 +219,20 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
     : Catseye_types.Finding.t list =
   List.concat_map (fun (rule : rule_def) ->
     List.concat_map (fun (sink : sink_def) ->
-      (* Does the function name match the sink pattern? *)
+      (* Guard clauses — flat, not nested *)
+      (* 1. Does the function name match the sink pattern? *)
       if not (Catseye_rules.Interpreter.matches_sink
                ~pattern:sink.pattern ~name:fn_name) then []
+      (* 2. Check for sanitized args *)
+      else if List.exists (fun a ->
+        Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers (expr_name a)
+      ) args then []
+      (* 3. Dominator-based suppression: sanitizer dominates this block *)
+      else if (match dom_ctx.dom with
+        | None -> false
+        | Some dom -> Cfg_dominator.is_sanitized_by dom dom_ctx.block_id sink.sanitizers
+      ) then []
       else begin
-        (* Check for sanitized args *)
-        let has_sanitizer = List.exists (fun a ->
-          let name = expr_name a in
-          Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers name
-        ) args in
-        if has_sanitizer then []
-        else begin
-          (* Dominator-based suppression: if a sanitizer dominates this block,
-             the sink is guarded on all paths from entry. Suppress the finding. *)
-          let dominated_by_sanitizer = match dom_ctx.dom with
-            | None -> false
-            | Some dom ->
-              Cfg_dominator.is_sanitized_by dom dom_ctx.block_id sink.sanitizers
-          in
-          if dominated_by_sanitizer then []
-          else begin
           (* Find tainted args, respecting arg_pos if set *)
           let tainted_args = match sink.arg_pos with
             | Some n ->
@@ -277,8 +271,6 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
              ; suggestion
             }]
           end
-          end
-        end
       end
     ) rule.sinks
   ) rules
@@ -328,14 +320,14 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
   let worklist = Queue.create () in
   Queue.add cfg.Cfg_graph.entry worklist;
 
-  let max_visits = 3 in
+  let max_visits_per_block = 3 in
   let visit_count = Hashtbl.create 32 in
 
   while not (Queue.is_empty worklist) do
     let block_id = Queue.take worklist in
 
     let visits = try Hashtbl.find visit_count block_id with Not_found -> 0 in
-    if visits < max_visits then begin
+    if visits < max_visits_per_block then begin
       Hashtbl.replace visit_count block_id (visits + 1);
 
       let nodes = Cfg_graph.block_nodes cfg block_id in

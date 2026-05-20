@@ -11,6 +11,12 @@
 open Catseye_types
 open Scope
 
+(* ── Finding builder helper ──────────────────────────────────────────── *)
+
+let make_finding ~rule ~severity ~file ~line ~message ~flow ?(lang = "crystal") () : Finding.t =
+  { Finding.rule; severity; file; line; message; flow;
+    language = lang; dependency = None; reachability = None; suggestion = None }
+
 (* ── Long Method ────────────────────────────────────────────────────── *)
 
 (** Check if a file is a benchmark, example, or test file. *)
@@ -58,41 +64,29 @@ let check_long_method (nodes : Security_node.t list)
     else
       let count = List.length body in
       if count >= critical_threshold then
-        Some {
-          Finding.rule = "LongMethod";
-          severity = "High";
-          file = def.Security_node.file;
-          line = def.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"LongMethod" ~severity:"High"
+          ~file:def.Security_node.file ~line:def.Security_node.line
+          ~message:(Printf.sprintf
             "Function '%s' has %d AST nodes (critical threshold: %d). Consider breaking into smaller functions."
-            def.Security_node.name count critical_threshold;
-          flow = [ {
+            def.Security_node.name count critical_threshold)
+          ~flow:[ {
             Finding.file = def.Security_node.file;
             line = def.Security_node.line;
             message = Printf.sprintf "Definition of '%s' (%d nodes)" def.Security_node.name count;
-          } ];
-          language = def.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:def.Security_node.language ())
       else if count >= warning_threshold then
-        Some {
-          Finding.rule = "LongMethod";
-          severity = "Medium";
-          file = def.Security_node.file;
-          line = def.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"LongMethod" ~severity:"Medium"
+          ~file:def.Security_node.file ~line:def.Security_node.line
+          ~message:(Printf.sprintf
             "Function '%s' has %d AST nodes (warning threshold: %d). Consider breaking into smaller functions."
-            def.Security_node.name count warning_threshold;
-          flow = [ {
+            def.Security_node.name count warning_threshold)
+          ~flow:[ {
             Finding.file = def.Security_node.file;
             line = def.Security_node.line;
             message = Printf.sprintf "Definition of '%s' (%d nodes)" def.Security_node.name count;
-          } ];
-          language = def.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:def.Security_node.language ())
       else None
   ) scopes
 
@@ -127,24 +121,18 @@ let check_complex_conditionals (nodes : Security_node.t list)
     else
       let ops = count_logical_ops n.Security_node.name in
       if ops >= threshold then
-        Some {
-          Finding.rule = "ComplexConditional";
-          severity = "Medium";
-          file = n.Security_node.file;
-          line = n.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"ComplexConditional" ~severity:"Medium"
+          ~file:n.Security_node.file ~line:n.Security_node.line
+          ~message:(Printf.sprintf
             "Complex conditional with %d logical operators (threshold: %d). \
              Consider extracting sub-expressions into named variables."
-            ops threshold;
-          flow = [ {
+            ops threshold)
+          ~flow:[ {
             Finding.file = n.Security_node.file;
             line = n.Security_node.line;
             message = Printf.sprintf "Expression: %s" n.Security_node.name;
-          } ];
-          language = n.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:n.Security_node.language ())
       else None
   ) nodes
 
@@ -196,24 +184,18 @@ let check_message_chains (nodes : Security_node.t list)
     else
       let segments = count_chain_segments n.Security_node.name in
       if segments >= threshold && not (is_idiomatic_chain n.Security_node.name) then
-        Some {
-          Finding.rule = "MessageChain";
-          severity = "Medium";
-          file = n.Security_node.file;
-          line = n.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"MessageChain" ~severity:"Medium"
+          ~file:n.Security_node.file ~line:n.Security_node.line
+          ~message:(Printf.sprintf
             "Long method chain with %d segments (threshold: %d): %s. \
              Consider introducing intermediate variables (Law of Demeter)."
-            segments threshold n.Security_node.name;
-          flow = [ {
+            segments threshold n.Security_node.name)
+          ~flow:[ {
             Finding.file = n.Security_node.file;
             line = n.Security_node.line;
             message = Printf.sprintf "Chain: %s" n.Security_node.name;
-          } ];
-          language = n.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:n.Security_node.language ())
       else None
   ) nodes
 
@@ -277,19 +259,13 @@ let check_data_clumps (nodes : Security_node.t list)
         let file_count = List.length files in
         if is_common || file_count < 2 then acc
         else
-          { Finding.rule = "DataClump";
-            severity = "Medium";
-            file = List.hd (List.sort String.compare files);
-            line = 0;
-            message = Printf.sprintf
+          (make_finding ~rule:"DataClump" ~severity:"Medium"
+            ~file:(List.hd (List.sort String.compare files)) ~line:0
+            ~message:(Printf.sprintf
               "Parameters '%s' and '%s' always appear together in %d functions \
                across %d files. Consider grouping into a struct or record."
-              p1 p2 count file_count;
-            flow = [];
-            language = "";
-            dependency = None;
-            reachability = None; suggestion = None;
-          } :: acc
+              p1 p2 count file_count)
+            ~flow:[] ~lang:"" ()) :: acc
       end
     ) pair_counts []
   end
@@ -335,24 +311,18 @@ let check_flag_arguments (nodes : Security_node.t list)
         let flag_names = String.concat ", " (
           List.map (fun a -> a.Security_node.value) flags
         ) in
-        Some {
-          Finding.rule = "FlagArgument";
-          severity = "Medium";
-          file = n.Security_node.file;
-          line = n.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"FlagArgument" ~severity:"Medium"
+          ~file:n.Security_node.file ~line:n.Security_node.line
+          ~message:(Printf.sprintf
             "Function '%s' has flag parameter(s): %s. \
              Consider splitting into separate methods."
-            n.Security_node.name flag_names;
-          flow = [ {
+            n.Security_node.name flag_names)
+          ~flow:[ {
             Finding.file = n.Security_node.file;
             line = n.Security_node.line;
             message = Printf.sprintf "Definition of '%s'" n.Security_node.name;
-          } ];
-          language = n.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:n.Security_node.language ())
   ) nodes
 
 (* ── Complex Match/Case ─────────────────────────────────────────────── *)
@@ -374,43 +344,31 @@ let check_complex_match (nodes : Security_node.t list)
         | _ -> 0
       in
       if when_count >= config.complex_match_critical then
-        Some {
-          Finding.rule = "ComplexMatch";
-          severity = "High";
-          file = n.Security_node.file;
-          line = n.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"ComplexMatch" ~severity:"High"
+          ~file:n.Security_node.file ~line:n.Security_node.line
+          ~message:(Printf.sprintf
             "Complex case expression with %d when branches (critical threshold: %d). \
              Consider decomposing into smaller functions or a lookup table."
-            when_count config.complex_match_critical;
-          flow = [ {
+            when_count config.complex_match_critical)
+          ~flow:[ {
             Finding.file = n.Security_node.file;
             line = n.Security_node.line;
             message = Printf.sprintf "case with %d branches" when_count;
-          } ];
-          language = n.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:n.Security_node.language ())
       else if when_count >= config.complex_match_warning then
-        Some {
-          Finding.rule = "ComplexMatch";
-          severity = "Medium";
-          file = n.Security_node.file;
-          line = n.Security_node.line;
-          message = Printf.sprintf
+        Some (make_finding ~rule:"ComplexMatch" ~severity:"Medium"
+          ~file:n.Security_node.file ~line:n.Security_node.line
+          ~message:(Printf.sprintf
             "Complex case expression with %d when branches (warning threshold: %d). \
              Consider decomposing into smaller functions or a lookup table."
-            when_count config.complex_match_warning;
-          flow = [ {
+            when_count config.complex_match_warning)
+          ~flow:[ {
             Finding.file = n.Security_node.file;
             line = n.Security_node.line;
             message = Printf.sprintf "case with %d branches" when_count;
-          } ];
-          language = n.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        }
+          } ]
+          ~lang:n.Security_node.language ())
       else None
   ) nodes
 
@@ -533,25 +491,19 @@ let check_dead_code (nodes : Security_node.t list)
       in
       match (scan 0 0) body with
     | Some (file, line, term_name, term_line, def_name, dead_type, dead_name) ->
-      Some {
-        Finding.rule = "DeadCode";
-        severity = "High";
-        file;
-        line;
-        message = Printf.sprintf
+      Some (make_finding ~rule:"DeadCode" ~severity:"High"
+        ~file ~line
+        ~message:(Printf.sprintf
           "Unreachable %s '%s' after unconditional %s at line %d in '%s'. \
            This code will never execute."
           (Security_node.string_of_node_type dead_type) dead_name
-          term_name term_line def_name;
-        flow = [ {
+          term_name term_line def_name)
+        ~flow:[ {
           Finding.file = file;
           line = term_line;
           message = Printf.sprintf "Unconditional %s" term_name;
-        } ];
-        language = "crystal";
-        dependency = None;
-        reachability = None; suggestion = None;
-      }
+        } ]
+        ~lang:"crystal" ())
     | None -> None
   ) scopes
 
@@ -650,24 +602,18 @@ let check_data_classes (nodes : Security_node.t list)
     (* Data Class: has getters, no non-initialize methods, not a DTO/serializable/struct *)
     if List.length getters >= 2 && List.length non_init_defs = 0
        && not has_serializable && not is_dto_file && not is_struct_class then
-      Some {
-        Finding.rule = "DataClass";
-        severity = "Medium";
-        file;
-        line = start_line;
-        message = Printf.sprintf
+      Some (make_finding ~rule:"DataClass" ~severity:"Medium"
+        ~file ~line:start_line
+        ~message:(Printf.sprintf
           "Class '%s' has %d properties but no behavior methods (only initialize). \
            Consider using a Crystal struct or record instead."
-          class_name (List.length getters);
-        flow = [ {
+          class_name (List.length getters))
+        ~flow:[ {
           Finding.file = file;
           line = start_line;
           message = Printf.sprintf "Definition of '%s'" class_name;
-        } ];
-        language = "crystal";
-        dependency = None;
-        reachability = None; suggestion = None;
-      }
+        } ]
+        ~lang:"crystal" ())
     else None
   ) !class_boundaries
 
@@ -832,25 +778,19 @@ let check_feature_envy (nodes : Security_node.t list)
         ) obj_counts;
         let ratio = float_of_int !best_count /. float_of_int total in
         if ratio >= 0.7 then
-          Some {
-            Finding.rule = "FeatureEnvy";
-            severity = "Medium";
-            file = def.Security_node.file;
-            line = def.Security_node.line;
-            message = Printf.sprintf
+          Some (make_finding ~rule:"FeatureEnvy" ~severity:"Medium"
+            ~file:def.Security_node.file ~line:def.Security_node.line
+            ~message:(Printf.sprintf
               "Method '%s' accesses '%s' %d/%d non-parameter accesses (%d%%). \
                Consider moving this logic to the '%s' class."
               def.Security_node.name !best_obj !best_count total
-              (int_of_float (ratio *. 100.0)) !best_obj;
-            flow = [ {
+              (int_of_float (ratio *. 100.0)) !best_obj)
+            ~flow:[ {
               Finding.file = def.Security_node.file;
               line = def.Security_node.line;
               message = Printf.sprintf "Definition of '%s'" def.Security_node.name;
-            } ];
-            language = def.Security_node.language;
-            dependency = None;
-            reachability = None; suggestion = None;
-          }
+            } ]
+            ~lang:def.Security_node.language ())
         else None
       end else None
     end

@@ -120,21 +120,21 @@ let find_scope (scopes : scope_info list) (file : string) (line : int)
     enclosing function to the called function. *)
 let build_call_adjacency (nodes : Security_node.t list)
     (scopes : scope_info list) : call_adjacency =
-  let adj = ref StringMap.empty in
+  let call_graph = ref StringMap.empty in
   List.iter (fun n ->
     if n.Security_node.node_type = Security_node.Call then begin
       match find_scope scopes n.Security_node.file n.Security_node.line with
       | Some scope ->
         let key = scope.func_name in
-        let edges = try StringMap.find key !adj with Not_found -> [] in
+        let edges = try StringMap.find key !call_graph with Not_found -> [] in
         let edge = (n.Security_node.name, n.Security_node.file, n.Security_node.line) in
         (* Avoid duplicate edges *)
         if not (List.exists (fun (name, _, _) -> name = n.Security_node.name) edges) then
-          adj := StringMap.add key (edge :: edges) !adj
+          call_graph := StringMap.add key (edge :: edges) !call_graph
       | None -> ()
     end
   ) nodes;
-  !adj
+  !call_graph
 
 (* ── Entry point detection ──────────────────────────────────────────── *)
 
@@ -198,7 +198,7 @@ let detect_entry_points (nodes : Security_node.t list)
 
 (** BFS from entry points through call adjacency.
     Returns set of reachable function names. *)
-let reachable_from (entries : entry_point list) (adj : call_adjacency)
+let reachable_from (entries : entry_point list) (call_graph : call_adjacency)
     : StringSet.t =
   let visited = ref StringSet.empty in
   let queue = Queue.create () in
@@ -210,7 +210,7 @@ let reachable_from (entries : entry_point list) (adj : call_adjacency)
   ) entries;
   while not (Queue.is_empty queue) do
     let current = Queue.pop queue in
-    (match StringMap.find_opt current adj with
+    (match StringMap.find_opt current call_graph with
      | Some edges ->
        List.iter (fun (called, _, _) ->
          if not (StringSet.mem called !visited) then begin
@@ -226,7 +226,7 @@ let reachable_from (entries : entry_point list) (adj : call_adjacency)
 
 (** Trace the shortest call path from an entry point to a target function.
     Returns the path as [(file, line), ...] or [] if unreachable. *)
-let trace_path (entries : entry_point list) (adj : call_adjacency)
+let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     (target : string) : (entry_point * (string * int) list) option =
   (* BFS with parent tracking *)
   let parent = Hashtbl.create 32 in
@@ -245,7 +245,7 @@ let trace_path (entries : entry_point list) (adj : call_adjacency)
     if current = target then
       found := Some current
     else
-      (match StringMap.find_opt current adj with
+      (match StringMap.find_opt current call_graph with
        | Some edges ->
          List.iter (fun (called, _f, _l) ->
            if not (Hashtbl.mem visited called) then begin
@@ -267,7 +267,7 @@ let trace_path (entries : entry_point list) (adj : call_adjacency)
       | Some None -> ()
       | Some (Some (parent_name, _child)) ->
         (* Find the edge for file/line info *)
-        (match StringMap.find_opt parent_name adj with
+        (match StringMap.find_opt parent_name call_graph with
          | Some edges ->
            (match List.find_opt (fun (n, _, _) -> n = name) edges with
             | Some (_, f, l) -> path := (f, l) :: !path
@@ -296,7 +296,7 @@ let analyze (nodes : Security_node.t list)
     ~(custom_patterns : string list)
     : reachability list =
   let scopes = build_scopes nodes in
-  let adj = build_call_adjacency nodes scopes in
+  let call_graph = build_call_adjacency nodes scopes in
   let entries = detect_entry_points nodes custom_patterns in
 
   if entries = [] then
@@ -309,7 +309,7 @@ let analyze (nodes : Security_node.t list)
       path = [];
     }) findings
   else begin
-    let reachable = reachable_from entries adj in
+    let reachable = reachable_from entries call_graph in
     List.map (fun f ->
       let scope = find_scope scopes f.Finding.file f.Finding.line in
       match scope with
@@ -318,7 +318,7 @@ let analyze (nodes : Security_node.t list)
           entry_function = None; path_length = 0; path = [] }
       | Some s ->
         if StringSet.mem s.func_name reachable then begin
-          match trace_path entries adj s.func_name with
+          match trace_path entries call_graph s.func_name with
           | Some (entry, path) ->
             { status = `Live;
               entry_point = Some (Printf.sprintf "%s:%d" entry.file entry.line);

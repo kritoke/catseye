@@ -171,7 +171,7 @@ let get_call_receiver (call_node : Security_node.t) : string option =
    to another variable in a different file (file B), the new variable
    in file B should inherit the taint. *)
 let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
-  let db_ref = ref db in
+  let taint_db_ref = ref db in
   (* For each assign node, check if the source variable is tainted in ANY file *)
   List.iter (fun node ->
     if node.Security_node.node_type = Security_node.Assign then
@@ -183,12 +183,12 @@ let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
           (* Check if source is tainted in any OTHER file *)
           let is_cross_file = 
             StringMap.exists (fun file _ -> 
-              file <> target_file && Db.is_tainted_in_file !db_ref source_var file
-            ) !db_ref
+              file <> target_file && Db.is_tainted_in_file !taint_db_ref source_var file
+            ) !taint_db_ref
           in
           if is_cross_file then
             (* Check if target is not already tainted in target file *)
-            if not (Db.is_tainted_in_file !db_ref node.Security_node.name target_file) then
+            if not (Db.is_tainted_in_file !taint_db_ref node.Security_node.name target_file) then
               let record = {
                 Db.var_name = node.Security_node.name;
                 Db.file = target_file;
@@ -202,10 +202,10 @@ let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
                   origin = Db.From_var source_var
                 }
               } in
-              db_ref := Db.add_record !db_ref record
+              taint_db_ref := Db.add_record !taint_db_ref record
       ) node.Security_node.args
   ) nodes;
-  !db_ref
+  !taint_db_ref
 
 (* ── URI Constructor Taint Propagation ────────────────────────────────
 
@@ -237,7 +237,7 @@ let is_uri_constructor (call_name : string) : bool =
 (* Propagate URI constructor property taint *)
 let propagate_uri_properties (nodes : Security_node.t list) (db : Db.t)
     ~(call_at : (string, Security_node.t) Hashtbl.t) : Db.t =
-  let db_ref = ref db in
+  let taint_db_ref = ref db in
   let uri_found = ref 0 in
   let tainted_found = ref 0 in
   List.iter (fun node ->
@@ -248,7 +248,7 @@ let propagate_uri_properties (nodes : Security_node.t list) (db : Db.t)
           uri_found := !uri_found + 1;
           let tainted_arg = List.find_opt (fun a ->
             a.Security_node.arg_type = Security_node.ArgVar
-            && Db.is_tainted_in_file !db_ref a.Security_node.value node.Security_node.file
+            && Db.is_tainted_in_file !taint_db_ref a.Security_node.value node.Security_node.file
           ) cn.Security_node.args in
           (match tainted_arg with
            | Some arg ->
@@ -269,24 +269,24 @@ let propagate_uri_properties (nodes : Security_node.t list) (db : Db.t)
                      origin = Db.From_var arg.Security_node.value
                    }
                  } in
-                 db_ref := Db.add_record !db_ref record
+                 taint_db_ref := Db.add_record !taint_db_ref record
                ) uri_tainted_properties
            | None -> ())
       | _ -> ()
   ) nodes;
-  !db_ref
+  !taint_db_ref
 
 (* Propagate aliases *)
 let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
-  let db_ref = ref db in
+  let taint_db_ref = ref db in
   List.iter (fun node ->
     if node.Security_node.node_type = Security_node.Assign then
       match node.Security_node.args with
       | [{ arg_type = Security_node.ArgVar; value = rhs_var; field = "" }] ->
-          if Db.is_tainted_in_file !db_ref rhs_var node.Security_node.file then
+          if Db.is_tainted_in_file !taint_db_ref rhs_var node.Security_node.file then
             let var_name = node.Security_node.name in
             let file = node.Security_node.file in
-            let source_taints = Db.get_tainted_records !db_ref rhs_var file in
+            let source_taints = Db.get_tainted_records !taint_db_ref rhs_var file in
             List.iter (fun record ->
               match record.Db.field with
               | Some fld ->
@@ -303,7 +303,7 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
                       origin = Db.From_var rhs_var
                     }
                   } in
-                  db_ref := Db.add_record !db_ref new_record
+                  taint_db_ref := Db.add_record !taint_db_ref new_record
               | None -> ()
             ) source_taints
       | [{ arg_type = Security_node.ArgCall; value = _; field = "" }] ->
@@ -316,10 +316,10 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
            | Some call_node ->
                let receiver_opt = get_call_receiver call_node in
                (match receiver_opt with
-                | Some receiver when Db.is_tainted_in_file !db_ref receiver node.Security_node.file ->
+                | Some receiver when Db.is_tainted_in_file !taint_db_ref receiver node.Security_node.file ->
                     let var_name = node.Security_node.name in
                     let file = node.Security_node.file in
-                    let source_taints = Db.get_tainted_records !db_ref receiver file in
+                    let source_taints = Db.get_tainted_records !taint_db_ref receiver file in
                     List.iter (fun record ->
                       match record.Db.field with
                       | Some fld ->
@@ -336,14 +336,14 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
                               origin = Db.From_var receiver
                             }
                           } in
-                          db_ref := Db.add_record !db_ref new_record
+                          taint_db_ref := Db.add_record !taint_db_ref new_record
                       | None -> ()
                     ) source_taints
                 | _ -> ())
            | None -> ())
       | _ -> ()
   ) nodes;
-  !db_ref
+  !taint_db_ref
 
 (* Propagate taint through string operations.
    When x = tainted_string.upcase, mark x as tainted (variable-level).
@@ -351,7 +351,7 @@ let propagate_aliases (nodes : Security_node.t list) (db : Db.t) : Db.t =
    This handles both variable-level and field-level taint propagation. *)
 let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
     ~(call_at : (string, Security_node.t) Hashtbl.t) : Db.t =
-  let db_ref = ref db in
+  let taint_db_ref = ref db in
   List.iter (fun node ->
     if node.Security_node.node_type = Security_node.Assign then
       (* Check if this is a method call on a variable *)
@@ -366,7 +366,7 @@ let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
                (match receiver_opt, method_opt with
                 | Some receiver, Some method_name when is_string_taint_method method_name ->
                     (* Check if receiver is tainted at variable level *)
-                    let is_tainted = Db.is_tainted_in_file !db_ref receiver node.Security_node.file in
+                    let is_tainted = Db.is_tainted_in_file !taint_db_ref receiver node.Security_node.file in
                     if is_tainted then
                       let var_name = node.Security_node.name in
                       let file = node.Security_node.file in
@@ -384,7 +384,7 @@ let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
                           origin = Db.From_var receiver
                         }
                       } in
-                      db_ref := Db.add_record !db_ref record;
+                      taint_db_ref := Db.add_record !taint_db_ref record;
                       (* Also mark all string property fields as tainted *)
                       List.iter (fun prop ->
                         let prop_record = {
@@ -400,20 +400,22 @@ let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
                             origin = Db.From_var receiver
                           }
                         } in
-                        db_ref := Db.add_record !db_ref prop_record
+                        taint_db_ref := Db.add_record !taint_db_ref prop_record
                       ) ["length"; "size"; "empty"; "bytesize"]
                 | _ -> ())
            | None -> ())
       | _ -> ()
   ) nodes;
-  !db_ref
+  !taint_db_ref
 
-(* Fixed-point: propagate until no new tainted vars found (max 100 iterations). *)
+let max_propagation_iterations = 100
+
+(* Fixed-point: propagate until no new tainted vars found. *)
 let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let call_at = build_call_lookup nodes in
   
   let rec loop_string_ops db count =
-    if count >= 100 then db
+    if count >= max_propagation_iterations then db
     else
       let size_before = Db.db_size db in
       let db1 = cleanse_sanitized_assigns nodes db ~call_at in
@@ -425,7 +427,7 @@ let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   in
   
   let rec loop_uri db count =
-    if count >= 100 then db
+    if count >= max_propagation_iterations then db
     else
       let size_before = Db.db_size db in
       let db1 = cleanse_sanitized_assigns nodes db ~call_at in
@@ -436,7 +438,7 @@ let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   in
   
   let rec loop_alias db count =
-    if count >= 100 then db
+    if count >= max_propagation_iterations then db
     else
       let size_before = Db.db_size db in
       let db1 = propagate_aliases nodes db in
@@ -446,7 +448,7 @@ let propagate (nodes : Security_node.t list) (db : Db.t) : Db.t =
   in
   
   let rec loop_cross_file db count =
-    if count >= 100 then db
+    if count >= max_propagation_iterations then db
     else
       let size_before = Db.db_size db in
       let db1 = propagate_cross_file nodes db in
