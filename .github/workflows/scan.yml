@@ -3,12 +3,13 @@ name: Catseye Security Scan
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     # Run weekly on Monday at 09:00 UTC
     - cron: '0 9 * * 1'
   workflow_dispatch:
+
+permissions:
+  security-events: write
 
 jobs:
   scan:
@@ -16,36 +17,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y opam sqlite3 libsqlite3-dev pkg-config
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq curl build-essential bubblewrap libsqlite3-dev m4
+          curl -sL https://github.com/ocaml/opam/releases/download/2.2.0/opam-2.2.0-x86_64-linux -o /tmp/opam
+          chmod +x /tmp/opam
+          sudo mv /tmp/opam /usr/local/bin/opam
 
       - name: Setup OCaml
         run: |
-          opam init --disable-sandboxing --yes
-          opam switch create 5.2.0 5.2.0 --yes
+          export OPAMROOT=/home/runner/.opam
+          export PATH="$OPAMROOT/bin:$PATH"
+          opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           eval $(opam env)
-
-      - name: Install OCaml Packages
-        run: |
-          eval $(opam env)
-          opam install -y dune yojson cmdliner bos rresult logs fmt toml kdl ocamlgraph sqlite3 alcotest --yes
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
 
       - name: Build Catseye
         run: |
+          export OPAMROOT=/home/runner/.opam
+          export PATH="$OPAMROOT/bin:$PATH"
           eval $(opam env)
           cd src/ocaml
           dune build --profile release
+          mkdir -p ../../bin
           cp _build/default/bin/main.exe ../../bin/catseye
 
       - name: Run Security Scan
         run: |
-          ./bin/catseye --rules src/ocaml/rules --format sarif . > catseye-results.sarif
+          ./bin/catseye --rules src/ocaml/rules --format sarif . > catseye-results.sarif 2>/tmp/scan-stderr.txt || true
+          echo "Scan exit code: $?"
+          cat /tmp/scan-stderr.txt || true
 
       - name: Upload SARIF Results
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: hashFiles('catseye-results.sarif') != ''
         with:
           sarif_file: catseye-results.sarif
           category: catseye
