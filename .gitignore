@@ -60,7 +60,7 @@ flake.private.nix
 # Elixir/Mix dependencies (generated)
 scripts/elixir-extractor/deps/
 scripts/elixir-extractor/_build/
-scripts/elixir-extractor/mix.lock
+# NOTE: mix.lock IS tracked - it ensures consistent dependency versions
 
 # Todo infrastructure
 .tickets/
