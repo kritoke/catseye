@@ -105,7 +105,7 @@ let parse_shard_yml (dir : string) : (string * string list) =
     with _ -> ("", [])
   end
 
-let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".rs"]) (dir : string) (exclude : string list) : source_file list =
+let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Sys.file_exists (Filename.concat dir "shard.yml") in
   let shard_deps = 
@@ -182,6 +182,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
             | ".svelte" -> "svelte"
             | ".ml" | ".mli" -> "ocaml"
             | ".rs" -> "rust"
+            | ".ex" | ".exs" | ".heex" -> "elixir"
             | _ -> "unknown"
           in
           (* Apply lang_filter *)

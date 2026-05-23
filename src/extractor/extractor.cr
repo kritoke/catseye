@@ -563,6 +563,21 @@ class SecurityVisitor < Crystal::Visitor
     call_name = format_call_name(node)
     tainted = false
 
+    # In Crystal, `raise` is a keyword but gets parsed as a Call node.
+    # Detect it here and emit a terminator node.
+    if call_name == "raise" && node.obj.nil?
+      @nodes << {
+        type:     "terminator",
+        name:     "raise",
+        args:     [] of ArgNode,
+        line:     location_line(node),
+        taint:    false,
+        file:     @file_path,
+        language: "crystal",
+        metadata: nil,
+      }
+    end
+
     # Check if any argument is tainted
     node.args.each do |arg|
       # For variable args, use @tainted_vars tracking only — do NOT

@@ -43,7 +43,10 @@ type t = {
   claws_config : Catseye_claws.Types.claws_config;
   taint_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress taint findings *)
   suppress : string list;  (* Rule IDs to suppress (--suppress flag) *)
+  ai_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress AI lint findings *)
   include_deps : bool;  (* Include shard dependencies in scan (Crystal only) *)
+  elixir_enabled : bool;  (* Enable Elixir tool integration *)
+  elixir_tools : string list;  (* Which Elixir tools to run *)
 }
 
 let default = {
@@ -79,6 +82,9 @@ let default = {
   claws_config = Catseye_claws.Types.default_config;
   taint_suppress = Hashtbl.create 0;
   suppress = [];
+  ai_suppress = Hashtbl.create 0;
+  elixir_enabled = false;
+  elixir_tools = ["sobelow"; "credo"; "reach"];
 }
 
 (** Walk up from [dir] looking for .catseye.toml. *)
@@ -159,6 +165,41 @@ let get_string table path default =
   in
   descend table keys
 
+(** Parse a glob pattern list from raw TOML lines. Helper for suppress sections. *)
+let parse_glob_list lines section_name =
+  let sup = Hashtbl.create 8 in
+  let current_section = ref "" in
+  List.iter (fun line ->
+    let trimmed = String.trim line in
+    if String.length trimmed > 0 && trimmed.[0] = '[' then
+      (let close = String.index_opt trimmed ']' in
+       match close with
+       | Some i -> current_section := String.sub trimmed 1 (i - 1)
+       | None -> ())
+    else if !current_section = section_name then begin
+      match String.index_opt trimmed '=' with
+      | Some eq_pos ->
+          let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
+          let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
+          if String.length rest >= 2 && rest.[0] = '[' then
+            (* Find the closing ] for the array *)
+            let close_bracket = match String.rindex_opt rest ']' with
+              | Some idx -> idx
+              | None -> String.length rest - 1
+            in
+            let inner = String.sub rest 1 (close_bracket - 1) in
+            let pats = List.filter (fun s -> String.length s > 0) (List.map (fun s ->
+              let s = String.trim s in
+              if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
+                String.sub s 1 (String.length s - 2)
+              else s
+            ) (String.split_on_char ',' inner)) in
+            if pats <> [] then Hashtbl.replace sup rule_name pats
+      | None -> ()
+    end
+  ) lines;
+  sup
+
 (** Load .catseye.toml and overlay onto config. *)
 let load_toml (path : string) (cfg : t) : t =
   try
@@ -175,6 +216,16 @@ let load_toml (path : string) (cfg : t) : t =
       | 1 -> true
       | _ -> default
     in
+    (* Read raw TOML for suppress sections *)
+    let raw_toml =
+      let ic = open_in path in
+      let len = in_channel_length ic in
+      let buf = Bytes.create len in
+      really_input ic buf 0 len;
+      close_in ic;
+      Bytes.to_string buf
+    in
+    let toml_lines = String.split_on_char '\n' raw_toml in
     { cfg with
       lang_filter =
         (match get_string_list table "languages.enabled" with
@@ -233,86 +284,11 @@ let load_toml (path : string) (cfg : t) : t =
         lazy_class_method_threshold = get_int table "claws.lazy_class_method_threshold" 3;
         large_class_loc_warning = get_int table "claws.large_class_loc_warning" 200;
         large_class_loc_critical = get_int table "claws.large_class_loc_critical" 500;
-        suppress =
-          let sup = Hashtbl.create 8 in
-          (* Parse [claws.suppress] from raw TOML — avoids abstract Key.t issues *)
-          (try
-            let ic = open_in path in
-            let len = in_channel_length ic in
-            let buf = Bytes.create len in
-            really_input ic buf 0 len;
-            close_in ic;
-            let raw = Bytes.to_string buf in
-            let lines = String.split_on_char '\n' raw in
-            let current_section = ref "" in
-            List.iter (fun line ->
-              let trimmed = String.trim line in
-              if String.length trimmed > 0 && trimmed.[0] = '[' then
-                (let close = String.index_opt trimmed ']' in
-                 match close with
-                 | Some i -> current_section := String.sub trimmed 1 (i - 1)
-                 | None -> ())
-              else if !current_section = "claws.suppress" then begin
-                match String.index_opt trimmed '=' with
-                | Some eq_pos ->
-                    let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
-                    let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
-                    if String.length rest >= 2 && rest.[0] = '[' then begin
-                      let inner = String.sub rest 1 (String.length rest - 2) in
-                      let pats = List.map (fun s ->
-                        let s = String.trim s in
-                        if String.length s >= 2 && s.[0] = '\"' && s.[String.length s - 1] = '\"' then
-                          String.sub s 1 (String.length s - 2)
-                        else s
-                      ) (String.split_on_char ',' inner) in
-                      Hashtbl.replace sup rule_name pats
-                    end
-                | None -> ()
-              end
-            ) lines
-          with _ -> ());
-          sup;
-      }
-    ;
-    taint_suppress =
-      let sup = Hashtbl.create 8 in
-      (try
-        let ic = open_in path in
-        let len = in_channel_length ic in
-        let buf = Bytes.create len in
-        really_input ic buf 0 len;
-        close_in ic;
-        let raw = Bytes.to_string buf in
-        let lines = String.split_on_char '\n' raw in
-        let current_section = ref "" in
-        List.iter (fun line ->
-          let trimmed = String.trim line in
-          if String.length trimmed > 0 && trimmed.[0] = '[' then
-            (let close = String.index_opt trimmed ']' in
-             match close with
-             | Some i -> current_section := String.sub trimmed 1 (i - 1)
-             | None -> ())
-          else if !current_section = "taint.suppress" then begin
-            match String.index_opt trimmed '=' with
-            | Some eq_pos ->
-                let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
-                let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
-                if String.length rest >= 2 && rest.[0] = '[' then begin
-                  let inner = String.sub rest 1 (String.length rest - 2) in
-                  let pats = List.map (fun s ->
-                    let s = String.trim s in
-                    if String.length s >= 2 && s.[0] = '\"' && s.[String.length s - 1] = '\"' then
-                      String.sub s 1 (String.length s - 2)
-                    else s
-                  ) (String.split_on_char ',' inner) in
-                  Hashtbl.replace sup rule_name pats
-                end
-            | None -> ()
-          end
-        ) lines
-      with _ -> ());
-      sup
-  }
+        suppress = parse_glob_list toml_lines "claws.suppress";
+      };
+      ai_suppress = parse_glob_list toml_lines "ai.suppress";
+      taint_suppress = parse_glob_list toml_lines "taint.suppress";
+    }
   with _ -> cfg
 
 (** Check if Crystal toolchain is available.
@@ -334,6 +310,18 @@ let detect_crystal () : bool =
       Buffer.length buf > 0
     with _ -> false
 
+(** Check if Elixir toolchain is available.
+    Looks for the mix binary on PATH. *)
+and detect_elixir () : bool =
+  try
+    let ic = Unix.open_process_in "which mix 2>/dev/null" in
+    let buf = Buffer.create 256 in
+    (try while true do Buffer.add_channel buf ic 1 done
+     with End_of_file -> ());
+    let _ = Unix.close_process_in ic in
+    Buffer.length buf > 0
+  with _ -> false
+
 (** Initialize Crystal extractor registry if toolchain is available.
     Sets extractor_registry and crystal_available fields. *)
 let init_crystal (cfg : t) : t =
@@ -343,7 +331,15 @@ let init_crystal (cfg : t) : t =
   end else
     { cfg with extractor_registry = None; crystal_available = false }
 
-(** Load config: CLI args → TOML overlay → Crystal detection → final config. *)
+(** Initialize Elixir support if toolchain is available.
+    Auto-enables elixir_enabled when mix is found on PATH. *)
+let init_elixir (cfg : t) : t =
+  if detect_elixir () then
+    { cfg with elixir_enabled = true }
+  else
+    cfg
+
+(** Load config: CLI args → TOML overlay → Toolchain detection → final config. *)
 let load (cli : t) : t =
   let toml_path = match cli.config_path with
     | Some p -> Some p
@@ -353,4 +349,4 @@ let load (cli : t) : t =
     | None -> cli
     | Some path -> load_toml path cli
   in
-  init_crystal with_toml
+  init_crystal (init_elixir with_toml)

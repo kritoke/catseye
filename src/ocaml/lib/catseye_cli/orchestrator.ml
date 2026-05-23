@@ -620,12 +620,69 @@ let run (config : t) : int =
            | _ -> [])
       with exn -> Printf.eprintf "AI lint error: %s\n" (Printexc.to_string exn); [])
     ) sources in
-    (* Apply --suppress to AI findings *)
+    (* Apply --suppress and ai_suppress (per-rule file globs) to AI findings *)
     let suppressed = config.suppress in
-    let ai_lint_findings = if suppressed = [] then ai_lint_findings
-      else List.filter (fun (f : Catseye_types.Finding.t) ->
-        not (List.mem f.rule suppressed)
-      ) ai_lint_findings in
+    let ai_suppress = config.ai_suppress in
+    let ai_lint_findings = List.filter (fun (f : Catseye_types.Finding.t) ->
+      (* Skip if rule is globally suppressed *)
+      if List.mem f.rule suppressed then false
+      (* Check per-rule file glob suppressions *)
+      else if Hashtbl.mem ai_suppress f.rule then
+        let patterns = Hashtbl.find ai_suppress f.rule in
+        not (List.exists (fun pat ->
+          (* Glob matching: ** matches anything including /, * matches within a segment *)
+          let star = '*' and quest = '?' and slash = '/' in
+          let rec glob_match p_idx s_idx =
+            let plen = String.length pat in
+            let flen = String.length f.file in
+            if p_idx >= plen then s_idx >= flen
+            else if s_idx >= flen then (
+              (* At end of file - only * can match empty *)
+              if pat.[p_idx] = star then
+                if p_idx + 1 < plen && pat.[p_idx + 1] = star then
+                  glob_match (p_idx + 2) s_idx  (* ** matches empty *)
+                else glob_match (p_idx + 1) s_idx  (* * matches empty *)
+              else false
+            ) else match pat.[p_idx], f.file.[s_idx] with
+              | c, _ when c = star ->
+                  if p_idx + 1 < plen && pat.[p_idx + 1] = star then
+                    (* Double star ** *)
+                    if p_idx + 2 < plen && pat.[p_idx + 2] = slash then
+                      (* **/ - match zero or more directories *)
+                      if p_idx + 3 < plen then
+                        if glob_match (p_idx + 3) s_idx then true
+                        else if s_idx < flen then
+                          let rec skip_to_next_slash idx =
+                            if idx >= flen then flen
+                            else if f.file.[idx] = slash then idx + 1
+                            else skip_to_next_slash (idx + 1)
+                          in
+                          let after_slash = skip_to_next_slash s_idx in
+                          if after_slash > s_idx then glob_match p_idx after_slash
+                          else false
+                        else false
+                      else s_idx >= flen
+                    else if glob_match (p_idx + 2) s_idx then true
+                    else if s_idx < flen then glob_match p_idx (s_idx + 1)
+                    else false
+                  else
+                    (* Single star * - match within a segment *)
+                    let rec try_match consumed =
+                      let new_s = s_idx + consumed in
+                      if new_s > flen then false
+                      else if consumed > 0 && f.file.[new_s - 1] = slash then false
+                      else if glob_match (p_idx + 1) new_s then true
+                      else try_match (consumed + 1)
+                    in
+                    try_match 0
+              | c, _ when c = quest -> glob_match (p_idx + 1) (s_idx + 1)
+              | c1, c2 when c1 = c2 -> glob_match (p_idx + 1) (s_idx + 1)
+              | _ -> false
+          in
+          glob_match 0 0
+        ) patterns)
+      else true
+    ) ai_lint_findings in
     if config.format = Terminal && ai_lint_findings <> [] then begin
       List.iter (fun (f : Catseye_types.Finding.t) ->
         Printf.printf "  [ai:%s] %s:%d - %s\n" f.rule f.file f.line f.message
@@ -664,8 +721,40 @@ let run (config : t) : int =
     let all_claws = claws_findings @ extra_flat in
     if config.format = Terminal && all_claws <> [] then
         Printf.printf "\n  → Code smell analysis:\n\n";
-    reachability @ all_claws @ ai_findings
+    let base_findings = reachability @ all_claws @ ai_findings in
+    base_findings
   end else reachability @ ai_findings in
+
+  (* Step 4e: Elixir tools + AST extraction (Sobelow, Credo, Reach, sink detection, Claws) *)
+  let all_findings =
+    if config.elixir_enabled then begin
+      let elixir_findings =
+        if Elixir_tools.is_mix_project config.target_dir then begin
+          let elixir_config = { Elixir_tools.enabled = true;
+                               run_sobelow = List.mem "sobelow" config.elixir_tools;
+                               run_credo = List.mem "credo" config.elixir_tools;
+                               run_reach = List.mem "reach" config.elixir_tools;
+                               threshold = `Low } in
+          if config.format = Terminal then Printf.printf "\n  → Elixir tools scan:\n\n";
+          let findings = Elixir_tools.run_all_tools ~config:elixir_config ~project_dir:config.target_dir () in
+          if config.format = Terminal then begin
+            if findings <> [] then Printf.printf "  Found %d Elixir tool findings\n\n" (List.length findings)
+            else Printf.printf "  No Elixir tool findings\n\n"
+          end;
+          findings
+        end else []
+      in
+      (* Step 4f: Elixir AST extraction + Claws (sink/source detection + code smells) *)
+      let (sink_findings, json_data) = Elixir_extractor.extract_with_data config.target_dir in
+      let claws_findings = Elixir_claws.analyze json_data in
+      let extractor_findings = sink_findings @ claws_findings in
+      if config.format = Terminal && extractor_findings <> [] then begin
+        Printf.printf "\n  → Elixir AST analysis:\n\n";
+        List.iter (print_finding config) extractor_findings;
+        Printf.printf "\n  Found %d Elixir findings\n\n" (List.length extractor_findings)
+      end;
+      all_findings @ elixir_findings @ extractor_findings
+    end else all_findings in
 
   (* Apply --suppress from CLI and [taint.suppress] from .catseye.toml *)
   let all_findings =

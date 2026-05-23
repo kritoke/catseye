@@ -343,13 +343,41 @@ let check_complex_match (scopes : Ast_scope.ast_scope list)
 
 (* ── DeadCode ───────────────────────────────────────────────────────── *)
 
-(** Check if an expression is an unconditional terminator (return/raise). *)
+(** Check if an expression is an unconditional terminator (return/raise).
+    Crystal AST maps:
+    - `return` to EApp(EVar "return", ...) in crystal_hierarchical_mapper
+    - `raise` to EError in crystal_hierarchical_mapper
+*)
 let is_terminator (e : expr) : bool =
   match e.expr_value with
+  | EError _ -> true  (* Crystal's raise maps to EError *)
   | EApp (fn, _) ->
     (match fn.expr_value with
      | EVar name -> name = "return" || name = "raise"
      | _ -> false)
+  | _ -> false
+
+(** Check if a branch ends with a terminator (return/raise).
+    This detects if/else patterns where both branches return, which is NOT dead code. *)
+let both_branches_return (e : expr) : bool =
+  let get_last_expr = function
+    | EBlock es ->
+      (match List.rev es with [] -> None | h :: _ -> Some h.expr_value)
+    | v -> Some v
+  in
+  match e.expr_value with
+  | EIf (_, then_e, else_e) ->
+    let then_returns = match get_last_expr then_e.expr_value with
+      | Some v -> is_terminator { expr_value = v; expr_location = then_e.expr_location }
+      | None -> false
+    in
+    let else_returns = match else_e with
+      | Some e -> (match get_last_expr e.expr_value with
+        | Some v -> is_terminator { expr_value = v; expr_location = e.expr_location }
+        | None -> false)
+      | None -> true  (* implicit else returns, no fall-through *)
+    in
+    then_returns && else_returns
   | _ -> false
 
 (** Walk a block (expression list) looking for dead code after terminators.
@@ -359,17 +387,24 @@ let rec scan_block_dead = function
   | [_] -> None  (* last node — terminator at end is fine *)
   | stmt :: rest ->
     if is_terminator stmt then
-      (* Find next meaningful statement *)
+      (* Find next meaningful statement AFTER the terminator's line *)
       let find_dead = function
         | [] -> None
         | dead_stmt :: _ ->
-          if is_terminator dead_stmt then None  (* another terminator *)
+          (* Skip nodes on the same line as the terminator (Crystal can emit
+             terminator + call on same line, both are part of the same statement) *)
+          if dead_stmt.expr_location.start.line <= stmt.expr_location.start.line then None
+          else if is_terminator dead_stmt then None  (* another terminator *)
           else
             Some (dead_stmt.expr_location.start.line,
                   dead_stmt.expr_location.start.line,
                   stmt.expr_location.start.line)
       in
       find_dead rest
+    else if both_branches_return stmt then
+      (* If/else where BOTH branches end with return/raise:
+         This is NOT dead code - both branches are mutually exclusive returns. *)
+      None
     else
       (* Recurse into nested structures *)
       let nested = match stmt.expr_value with

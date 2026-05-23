@@ -71,6 +71,10 @@ let parse_args () : t =
       go { acc with cfg_max_blocks = int_of_string n } rest
     | "--cfg-timeout-ms" :: ms :: rest ->
       go { acc with cfg_timeout_ms = int_of_string ms } rest
+    | ("--elixir" | "-ex") :: rest ->
+      go { acc with elixir_enabled = true } rest
+    | "--no-elixir" :: rest ->
+      go { acc with elixir_enabled = false } rest
     | ("--parallelism" | "-p") :: n :: rest ->
       go { acc with parallelism = int_of_string n } rest
     | ("--version" | "-v") :: _ ->
@@ -101,6 +105,7 @@ let parse_args () : t =
       Printf.printf "  --analysis-timeout <ms>  Timeout for analysis phase (0=disabled)\n";
       Printf.printf "  --cfg-max-blocks <n>    Max blocks per function CFG (default: 500)\n";
       Printf.printf "  --cfg-timeout-ms <ms>   Timeout per function CFG build (default: 5000)\n";
+      Printf.printf "  --elixir              Enable Elixir tool integration (Sobelow, Credo, Reach)\n";
       Printf.printf "  --parallelism <n>    Parallel workers (0 = auto)\n";
       Printf.printf "  -v, --version        Show version\n";
       Printf.printf "  -h, --help           Show this help\n";
