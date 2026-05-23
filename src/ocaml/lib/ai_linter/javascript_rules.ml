@@ -622,7 +622,95 @@ let check_error_leakage (items : item list) (path : string) : T.finding list =
   in
   walk items
 
-(* ── Main analyzer ─────────────────────────────────────────────────── *)
+(* ── 11. Unbounded file operations (Node.js) ──────────────────────── *)
+
+(** Detect unbounded read operations that could cause OOM with large files.
+    Functions like fs.readFileSync/readFile load entire file into memory. *)
+let unbounded_read_patterns = [
+  "fs.readFileSync"; "fs.readFile";
+  "readFileSync"; "readFile";
+  "fs.promises.readFile";
+  "fs.promises.readFileSync";
+]
+
+let is_unbounded_read name =
+  List.exists (fun p ->
+    String.length name >= String.length p &&
+    String.sub name (String.length name - String.length p) (String.length p) = p
+  ) unbounded_read_patterns
+
+let check_unbounded_read (all_apps : (string * int) list) (path : string) : T.finding list =
+  List.filter_map (fun (name, line) ->
+    if is_unbounded_read name then
+      Some { T.file = path; line; rule_id = "unbounded-file-read";
+        severity = T.Warning;
+        message = Printf.sprintf "Unbounded read: %s — loads entire file into memory, OOM risk for large files"
+          (if String.length name > 30 then String.sub name 0 30 ^ "..." else name);
+        suggestion = Some "Use streaming (fs.createReadStream) or read with size limits" }
+    else None
+  ) all_apps
+
+(* ── 12. TOCTOU pattern ──────────────────────────────────────────── *)
+
+(** Detect check-then-act patterns that could be race conditions (TOCTOU).
+    Common patterns: fs.exists + fs.readFile, existsSync + open, etc. *)
+let check_pattern = [
+  ("exists", "readFile"); ("existsSync", "readFileSync");
+  ("exists", "open"); ("existsSync", "openSync");
+  ("exists", "writeFile"); ("existsSync", "writeFileSync");
+]
+
+let find_check_then_act (e : expr) : (int * string * string) list =
+  let results = ref [] in
+  let rec aux (e : expr) =
+    match e.expr_value with
+    | EIf (cond, then_, else_) ->
+      (match cond.expr_value with
+       | EApp (fn, _) ->
+         let fn_name = expr_name fn in
+         (match List.assoc_opt fn_name check_pattern with
+          | Some action ->
+            let check_line = cond.expr_location.start.line in
+            let rec find_action_exprs (ex : expr) =
+              match ex.expr_value with
+              | EApp (fn2, _) ->
+                let fn2_name = expr_name fn2 in
+                if fn2_name = action then
+                  results := (check_line, fn_name, fn2_name) :: !results
+                else find_action_exprs fn2
+              | EBlock es -> List.iter find_action_exprs es
+              | _ -> ()
+            in
+            (match then_.expr_value with EBlock es -> List.iter find_action_exprs es | _ -> find_action_exprs then_)
+          | None -> ())
+       | _ -> ());
+       aux cond; aux then_; (match else_ with Some e2 -> aux e2 | None -> ())
+    | EBlock es -> List.iter aux es
+    | ELet (_, e1, e2) -> aux e1; aux e2
+    | EFn (_, body) -> aux body
+    | _ -> ()
+  in
+  aux e;
+  !results
+
+let check_toctou (items : item list) (path : string) : T.finding list =
+  let rec walk (items : item list) : T.finding list =
+    List.concat_map (fun (item : item) ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+        List.map (fun (check_line, check_fn, action_fn) ->
+          { T.file = path; line = check_line; rule_id = "toctou-pattern";
+            severity = T.Warning;
+            message = Printf.sprintf "TOCTOU: %s check followed by %s action — race condition possible"
+              check_fn action_fn;
+            suggestion = Some "Perform operation atomically or use try/catch around the action" }
+        ) (find_check_then_act body)
+      | IModule (_, subs) -> walk subs
+      | _ -> []
+    ) items
+  in
+  walk items
+
 
 let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
   let all_apps = walk_items_for_apps mod_.mod_items in
@@ -657,7 +745,9 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
     @ check_promise_chains mod_.mod_items path
   in
 
-  hallucination_findings @ security @ best_practice @ quality
+  let file_ops = check_unbounded_read all_apps path @ check_toctou mod_.mod_items path in
+
+  hallucination_findings @ security @ best_practice @ quality @ file_ops
   @ check_callback_hell mod_.mod_items path
   @ check_assignment_in_condition mod_.mod_items path
   @ check_nested_ternary mod_.mod_items path

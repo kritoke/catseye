@@ -304,14 +304,19 @@ let detect_nil_chaser (m : t) =
     AI often writes `HTTP::Client.get(url)` without capturing the response. *)
 let detect_ignored_return (m : t) =
   let important_returns = [
+    (* HTTP/DB - errors should be handled *)
     "HTTP::Client.get"; "HTTP::Client.post"; "HTTP::Client.put";
     "HTTP::Client.delete"; "HTTP::Client.patch";
     "HTTP.get"; "HTTP.post"; "HTTP.put";
     "JSON.parse"; "JSON.parse_io";
     "DB.query"; "DB.query_one"; "DB.query_one?";
     "DB.exec";
+    (* File I/O - errors should be handled *)
     "File.read"; "File.write";
     "File.read?"; "File.write?";
+    (* Permission operations - failures should not be silent *)
+    "chmod"; "chown"; "chgrp";
+    "File.chmod"; "File.chown"; "File.chgrp";
   ] in
   let is_important (name : string) =
     List.exists (fun prefix ->
@@ -1020,6 +1025,58 @@ let detect_dead_code_after_error (m : t) =
   !findings
 
 (* ── Category 14: Async & DRY ───────────────────────────────────────── *)
+
+(** Rule: Non-Atomic File Operation
+    Detects patterns like File.write followed by chmod on the same path.
+    This is a non-atomic operation that creates a race window.
+    Suggest using File.atomic_write or setting permissions during creation. *)
+let detect_non_atomic_file_op (m : t) =
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_name, _, _, body) ->
+        let calls = collect_app_names body in
+        (* Find chmod/chown/chgrp calls *)
+        let perm_calls = List.filter (fun (call_name, _) ->
+          List.mem call_name ["chmod"; "chown"; "chgrp"; "File.chmod"; "File.chown"; "File.chgrp"]
+        ) calls in
+        (* For each permission call, check if it's on a path that was recently written *)
+        List.iter (fun (perm_call, perm_line) ->
+          (* Simple heuristic: flag chmod/chown/chgrp as potential non-atomic pattern *)
+          (* A more sophisticated version would track variable assignments *)
+          findings := (Printf.sprintf
+            "Non-atomic file operation: %s should be combined with file creation or use File.atomic_write with proper permissions"
+            perm_call, perm_line) :: !findings
+        ) perm_calls
+    | _ -> ()
+  ) m.mod_items;
+  !findings
+
+(** Rule: Unbounded File Read
+    Detects unbounded file reads that could cause OOM with large files.
+    File.read reads entire file into memory. *)
+let detect_unbounded_file_read (m : t) =
+  let unbounded_reads = [
+    "File.read"; "File.read?";
+    "IO.copy";
+  ] in
+  let findings = ref [] in
+  List.iter (fun item ->
+    match item.item_value with
+    | IFunction (_name, _, _, body) ->
+        let calls = collect_app_names body in
+        List.iter (fun (call_name, line) ->
+          if List.exists (fun p ->
+            String.length call_name >= String.length p &&
+            String.sub call_name 0 (String.length p) = p
+          ) unbounded_reads then
+            findings := (Printf.sprintf
+              "Unbounded file read: %s loads entire file into memory - OOM risk for large files"
+              call_name, line) :: !findings
+        ) calls
+    | _ -> ()
+  ) m.mod_items;
+  !findings
 
 (** Rule: Callback Hell
     Detects 3+ levels of nested EFn (anonymous functions / blocks).
@@ -1732,6 +1789,10 @@ let all () = [
 
   (* Dead Code *)
   ("dead-code-after-error", T.Warning, detect_dead_code_after_error);
+
+  (* File Operations *)
+  ("non-atomic-file-op", T.Hint, detect_non_atomic_file_op);
+  ("unbounded-file-read", T.Warning, detect_unbounded_file_read);
 
   (* Async & DRY *)
   ("callback-hell", T.Warning, detect_callback_hell);
