@@ -625,12 +625,11 @@ let check_error_leakage (items : item list) (path : string) : T.finding list =
 (* ── 11. Unbounded file operations (Node.js) ──────────────────────── *)
 
 (** Detect unbounded read operations that could cause OOM with large files.
-    Functions like fs.readFileSync/readFile load entire file into memory. *)
+    Functions like fs.readFileSync/readFile load entire file into memory.
+    NOTE: fs.promises.readFile is async and won't cause OOM for large files. *)
 let unbounded_read_patterns = [
   "fs.readFileSync"; "fs.readFile";
   "readFileSync"; "readFile";
-  "fs.promises.readFile";
-  "fs.promises.readFileSync";
 ]
 
 let is_unbounded_read name =
@@ -653,11 +652,25 @@ let check_unbounded_read (all_apps : (string * int) list) (path : string) : T.fi
 (* ── 12. TOCTOU pattern ──────────────────────────────────────────── *)
 
 (** Detect check-then-act patterns that could be race conditions (TOCTOU).
-    Common patterns: fs.exists + fs.readFile, existsSync + open, etc. *)
+    Common patterns: fs.exists + fs.readFile, fs.access + fs.readFile, etc.
+    NOTE: fs.exists() is deprecated - prefer fs.access() with error handling. *)
 let check_pattern = [
+  (* Deprecated but still common *)
   ("exists", "readFile"); ("existsSync", "readFileSync");
   ("exists", "open"); ("existsSync", "openSync");
   ("exists", "writeFile"); ("existsSync", "writeFileSync");
+  (* Modern fs.access patterns *)
+  ("access", "readFile"); ("accessSync", "readFileSync");
+  ("access", "open"); ("accessSync", "openSync");
+  ("access", "writeFile"); ("accessSync", "writeFileSync");
+  (* fs.stat/lstat check patterns *)
+  ("stat", "readFile"); ("statSync", "readFileSync");
+  ("stat", "open"); ("statSync", "openSync");
+  ("lstat", "readFile"); ("lstatSync", "readFileSync");
+  (* Qualified names *)
+  ("fs.exists", "fs.readFile"); ("fs.existsSync", "fs.readFileSync");
+  ("fs.access", "fs.readFile"); ("fs.accessSync", "fs.readFileSync");
+  ("fs.stat", "fs.readFile"); ("fs.statSync", "fs.readFileSync");
 ]
 
 let find_check_then_act (e : expr) : (int * string * string) list =

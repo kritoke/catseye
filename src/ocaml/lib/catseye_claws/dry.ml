@@ -89,6 +89,14 @@ let normalize_node (n : Security_node.t) : string =
     "Control|_|0"
   | Security_node.Terminator ->
     "Terminator|_|0"
+  | Security_node.IgnoredReturn ->
+    Printf.sprintf "IgnoredReturn|%s|%d" n.Security_node.name arg_count
+  | Security_node.NonAtomicFileOp ->
+    Printf.sprintf "NonAtomicFileOp|%s|%d" n.Security_node.name arg_count
+  | Security_node.UnboundedRead ->
+    Printf.sprintf "UnboundedRead|%s|%d" n.Security_node.name arg_count
+  | Security_node.TOCTOU ->
+    Printf.sprintf "TOCTOU|%s|%d" n.Security_node.name arg_count
 
 (** Normalize a window of nodes to a canonical string. *)
 let normalize_window (nodes : Security_node.t list) : string =

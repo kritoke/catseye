@@ -274,14 +274,34 @@ let rec item_of_json json : item =
     | "import" -> parse_import json loc
     | "struct" -> ITypeDef (get_str json "name", [], [])
     | "Expressions" ->
-      (* Top-level expressions: extract children as items *)
+      (* Top-level expressions: parse children, marking top-level as functions *)
       let children = get_list json "children" in
-      (match children with
-       | [e] -> IUnknown ("single:" ^ get_str e "type")
-       | _ -> IUnknown "multi")
+      parse_top_level_exprs children
     | _ -> IUnknown (get_type json)
   in
   { item_value = value; item_location = loc }
+
+and parse_top_level_exprs (exprs : Yojson.Safe.t list) : item_value =
+  (* Group expressions into a synthetic module with synthetic functions *)
+  (* Each non-def/class/module item becomes part of a synthetic "<toplevel>" function *)
+  let rec group_exprs (exprs : Yojson.Safe.t list) (current_body : Yojson.Safe.t list) (acc : item list) : item list =
+    match exprs with
+    | [] ->
+      (* Don't create empty functions, just return accumulated items *)
+      if current_body = [] then List.rev acc
+      else List.rev acc  (* Drop empty top-level body *)
+    | expr :: rest ->
+      let typ = get_type expr in
+      if typ = "def" || typ = "class" || typ = "module" then
+        (* Start new item group *)
+        let new_acc = if current_body = [] then acc else item_of_json expr :: acc in
+        group_exprs rest [] (item_of_json expr :: new_acc)
+      else
+        (* Continue current group *)
+        group_exprs rest (expr :: current_body) acc
+  in
+  let items = group_exprs exprs [] [] in
+  IModule ("TopLevel", items)
 
 and parse_def json loc =
   let name = get_str json "name" in
@@ -299,17 +319,57 @@ and parse_class json _loc =
   let items = match get_opt_obj json "body" with
     | Some body ->
       let children = get_list body "children" in
-      List.map item_of_json children
+      parse_class_body children
     | None -> []
   in
   IClass (name, items)
+
+and parse_class_body (exprs : Yojson.Safe.t list) : item list =
+  (* Simple approach: recursively process each expression *)
+  (* If it's a def/class/module, parse it. Otherwise, create a synthetic method to hold it *)
+  let zero_loc = { start = { line = 0; column = 0; byte_offset = 0 }; end_ = { line = 0; column = 0; byte_offset = 0 } } in
+  let rec process_exprs (exprs : Yojson.Safe.t list) (current_body : Yojson.Safe.t list) (acc : item list) : item list =
+    match exprs with
+    | [] ->
+      (* Finalize any pending body *)
+      if current_body = [] then List.rev acc
+      else 
+        let body_expr = { expr_value = EBlock (List.map expr_of_json (List.rev current_body)); expr_location = zero_loc } in
+        let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
+        List.rev ({ item_value = synth_fn; item_location = zero_loc } :: acc)
+    | expr :: rest ->
+      let typ = get_type expr in
+      if typ = "def" || typ = "class" || typ = "module" then
+        (* First finalize any pending body *)
+        let new_acc = if current_body = [] then acc else
+          let body_expr = { expr_value = EBlock (List.map expr_of_json (List.rev current_body)); expr_location = zero_loc } in
+          let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
+          { item_value = synth_fn; item_location = zero_loc } :: acc
+        in
+        (* Then add this item *)
+        process_exprs rest [] (item_of_json expr :: new_acc)
+      else
+        (* Continue accumulating body *)
+        process_exprs rest (expr :: current_body) acc
+  in
+  process_exprs exprs [] []
 
 and parse_module json _loc =
   let name = get_str json "name" in
   let items = match get_opt_obj json "body" with
     | Some body ->
-      let children = get_list body "children" in
-      List.map item_of_json children
+      (* The body can be a single def/class/module or an Expressions node *)
+      let body_type = get_type body in
+      if body_type = "Expressions" then
+        (* Flat list of expressions *)
+        let children = get_list body "children" in
+        parse_class_body children
+      else if body_type = "def" || body_type = "class" || body_type = "module" then
+        (* Single item - parse it directly *)
+        [item_of_json body]
+      else
+        (* Expression that isn't a def - group it in a synthetic method *)
+        parse_class_body [body]
     | None -> []
   in
   IModule (name, items)
@@ -341,15 +401,18 @@ let parse_items (json : Yojson.Safe.t) : item list =
   | _ -> []
 
 let parse_file ~(extractor_cmd : string) ~(path : string) : (t, parse_error) result =
-  let cmd = Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
+  let cmd = Printf.sprintf "%s '%s'" extractor_cmd path in
+  Printf.eprintf "DEBUG: Running: %s\n" cmd;
   let ic = Unix.open_process_in cmd in
   let json_str = Buffer.create 8192 in
   (try while true do Buffer.add_channel json_str ic 4096 done
    with End_of_file -> ());
   let status = Unix.close_process_in ic in
+  let output = Buffer.contents json_str in
+  Printf.eprintf "DEBUG: Output length=%d, starts with: %s\n" (String.length output) (String.sub output 0 (min 200 (String.length output)));
   match status with
   | Unix.WEXITED 0 ->
-    let json = Yojson.Safe.from_string (Buffer.contents json_str) in
+    let json = Yojson.Safe.from_string output in
     let items = parse_items json in
     Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
   | _ ->

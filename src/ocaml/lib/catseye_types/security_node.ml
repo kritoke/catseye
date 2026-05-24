@@ -13,6 +13,11 @@ type node_type =
   | Enum
   | Control
   | Terminator
+  (* Security-specific node types *)
+  | IgnoredReturn
+  | NonAtomicFileOp
+  | UnboundedRead
+  | TOCTOU
 
 type arg_type =
   | ArgVar
@@ -62,6 +67,10 @@ let node_type_of_string = function
   | "enum" -> Enum
   | "control" -> Control
   | "terminator" -> Terminator
+  | "ignored_return" -> IgnoredReturn
+  | "non_atomic_file_op" -> NonAtomicFileOp
+  | "unbounded_read" -> UnboundedRead
+  | "toctou" -> TOCTOU
   | _ -> Call
 
 let string_of_node_type = function
@@ -77,6 +86,10 @@ let string_of_node_type = function
   | Enum -> "enum"
   | Control -> "control"
   | Terminator -> "terminator"
+  | IgnoredReturn -> "ignored_return"
+  | NonAtomicFileOp -> "non_atomic_file_op"
+  | UnboundedRead -> "unbounded_read"
+  | TOCTOU -> "toctou"
 
 (* JSON decoding *)
 let decode_arg (json : Yojson.Safe.t) : arg =
@@ -112,6 +125,11 @@ let decode (json : Yojson.Safe.t) : t =
   let int_val = Yojson.Safe.Util.to_int in
   let bool_val = Yojson.Safe.Util.to_bool in
   let to_list = Yojson.Safe.Util.to_list in
+  let get_opt key dict default = 
+    match List.assoc_opt key dict with
+    | Some v -> get v
+    | None -> default
+  in
   match json with
   | `Assoc dict ->
     let args_json = List.assoc "args" dict in
@@ -119,7 +137,9 @@ let decode (json : Yojson.Safe.t) : t =
       | Some m -> decode_metadata m
       | None -> []
     in
-    { node_type = node_type_of_string (get (List.assoc "type" dict))
+    (* Support both "node_type" (from Crystal extractor) and "type" (from other sources) *)
+    let node_type_str = get_opt "node_type" dict (get_opt "type" dict "call") in
+    { node_type = node_type_of_string node_type_str
     ; name = get (List.assoc "name" dict)
     ; args = List.map decode_arg (to_list args_json)
     ; line = int_val (List.assoc "line" dict)

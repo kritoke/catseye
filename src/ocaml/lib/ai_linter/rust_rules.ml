@@ -16,12 +16,12 @@ open Types
 
 let is_test_or_bench (file : string) : bool =
   let lower = String.lowercase_ascii file in
+  (* Check for common test/benchmark patterns: suffix and path markers *)
   List.exists (fun pat ->
     let plen = String.length pat in
-    if String.length lower >= plen then
-      let suffix = String.sub lower (String.length lower - plen) plen in
-      pat = suffix || (pat = "test_" && String.length lower >= 5 && String.sub lower 0 5 = "test_")
-    else false
+    String.length lower >= plen &&
+    let suffix = String.sub lower (String.length lower - plen) plen in
+    pat = suffix || (String.length lower >= 5 && String.sub lower 0 5 = "test_")
   ) ["_test.rs"; "_bench.rs"; "_tests.rs"; "/test/"; "/bench/"; "/tests/"]
 
 (* ── Hallucinated Functions Detection ─────────────────────────────── *)
@@ -107,14 +107,35 @@ let detect_long_method (m : t) : finding list =
 
 (* ── Rule: Magic String / Hardcoded Values ────────────────────────── *)
 
+let is_hex_char c =
+  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
+let is_alphanum c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+
+let is_likely_safe_string (s : string) : bool =
+  let len = String.length s in
+  (* UUIDs: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx *)
+  (len = 36 && String.contains s '-' &&
+   String.for_all (fun c -> is_alphanum c || c = '-') s) ||
+  (* Base64: only alnum, +, /, = *)
+  (len >= 20 && String.for_all (fun c ->
+     is_alphanum c || c = '+' || c = '/' || c = '=' || c = '\n') s) ||
+  (* Hex strings: all hex digits *)
+  (len >= 16 && String.for_all is_hex_char s) ||
+  (* File paths *)
+  (len > 20 && (String.contains s '/' || String.contains s '\\')) ||
+  (* Email-like *)
+  String.contains s '@'
+
 let detect_magic_strings (m : t) : finding list =
   if is_test_or_bench m.mod_path then []
   else
     let findings = ref [] in
     let rec check (e : expr) =
       match e.expr_value with
-      | ELiteral (LString s) when String.length s > 20 && not (String.contains s ' ') ->
-          (* Likely a magic string - long no-space strings are suspicious *)
+      | ELiteral (LString s) when String.length s > 40 && not (is_likely_safe_string s) && not (String.contains s ' ') ->
+          (* Likely a magic string - long no-space strings that aren't in safe patterns *)
           findings := { rule_id = "MagicString"; severity = Hint;
             file = m.mod_path; line = e.expr_location.start.line;
             message = "Hardcoded string literal should be a named constant";
@@ -178,6 +199,17 @@ let detect_unbounded_read (m : t) : finding list =
 
 (* ── Rule: Hardcoded URLs ──────────────────────────────────────────── *)
 
+let has_url_scheme (s : string) : bool =
+  let len = String.length s in
+  (* Require :// scheme separator to avoid false positives *)
+  (len >= 7 && String.sub s 0 7 = "http://") ||
+  (len >= 8 && String.sub s 0 8 = "https://") ||
+  (len >= 6 && String.sub s 0 6 = "ftp://") ||
+  (len >= 7 && String.sub s 0 7 = "sftp://")
+
+let is_localhost (s : string) : bool =
+  s = "localhost" || s = "127.0.0.1" || s = "0.0.0.0"
+
 let detect_hardcoded_urls (m : t) : finding list =
   if is_test_or_bench m.mod_path then []
   else
@@ -185,7 +217,7 @@ let detect_hardcoded_urls (m : t) : finding list =
     let rec check (e : expr) =
       match e.expr_value with
       | ELiteral (LString s) ->
-        if String.length s > 10 && (String.sub s 0 4 = "http" || String.sub s (String.length s - 4) 4 = ".com") then
+        if has_url_scheme s || is_localhost s then
           findings := { rule_id = "HardcodedUrl"; severity = Warning;
             file = m.mod_path; line = e.expr_location.start.line;
             message = "Hardcoded URL should be configurable via environment or config file";

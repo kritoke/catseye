@@ -202,9 +202,11 @@ let check_non_atomic_file_ops (json_data : Yojson.Safe.t list) : Finding.t list 
 (* ── UnboundedFileRead ──────────────────────────────────────────────── *)
 
 (** Detect unbounded file reads that could cause memory issues with large files.
-    Functions like File.read!/1 read entire file into memory. *)
+    Functions like File.read!/1 read entire file into memory.
+    NOTE: File.stream/1 and File.stream!/1 are LAZY streams - they are the
+    RECOMMENDED approach for large files and should NOT be flagged. *)
 let check_unbounded_file_read (json_data : Yojson.Safe.t list) : Finding.t list =
-  let unbounded_reads = ["File.read!"; "File.read"; "File.stream!"; "File.stream"] in
+  let unbounded_reads = ["File.read!"; "File.read"] in
   let is_unbounded_read name = List.exists (fun p ->
     String.length name >= String.length p &&
     String.sub name 0 (String.length p) = p

@@ -66,6 +66,12 @@ let rec collect_app_names (e : expr) : (string * int) list =
   | ECase (scrut, branches) ->
       collect_app_names scrut @ List.concat (List.map (fun (_, e) -> collect_app_names e) branches)
   | EFieldAccess (recv, _) -> collect_app_names recv
+  | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body; _ } ->
+      (* Also traverse rescue clauses and ensure block *)
+      let rescue_calls = List.concat_map (fun rc -> collect_app_names rc.rescue_body) rescue_clauses in
+      let ensure_calls = match ensure_body with Some e -> collect_app_names e | None -> [] in
+      let else_calls = match else_body with Some e -> collect_app_names e | None -> [] in
+      collect_app_names try_body @ rescue_calls @ ensure_calls @ else_calls
   | _ -> []
 
 (* ── Hallucinated Method Database ──────────────────────────────────── *)
@@ -325,17 +331,23 @@ let detect_ignored_return (m : t) =
     ) important_returns
   in
   let findings = ref [] in
-  List.iter (fun item ->
-    match item.item_value with
-    | IFunction (_, _, _, body) ->
-        let calls = collect_app_names body in
-        List.iter (fun (name, line) ->
-          if is_important name then
-            findings := (Printf.sprintf
-              "Return value of %s is discarded — capture and check the result" name, line) :: !findings
-        ) calls
-    | _ -> ()
-  ) m.mod_items;
+  (* Recursively collect all functions from modules/classes *)
+  let rec check_items (items : item list) =
+    List.iter (fun item ->
+      match item.item_value with
+      | IFunction (_, _, _, body) ->
+          let calls = collect_app_names body in
+          List.iter (fun (name, line) ->
+            if is_important name then
+              findings := (Printf.sprintf
+                "Return value of %s is discarded — capture and check the result" name, line) :: !findings
+          ) calls
+      | IModule (_, items) | IClass (_, items) ->
+          check_items items
+      | _ -> ()
+    ) items
+  in
+  check_items m.mod_items;
   !findings
 
 let detect_unsafe_pointers (m : t) =
@@ -670,19 +682,30 @@ let detect_long_method (m : t) =
     | ECase (_, branches) ->
         1 + List.fold_left (fun acc (_, e) -> acc + count_nodes e) 0 branches
     | EApp (fn, args) -> 1 + count_nodes fn + List.fold_left (fun acc e -> acc + count_nodes e) 0 args
+    | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body; _ } ->
+        1 + count_nodes try_body +
+        List.fold_left (fun acc rc -> acc + count_nodes rc.rescue_body) 0 rescue_clauses +
+        (match ensure_body with Some e -> count_nodes e | None -> 0) +
+        (match else_body with Some e -> count_nodes e | None -> 0)
     | _ -> 1
   in
   let findings = ref [] in
-  List.iter (fun item ->
-    match item.item_value with
-    | IFunction (name, _, _, body) ->
-        let count = count_nodes body in
-        if count > max_nodes then
-          findings := (Printf.sprintf
-            "Function '%s' has %d AST nodes (max %d) — consider breaking into smaller functions"
-            name count max_nodes, item.item_location.start.line) :: !findings
-    | _ -> ()
-  ) m.mod_items;
+  (* Recursively collect all items from modules/classes *)
+  let rec collect_functions (items : item list) =
+    List.iter (fun item ->
+      match item.item_value with
+      | IFunction (name, _, _, body) ->
+          let count = count_nodes body in
+          if count > max_nodes then
+            findings := (Printf.sprintf
+              "Function '%s' has %d AST nodes (max %d) — consider breaking into smaller functions"
+              name count max_nodes, item.item_location.start.line) :: !findings
+      | IModule (_, items) | IClass (_, items) ->
+          collect_functions items
+      | _ -> ()
+    ) items
+  in
+  collect_functions m.mod_items;
   !findings
 
 (* ── Category 10: The Looper & Misc ─────────────────────────────────── *)
@@ -1032,24 +1055,30 @@ let detect_dead_code_after_error (m : t) =
     Suggest using File.atomic_write or setting permissions during creation. *)
 let detect_non_atomic_file_op (m : t) =
   let findings = ref [] in
-  List.iter (fun item ->
-    match item.item_value with
-    | IFunction (_name, _, _, body) ->
-        let calls = collect_app_names body in
-        (* Find chmod/chown/chgrp calls *)
-        let perm_calls = List.filter (fun (call_name, _) ->
-          List.mem call_name ["chmod"; "chown"; "chgrp"; "File.chmod"; "File.chown"; "File.chgrp"]
-        ) calls in
-        (* For each permission call, check if it's on a path that was recently written *)
-        List.iter (fun (perm_call, perm_line) ->
-          (* Simple heuristic: flag chmod/chown/chgrp as potential non-atomic pattern *)
-          (* A more sophisticated version would track variable assignments *)
-          findings := (Printf.sprintf
-            "Non-atomic file operation: %s should be combined with file creation or use File.atomic_write with proper permissions"
-            perm_call, perm_line) :: !findings
-        ) perm_calls
-    | _ -> ()
-  ) m.mod_items;
+  (* Recursively collect all functions from modules/classes *)
+  let rec check_items (items : item list) =
+    List.iter (fun item ->
+      match item.item_value with
+      | IFunction (_name, _, _, body) ->
+          let calls = collect_app_names body in
+          (* Find chmod/chown/chgrp calls *)
+          let perm_calls = List.filter (fun (call_name, _) ->
+            List.mem call_name ["chmod"; "chown"; "chgrp"; "File.chmod"; "File.chown"; "File.chgrp"]
+          ) calls in
+          (* For each permission call, check if it's on a path that was recently written *)
+          List.iter (fun (perm_call, perm_line) ->
+            (* Simple heuristic: flag chmod/chown/chgrp as potential non-atomic pattern *)
+            (* A more sophisticated version would track variable assignments *)
+            findings := (Printf.sprintf
+              "Non-atomic file operation: %s should be combined with file creation or use File.atomic_write with proper permissions"
+              perm_call, perm_line) :: !findings
+          ) perm_calls
+      | IModule (_, items) | IClass (_, items) ->
+          check_items items
+      | _ -> ()
+    ) items
+  in
+  check_items m.mod_items;
   !findings
 
 (** Rule: Unbounded File Read
@@ -1061,21 +1090,27 @@ let detect_unbounded_file_read (m : t) =
     "IO.copy";
   ] in
   let findings = ref [] in
-  List.iter (fun item ->
-    match item.item_value with
-    | IFunction (_name, _, _, body) ->
-        let calls = collect_app_names body in
-        List.iter (fun (call_name, line) ->
-          if List.exists (fun p ->
-            String.length call_name >= String.length p &&
-            String.sub call_name 0 (String.length p) = p
-          ) unbounded_reads then
-            findings := (Printf.sprintf
-              "Unbounded file read: %s loads entire file into memory - OOM risk for large files"
-              call_name, line) :: !findings
-        ) calls
-    | _ -> ()
-  ) m.mod_items;
+  (* Recursively collect all functions from modules/classes *)
+  let rec check_items (items : item list) =
+    List.iter (fun item ->
+      match item.item_value with
+      | IFunction (_name, _, _, body) ->
+          let calls = collect_app_names body in
+          List.iter (fun (call_name, line) ->
+            if List.exists (fun p ->
+              String.length call_name >= String.length p &&
+              String.sub call_name 0 (String.length p) = p
+            ) unbounded_reads then
+              findings := (Printf.sprintf
+                "Unbounded file read: %s loads entire file into memory - OOM risk for large files"
+                call_name, line) :: !findings
+          ) calls
+      | IModule (_, items) | IClass (_, items) ->
+          check_items items
+      | _ -> ()
+    ) items
+  in
+  check_items m.mod_items;
   !findings
 
 (** Rule: Callback Hell

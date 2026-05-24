@@ -1,1 +1,15 @@
-(executable (name test_gleam) (libraries unix catseye.engine catseye.types yojson))
+(executable
+ (name crystal_ts_test)
+ (libraries unix catseye.engine catseye.types yojson))
+
+(executable
+ (name test_gleam)
+ (libraries unix catseye.engine catseye.types yojson))
+
+(executable
+ (name debug_rules)
+ (libraries unix catseye.engine catseye.types yojson catseye.rules))
+
+(executable
+ (name test_weak)
+ (libraries unix catseye.engine catseye.types catseye.rules))
