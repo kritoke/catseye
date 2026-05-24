@@ -190,3 +190,71 @@ changes:
       - src/ocaml/lib/catseye_engine/interproc.ml (update: remove same-line heuristic)
       - src/ocaml/lib/catseye_ast/types.ml (add: import entry type)
       - src/ocaml/lib/catseye_claws/hierarchy/ (update: add symbol table)
+
+  security-rules-review-2025-05:
+    status: open
+    priority: P1
+    note: >
+      Code review fixes for security rules added in 0097cb2.
+      4 bugs (wrong findings), 6 design issues, 5 style cleanups.
+      Phase 1: fix false positives. Phase 2: dedup, expand coverage.
+      Phase 3: style normalization.
+    files:
+      - src/ocaml/lib/catseye_cli/elixir_claws.ml (fix: remove File.stream from unbounded reads)
+      - src/ocaml/lib/ai_linter/rust_rules.ml (fix: magic string heuristic, hardcoded URL, empty file field, rename UnsafeInLib, dedup permission rules)
+      - src/ocaml/lib/ai_linter/javascript_rules.ml (fix: remove fs.promises.readFileSync, expand TOCTOU patterns)
+      - src/ocaml/lib/ai_linter/crystal_rules.ml (fix: gate non-atomic file op on write+perm, convert to functional style)
+      - src/ocaml/lib/ai_linter/common.ml (new: shared AST walkers extracted from 3 modules)
+
+  jane-street-base-migration:
+    status: open
+    priority: P1
+    note: >
+      Migrate from OCaml stdlib to Jane Street Base/Core libraries.
+      5 phases: foundation+derivers, Hashtbl→Core.Map, String_utils extraction,
+      functional accumulators, config cleanup. Removes 271 Hashtbl, 611 ref patterns.
+      Compatible with OCaml 5.1+.
+    phases:
+      - id: 1
+        name: Foundation & Type Derivers
+        status: open
+        description: Add Base/Core deps, add sexp/yojson derivers, fix unsafe List.assoc in decode
+      - id: 2
+        name: Data Structures
+        status: open
+        depends_on: [1]
+        description: Replace Hashtbl with Core.String.Map, audit O(n²) in db.ml
+      - id: 3
+        name: String Utils
+        status: open
+        depends_on: [1]
+        description: Extract shared String_utils module, wire into all rules modules
+      - id: 4
+        name: Functional Accumulators
+        status: open
+        depends_on: [1]
+        description: Replace ref+List.iter accumulators with List.filter_map/concat_map
+      - id: 5
+        name: Config & Discovery
+        status: open
+        depends_on: [2, 3]
+        description: Use Base.String helpers, deduplicate exclusion lists
+    files:
+      - dune-project (update: add base, core dependencies)
+      - src/ocaml/lib/catseye_types/dune (add: base, core)
+      - src/ocaml/lib/catseye_types/finding.ml (add: sexp/yojson derivers, fix decode)
+      - src/ocaml/lib/catseye_rules/types.ml (add: sexp derivers)
+      - src/ocaml/lib/catseye_claws/types.ml (add: sexp derivers)
+      - src/ocaml/lib/catseye_engine/db.ml (fix: O(n²) list reconstruction)
+      - src/ocaml/lib/catseye_engine/string_utils.ml (new: shared string helpers)
+      - src/ocaml/lib/catseye_engine/propagate.ml (audit: call_at hashtbl)
+      - src/ocaml/lib/catseye_engine/reachability.ml (replace: Hashtbl → Map)
+      - src/ocaml/lib/catseye_cli/config.ml (replace: Hashtbl → String.Map, Base.String)
+      - src/ocaml/lib/catseye_cli/discovery.ml (use: String_utils, Base.String)
+      - src/ocaml/lib/catseye_ai_linter/crystal_rules.ml (use: String_utils, functional accumulators)
+      - src/ocaml/lib/catseye_ai_linter/rust_rules.ml (use: String_utils, functional accumulators)
+      - src/ocaml/lib/catseye_ai_linter/javascript_rules.ml (use: String_utils, functional accumulators)
+      - src/ocaml/lib/catseye_cli/elixir_claws.ml (use: functional accumulators)
+      - src/ocaml/lib/catseye_claws/extra_smells.ml (use: String_utils, remove ref accumulator)
+      - src/ocaml/lib/catseye_claws/extra_smells_ast.ml (use: String_utils)
+      - src/ocaml/lib/catseye_claws/class_graph.ml (replace: Hashtbl → Core.String.Map)
