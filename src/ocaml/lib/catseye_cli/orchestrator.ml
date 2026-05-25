@@ -439,7 +439,7 @@ let run (config : t) : int =
           List.iter (fun n -> all_nodes := n :: !all_nodes) ns
         | None -> ()
       ) uncached_crystal;
-    (* Phase 2b: Extract non-Crystal files (Gleam, etc.) *)
+    (* Phase 2b: Extract non-Crystal files using native Domain parallelism *)
     let extract_one src =
       match extract_with_log config src with
       | Some ns ->
@@ -448,8 +448,27 @@ let run (config : t) : int =
       | None -> None
     in
     if config.parallelism > 0 && List.length uncached_other > 1 then
-      (* Parallel extraction using Domains for non-Crystal files *)
-      let results = Catseye_engine.Parallel.extract_parallel extract_one uncached_other in
+      (* Native OCaml 5 Domain-based parallel extraction *)
+      let num_domains = Domain.recommended_domain_count () in
+      let scan_cfg : Catseye_engine.Parallel.scan_config = {
+        max_domains = num_domains;
+        chunk_size = 1;
+        timeout_ms = None;
+      } in
+      let (results, errors) = Catseye_engine.Parallel.parallel_workspace_scan
+        ~config:scan_cfg
+        (fun (src : source_file) -> extract_one src)
+        uncached_other
+      in
+      (* Log any domain-level errors gracefully *)
+      (match errors with
+       | [] -> ()
+       | errs ->
+         if config.format = Terminal then
+           Printf.eprintf "  [parallel] %d file(s) failed in domain workers:\n" (List.length errs);
+         List.iter (fun (path, err) ->
+           Printf.eprintf "    ✗ %s: %s\n" path err
+         ) errs);
       List.iter (fun ns -> all_nodes := List.rev_append ns !all_nodes) results
     else
       List.iter (fun src ->
