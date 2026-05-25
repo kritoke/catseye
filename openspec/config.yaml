@@ -210,35 +210,34 @@ changes:
     status: open
     priority: P1
     note: >
-      Migrate from OCaml stdlib to Jane Street Base/Core libraries.
-      5 phases: foundation+derivers, Hashtbl→Core.Map, String_utils extraction,
-      functional accumulators, config cleanup. Removes 271 Hashtbl, 611 ref patterns.
-      Compatible with OCaml 5.1+.
+      Dual-track migration: (1) Base/Stdio stdlib replacement + (2) Moonpool concurrent architecture.
+      Infrastructure provisioned via opam-nix (Tweag). Phase 1 infrastructure DONE (dune files, flake.nix).
+      Remaining: Base migration, functional style, Moonpool parallelization.
     phases:
       - id: 1
-        name: Foundation & Type Derivers
-        status: open
-        description: Add Base/Core deps, add sexp/yojson derivers, fix unsafe List.assoc in decode
+        name: Infrastructure Foundation
+        status: complete
+        completed: true
+        description: opam-nix flake.nix, dune-project, dune files — all updated with base/stdio/moonpool deps
       - id: 2
-        name: Data Structures
+        name: Base Standard Library Migration
         status: open
-        depends_on: [1]
-        description: Replace Hashtbl with Core.String.Map, audit O(n²) in db.ml
+        description: Fix unsafe List.assoc, add sexp derivers, create String_utils, replace Hashtbl → Core.Map
       - id: 3
-        name: String Utils
+        name: Functional Style — ref → filter_map
         status: open
-        depends_on: [1]
-        description: Extract shared String_utils module, wire into all rules modules
+        depends_on: [2]
+        description: Replace ref+List.iter accumulators with List.concat_map/filter_map across all rules
       - id: 4
-        name: Functional Accumulators
+        name: Moonpool Concurrent Architecture
         status: open
         depends_on: [1]
-        description: Replace ref+List.iter accumulators with List.filter_map/concat_map
+        description: Replace Domain in worker_pool, parallelize cfg_taint/class_graph/orchestrator
       - id: 5
-        name: Config & Discovery
+        name: Config & Final Cleanup
         status: open
         depends_on: [2, 3]
-        description: Use Base.String helpers, deduplicate exclusion lists
+        description: Base.String in config, deduplicate exclusion lists, remove Stdlib references
     files:
       - dune-project (update: add base, core dependencies)
       - src/ocaml/lib/catseye_types/dune (add: base, core)
