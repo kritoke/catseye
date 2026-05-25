@@ -938,19 +938,63 @@ let detect_nested_ternary (m : t) =
     AI often generates repetitive parameter lists instead of grouping into a record. *)
 let detect_data_clump (m : t) =
   let min_co_occurrence = 3 in
+  (* Collect all function parameter sets *)
   let param_sets = List.filter_map (fun item ->
     match item.item_value with
     | IFunction (_, params, _, _) ->
-      Some (List.filter_map (function PVar v -> Some v | _ -> None) params)
+        Some (List.filter_map (function PVar v -> Some v | _ -> None) params)
     | _ -> None
   ) m.mod_items in
+  (* Count how many functions each parameter appears in *)
+  let param_counts = Hashtbl.create 32 in
+  List.iter (fun params ->
+    List.iter (fun p ->
+      let current = try Hashtbl.find param_counts p with Not_found -> 0 in
+      Hashtbl.replace param_counts p (current + 1)
+    ) params
+  ) param_sets;
+  (* Find pairs that co-occur in 3+ functions *)
   let pair_counts = Hashtbl.create 64 in
   List.iter (fun params ->
     let sorted = List.sort_uniq String.compare params in
     let rec count_pairs = function
       | [] | [_] -> ()
       | a :: rest ->
-        List.iter (fun b ->
+          List.iter (fun b ->
+            let key = a ^ "," ^ b in
+            let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
+            Hashtbl.replace pair_counts key (current + 1)
+          ) rest;
+          count_pairs rest
+    in
+    count_pairs sorted
+  ) param_sets;
+
+(** Rule: Data Clump
+    Detects the same pair of parameters appearing together in 3+ functions.
+    AI often generates repetitive parameter lists instead of grouping into a record. *)
+let detect_data_clump (m : t) =
+  let min_co_occurrence = 3 in
+  let std_list_filter_map = Stdlib.List.filter_map in
+  let std_list_sort_uniq = Stdlib.List.sort_uniq in
+  let std_list_iter = Stdlib.List.iter in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_list_length = Stdlib.List.length in
+  let std_list_hd = Stdlib.List.hd in
+  let std_string_map = Stdlib.String.map in
+  let param_sets = std_list_filter_map (fun item ->
+    match item.item_value with
+    | IFunction (_, params, _, _) ->
+      Some (std_list_filter_map (function PVar v -> Some v | _ -> None) params)
+    | _ -> None
+  ) m.mod_items in
+  let pair_counts = Hashtbl.create 64 in
+  std_list_iter (fun params ->
+    let sorted = std_list_sort_uniq String.compare params in
+    let rec count_pairs = function
+      | [] | [_] -> ()
+      | a :: rest ->
+        std_list_iter (fun b ->
           let key = a ^ "," ^ b in
           let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
           Hashtbl.replace pair_counts key (current + 1)
@@ -959,14 +1003,14 @@ let detect_data_clump (m : t) =
     in
     count_pairs sorted
   ) param_sets in
-  let collected = List.concat_map (fun (key, count) ->
+  let collected = std_list_concat_map (fun (key, count) ->
     if count >= min_co_occurrence then
-      let pair_name = String.map (fun c -> if c = ',' then ' ' else c) key in
-      let line = (List.hd m.mod_items).item_location.start.line in
+      let pair_name = std_string_map (fun c -> if c = ',' then ' ' else c) key in
+      let line = std_list_hd m.mod_items |> fun i -> i.item_location.start.line in
       [Printf.sprintf "Parameters %s appear together in %d functions — consider grouping into a record" pair_name count, line]
     else []
   ) (Hashtbl.fold (fun key count acc -> (key, count) :: acc) pair_counts []) in
-  List.sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) collected
+  std_list_sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) collected
 
 (** Rule: Feature Envy
     Detects functions that make most of their calls on a single external type.
