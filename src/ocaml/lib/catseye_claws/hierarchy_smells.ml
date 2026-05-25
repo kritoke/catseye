@@ -55,7 +55,7 @@ let is_abstract_class (name : string) : bool =
 let build_registry (nodes : Security_node.t list) :
     (Class_graph.class_info list * string list Class_graph.StringMap.t * Class_graph.class_info Class_graph.StringMap.t) =
   (* Group nodes by file *)
-  let by_file = Hashtbl.create 16 in
+  let by_file = Hashtbl.create (module String) ~size:16 in
   List.iter (fun (n : Security_node.t) ->
     let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
     Hashtbl.replace by_file n.Security_node.file (n :: existing)

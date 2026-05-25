@@ -43,11 +43,9 @@ let is_tainted_in_file (db : t) (var : string) (file : string) : bool =
   | None -> false
 
 let get_tainted_vars (db : t) : string list =
-  let std_list_mem = Stdlib.List.mem in
-  let std_list_fold = Stdlib.List.fold_left in
   StringMap.fold (fun _ records acc ->
-    std_list_fold (fun acc r -> 
-      if std_list_mem r.var_name acc then acc 
+    List.fold_left (fun acc r -> 
+      if List.mem acc r.var_name ~equal:String.equal then acc 
       else r.var_name :: acc
     ) acc records
   ) db [] |> List.rev

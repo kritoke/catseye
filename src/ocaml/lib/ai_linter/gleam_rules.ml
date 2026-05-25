@@ -1163,38 +1163,29 @@ let detect_repeated_string_literal (m : t) =
   let module StringMap = Map.Make(String) in
   let lit_by_func = StringMap.empty in
   let lit_locations = StringMap.empty in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_length = Stdlib.List.length in
-  let std_list_map = Stdlib.List.map in
-  let std_list_sort_uniq = Stdlib.List.sort_uniq in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_fold_left = Stdlib.List.fold_left in
-  let std_list_hd = Stdlib.List.hd in
-  let std_string_length = Stdlib.String.length in
-  let std_string_sub = Stdlib.String.sub in
   let rec collect_strings (e : expr) : string list =
     match e.expr_value with
-    | ELiteral (LString s) when std_string_length s >= min_length -> [s]
-    | EBlock es -> std_list_concat_map collect_strings es
+    | ELiteral (LString s) when String.length s >= min_length -> [s]
+    | EBlock es -> List.concat_map collect_strings es
     | ELet (_, e1, e2) -> collect_strings e1 @ collect_strings e2
     | EIf (_, then_, else_) ->
         collect_strings then_ @ (match else_ with Some e -> collect_strings e | None -> [])
     | ECase (_, branches) ->
-        std_list_concat_map (fun (_, e) -> collect_strings e) branches
-    | EApp (fn, args) -> collect_strings fn @ std_list_concat_map collect_strings args
+        List.concat_map (fun (_, e) -> collect_strings e) branches
+    | EApp (fn, args) -> collect_strings fn @ List.concat_map collect_strings args
     | _ -> []
   in
   let (lit_by_func, lit_locations) =
-    std_list_fold_left (fun (by_func, locs) item ->
+    List.fold_left (fun (by_func, locs) item ->
       match item.item_value with
       | IFunction (name, _, _, body) ->
         let strings = collect_strings body in
-        let new_by_func = std_list_fold_left (fun acc s ->
+        let new_by_func = List.fold_left (fun acc s ->
           let funcs = try StringMap.find s acc with Not_found -> [] in
-          if std_list_exists (fun f -> f = name) funcs then acc
+          if List.mem funcs name then acc
           else StringMap.add s (name :: funcs) acc
         ) by_func strings in
-        let new_locs = std_list_fold_left (fun acc s ->
+        let new_locs = List.fold_left (fun acc s ->
           let line = item.item_location.start.line in
           let existing = try StringMap.find s acc with Not_found -> [] in
           StringMap.add s ((name, line) :: existing) acc
@@ -1202,14 +1193,14 @@ let detect_repeated_string_literal (m : t) =
         (new_by_func, new_locs)
       | _ -> (by_func, locs)
     ) (lit_by_func, lit_locations) m.mod_items in
-  std_list_sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2)
-    (std_list_concat_map (fun (s, locations) ->
-      if std_list_length locations >= 2 then
-        let funcs = String.concat ", " (std_list_map fst (std_list_sort_uniq compare locations)) in
-        let _, line = std_list_hd locations in
+  List.sort_uniq (fun (_, l1) (_, l2) -> Int.compare l1 l2)
+    (List.concat_map (fun (s, locations) ->
+      if List.length locations >= 2 then
+        let funcs = String.concat ", " (List.map (List.sort_uniq locations ~compare:compare) ~f:fst) in
+        let _, line = List.hd locations in
         [Printf.sprintf
           "String \"%s\" appears in %d functions (%s) — extract to a module constant"
-          s (std_list_length locations) funcs, line]
+          s (List.length locations) funcs, line]
       else []
     ) (StringMap.bindings lit_locations))
 
