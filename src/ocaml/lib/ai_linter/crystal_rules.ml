@@ -1225,6 +1225,7 @@ let detect_repeated_regex (m : t) =
   let regex_locations = StringMap.empty in
   let std_list_exists = Stdlib.List.exists in
   let std_list_map = Stdlib.List.map in
+  let std_list_length = List.length in
   let std_string_contains = Stdlib.String.contains in
   let rec collect_regexes (e : expr) : string list =
     match e.expr_value with
