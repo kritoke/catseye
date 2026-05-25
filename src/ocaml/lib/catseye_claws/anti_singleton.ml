@@ -101,12 +101,10 @@ let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_c
   let std_list_map = Stdlib.List.map in
   let std_list_length = Stdlib.List.length in
   let std_list_nth = Stdlib.List.nth in
-  let std_list_iteri = Stdlib.List.iteri in
   let std_list_sort = Stdlib.List.sort in
   let std_list_fold_left = Stdlib.List.fold_left in
   let std_list_concat_map = Stdlib.List.concat_map in
   let std_string_concat = Stdlib.String.concat in
-  let std_string_sub = Stdlib.String.sub in
   let std_string_length = Stdlib.String.length in
   let module StringMap = Map.Make(String) in
   (* Group nodes by file using Map *)

@@ -1161,8 +1161,6 @@ let detect_int_float_division (m : t) =
 let detect_repeated_string_literal (m : t) =
   let min_length = 4 in
   let module StringMap = Map.Make(String) in
-  let lit_by_func = StringMap.empty in
-  let lit_locations = StringMap.empty in
   let rec collect_strings (e : expr) : string list =
     match e.expr_value with
     | ELiteral (LString s) when String.length s >= min_length -> [s]
@@ -1175,24 +1173,18 @@ let detect_repeated_string_literal (m : t) =
     | EApp (fn, args) -> collect_strings fn @ List.concat_map collect_strings args
     | _ -> []
   in
-  let (lit_by_func, lit_locations) =
-    List.fold_left (fun (by_func, locs) item ->
+  let lit_locations =
+    List.fold_left (fun locs item ->
       match item.item_value with
       | IFunction (name, _, _, body) ->
         let strings = collect_strings body in
-        let new_by_func = List.fold_left (fun acc s ->
-          let funcs = try StringMap.find s acc with Not_found -> [] in
-          if List.mem name funcs then acc
-          else StringMap.add s (name :: funcs) acc
-        ) by_func strings in
         let new_locs = List.fold_left (fun acc s ->
-          let line = item.item_location.start.line in
           let existing = try StringMap.find s acc with Not_found -> [] in
-          StringMap.add s ((name, line) :: existing) acc
+          StringMap.add s ((name, item.item_location.start.line) :: existing) acc
         ) locs strings in
-        (new_by_func, new_locs)
-      | _ -> (by_func, locs)
-    ) (lit_by_func, lit_locations) m.mod_items in
+        new_locs
+      | _ -> locs
+    ) StringMap.empty m.mod_items in
   let all_strings =
     List.concat_map (fun (s, locations) ->
       if List.length locations >= 2 then

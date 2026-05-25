@@ -213,13 +213,11 @@ let check_hallucinated (name : string) : method_entry option =
 
 (** Rule 1.1: Hallucinated Standard Library Methods (database-driven) *)
 let detect_hallucinated_stdlib (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_iter = Stdlib.List.iter in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_iter (fun (name, line) ->
+      List.iter (fun (name, line) ->
         match check_hallucinated name with
         | Some entry ->
           let source_lang = match entry.lang with
@@ -284,18 +282,14 @@ let detect_manual_loop (m : t) =
 
 (** Rule 2.3: Primitive Obsession (3+ params) *)
 let detect_primitive_obsession (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_length = Stdlib.List.length in
-  let std_filter = Stdlib.List.filter in
-  std_list_concat_map (fun item ->
+  List.filter_map (fun item ->
     match item.item_value with
     | IFunction (name, patterns, _, _) ->
-      let params = std_filter (function PVar _ -> true | _ -> false) patterns in
-      if std_length params >= 3
-      then [let l = item.item_location.start.line in
-            (Printf.sprintf "Function '%s' has %d parameters - consider domain types" name (std_length params), l)]
-      else []
-    | _ -> []
+      let params = List.filter (function PVar _ -> true | _ -> false) patterns in
+      if List.length params >= 3
+      then Some (Printf.sprintf "Function '%s' has %d parameters - consider domain types" name (List.length params), item.item_location.start.line)
+      else None
+    | _ -> None
   ) m.mod_items
 
 (* ── Category 3: The Happy Path ──────────────────────────────────────── *)
@@ -306,20 +300,18 @@ let detect_primitive_obsession (m : t) =
     from Hash#[]? or Array#first?). Also detects .not_nil!, .as(Type)
     casts, and .try(&.x) as code smells. *)
 let detect_nil_chaser (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      List.concat_map (fun (name, line) ->
         let findings = [] in
         (* Pattern 1: .not_nil! — forced unwrap *)
         let findings = if name = "not_nil!" then
           ("not_nil! will raise on nil — use pattern matching or nil check instead", line) :: findings
         else findings in
         (* Pattern 2: .as( — type cast that crashes on nil *)
-        let findings = if std_string_length name >= 3 &&
-          std_string_sub name (std_string_length name - 3) 3 = ".as" then
+        let findings = if String.length name >= 3 &&
+          String.sub name (String.length name - 3) 3 = ".as" then
           ("Type cast with .as() may crash if nil — consider case expression", line) :: findings
         else findings in
         (* Pattern 3: Nullable-returning call accessed without guard *)
@@ -478,24 +470,18 @@ let detect_hardcoded_secrets (m : t) =
 
 (** Rule 6.3: Hardcoded URLs/IPs *)
 let detect_hardcoded_urls (m : t) =
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_for_all = Stdlib.List.for_all in
-  let std_list_length = Stdlib.List.length in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_string_split_on_char = Stdlib.String.split_on_char in
   let is_urlish (s : string) =
-    std_string_length s >= 8 &&
-    (std_string_sub s 0 7 = "http://" || std_string_sub s 0 8 = "https://") &&
+    String.length s >= 8 &&
+    (String.sub s 0 7 = "http://" || String.sub s 0 8 = "https://") &&
     not (s = "http://" || s = "https://" || s = "http://www." || s = "https://www.")
   in
   let is_loopback_or_meta (s : string) =
     s = "0.0.0.0" || s = "127.0.0.1" || s = "255.255.255.255" || s = "0.0.0.1"
   in
   let is_ipish (s : string) =
-    let parts = std_string_split_on_char '.' s in
-    std_list_length parts = 4 &&
-    std_list_for_all (fun p -> try let _ = int_of_string p in true with _ -> false) parts &&
+    let parts = String.split_on_char '.' s in
+    List.length parts = 4 &&
+    List.for_all (fun p -> try let _ = int_of_string p in true with _ -> false) parts &&
     not (is_loopback_or_meta s)
   in
   let rec collect_suspicious_strings (e : expr) : (string * int) list =
@@ -504,17 +490,17 @@ let detect_hardcoded_urls (m : t) =
       [(s, e.expr_location.start.line)]
     | ELiteral _ -> []
     | EApp (fn, args) ->
-      collect_suspicious_strings fn @ std_list_concat_map collect_suspicious_strings args
+      collect_suspicious_strings fn @ List.concat_map collect_suspicious_strings args
     | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
       collect_suspicious_strings e1 @ collect_suspicious_strings e2
-    | EBlock es -> std_list_concat_map collect_suspicious_strings es
+    | EBlock es -> List.concat_map collect_suspicious_strings es
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      collected := std_list_concat_map (fun (s, line) ->
+      collected := List.concat_map (fun (s, line) ->
         [Printf.sprintf "Hardcoded URL/IP: %s — use config or environment variable" s, line]
       ) (collect_suspicious_strings body) @ !collected
     | _ -> ()
@@ -527,17 +513,17 @@ let detect_hardcoded_urls (m : t) =
     Detects bare `rescue` or `rescue ex` without specifying an exception type.
     AI often generates blanket rescues that swallow all errors silently. *)
 let detect_blanket_rescue (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  List.filter_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      let bodies = List.concat_map (fun (name, line) ->
         if name = "rescue" || name = "begin" then
           [("Blanket rescue catches all exceptions — catch specific exception types instead", line)]
         else []
-      ) (collect_app_names body)
-    | _ -> []
-  ) m.mod_items
+      ) (collect_app_names body) in
+      (match bodies with [] -> None | _ -> Some bodies)
+    | _ -> None
+  ) m.mod_items |> List.concat
 
 (** Rule 7.2: Duplicate Validation
     Detects the same variable being validated twice in the same function.
@@ -580,37 +566,32 @@ let detect_duplicate_validation (m : t) =
     AI often uses stringly-typed checks instead of enums or constants.
     Skips strings < 3 chars (like "", " ", "0") and common safe patterns. *)
 let detect_magic_string (m : t) =
-  let std_list_filter_map = Stdlib.List.filter_map in
-  let std_list_concat_map = Stdlib.List.concat_map in
   let is_magic (s : string) =
-    std_string_length s >= 3 &&
-    not (std_string_length s >= 4 && std_string_sub s 0 4 = "http") &&
-    not (std_string_length s >= 6 && std_string_sub s 0 6 = "sqlite") &&
-    not (std_string_length s >= 10 && std_string_sub s 0 10 = "postgresql")
+    String.length s >= 3 &&
+    not (String.length s >= 4 && String.sub s 0 4 = "http") &&
+    not (String.length s >= 6 && String.sub s 0 6 = "sqlite") &&
+    not (String.length s >= 10 && String.sub s 0 10 = "postgresql")
   in
   let rec collect_equality_strings (e : expr) : (string * int) list =
     match e.expr_value with
     | EApp (fn, args) when get_full_name fn = "==" ->
-      std_list_filter_map (fun a ->
+      List.filter_map (fun a ->
         match a.expr_value with
         | ELiteral (LString s) when is_magic s -> Some (s, a.expr_location.start.line)
         | _ -> None
       ) args
-    | EBlock es -> std_list_concat_map collect_equality_strings es
+    | EBlock es -> List.concat_map collect_equality_strings es
     | ELet (_, e1, e2) -> collect_equality_strings e1 @ collect_equality_strings e2
     | EIf (_, then_, else_) ->
       collect_equality_strings then_ @
       (match else_ with Some e -> collect_equality_strings e | None -> [])
     | _ -> []
   in
-  let std_list_filter_map = Stdlib.List.filter_map in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      collected := std_list_concat_map (fun (s, line) ->
+      collected := List.concat_map (fun (s, line) ->
         [Printf.sprintf "Magic string \"%s\" used in comparison — consider using a constant or enum" s, line]
       ) (collect_equality_strings body) @ !collected
     | _ -> ()
