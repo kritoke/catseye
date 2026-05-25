@@ -1,8 +1,14 @@
 (* src/ocaml/lib/catseye_ast/error.ml
    Parsing error types - per "Ban the Regex" principle
-*)
+ *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (** Parse error with location *)
+
+
 type parse_error = {
   file : string;
   line : int option;

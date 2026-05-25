@@ -1,6 +1,10 @@
 (* src/ocaml/lib/catseye_ast/types.ml
    Unified AST schema for Catseye - single type for Gleam and Crystal
-*)
+ *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (** Supported languages *)
 type lang = Gleam | Crystal | Svelte | TypeScript | JavaScript | Rust | Other of string
