@@ -2,4 +2,4 @@
  (name catseye_claws)
  (public_name catseye.claws)
  (modules types scope complexity complexity_ast anatomy anatomy_ast dry dry_ast ameba_hook extra_smells extra_smells_ast smells concurrency concurrency_ast ast_scope anti_singleton lazy_class large_class blob spaghetti_code class_graph hierarchy_smells hub_like_module shotgun_surgery)
- (libraries catseye.types catseye.ast yojson logs unix))
+ (libraries base stdio catseye.types catseye.ast yojson logs unix))

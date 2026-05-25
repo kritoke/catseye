@@ -1,7 +1,7 @@
 (lang dune 3.17)
 
 (name catseye)
-(version 0.4.0)
+(version v0.4.3-31-g0355fb9-dirty)
 
 (generate_opam_files true)
 
@@ -20,8 +20,10 @@
  (description
   "Catseye finds vulnerabilities like SSRF, command injection, path traversal, and more by combining AST-based extraction with taint tracking and pattern-matching rules.")
  (depends
-  ocaml
+  (ocaml (>= 5.4.0))
   dune
+  base
+  stdio
   cmdliner
   toml
   kdl
@@ -32,7 +34,7 @@
   fmt
   eio
   eio_posix
-  ocaml_sqlite3
+  sqlite3
   ocamlgraph
   alcotest))
 
@@ -43,11 +45,12 @@
   "Crow's Nest module for Catseye. Audits Crystal Shards and Gleam hex packages for known CVEs, end-of-life status, and maintenance staleness.")
  (allow_empty)
  (depends
-  ocaml
+  (ocaml (>= 5.4.0))
   dune
+  base
+  stdio
   yojson
-  ocaml_sqlite3
-  unix))
+  sqlite3))
 
 (package
  (name catseye-ast)
@@ -56,8 +59,10 @@
   "Catseye's unified AST library - provides CatseyeAST.t schema bridging tree-sitter (Gleam) and native parser (Crystal).")
  (allow_empty)
  (depends
-  ocaml
+  (ocaml (>= 5.4.0))
   dune
+  base
+  stdio
   yojson))
 
 (package
@@ -67,7 +72,8 @@
   "Catseye AI Linter - detects AI hallucinated functions, deprecated patterns, and code quality issues using AST pattern matching.")
  (allow_empty)
  (depends
-  ocaml
+  (ocaml (>= 5.4.0))
   dune
-  catseye-ast
-  str))
+  base
+  stdio
+  catseye-ast))

@@ -1,5 +1,5 @@
 (library
  (name catseye_types)
  (public_name catseye.types)
- (modules security_node finding dag_types version)
- (libraries yojson))
+ (modules security_node finding dag_types version string_utils)
+ (libraries base stdio yojson sexplib sexplib0))

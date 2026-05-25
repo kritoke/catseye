@@ -2,4 +2,4 @@
  (name catseye_rules)
  (public_name catseye.rules)
  (modules types loader interpreter)
- (libraries catseye.types yojson kdl logs fmt rresult))
+ (libraries base stdio catseye.types yojson kdl logs fmt rresult))
