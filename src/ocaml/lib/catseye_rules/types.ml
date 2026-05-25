@@ -1,5 +1,7 @@
 (* lib/catseye_rules/types.ml *)
 
+open Base
+
 type sink_def = {
   pattern : string;
   sanitizers : string list;

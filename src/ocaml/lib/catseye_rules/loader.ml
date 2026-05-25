@@ -1,10 +1,12 @@
 (* lib/catseye_rules/loader.ml *)
 
+open Base
+let ( = ) = Stdlib.( = )
 open Types
 
 (* Helper: get string value from a property list *)
 let get_prop (props : Kdl.prop list) (key : string) : string option =
-  List.find_map (fun (k, (_, v)) ->
+  List.find_map ~f:(fun (k, (_, v)) ->
     if k = key then
       match v with
       | `String s -> Some s
@@ -26,7 +28,7 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
   in
   let sanitizers =
     node.children
-    |> List.filter_map (fun (child : Kdl.node) ->
+    |> List.filter_map ~f:(fun (child : Kdl.node) ->
       if child.name = "sanitizer" then
         get_first_arg child.args
       else None
@@ -34,7 +36,7 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
   in
   let requires_field = get_prop node.props "requires_field" in
   let arg_pos = match get_prop node.props "arg" with
-    | Some s -> (try Some (int_of_string s) with _ -> None)
+    | Some s -> (try Some (Int.of_string s) with _ -> None)
     | None -> None
   in
   let fix_template = match get_prop node.props "fix" with
@@ -42,7 +44,7 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
     | None ->
       (* Also check child nodes: fix "value" syntax *)
       node.children
-      |> List.find_map (fun (child : Kdl.node) ->
+      |> List.find_map ~f:(fun (child : Kdl.node) ->
         if child.name = "fix" then get_first_arg child.args else None)
   in
   [{ pattern; sanitizers; requires_field; arg_pos; fix_template }]
@@ -57,19 +59,19 @@ let parse_sources_node (node : Kdl.node) : source_def list =
 
 let parse_languages (children : Kdl.node list) : string list * string list =
   let excludes, includes =
-    List.fold_left (fun (excl, incl) (child : Kdl.node) ->
+    List.fold_left ~init:([], []) ~f:(fun (excl, incl) (child : Kdl.node) ->
       let val_of = get_first_arg child.args in
       match child.name with
       | "exclude" -> (match val_of with Some s -> (s :: excl, incl) | None -> (excl, incl))
       | "include" -> (match val_of with Some s -> (excl, s :: incl) | None -> (excl, incl))
       | _ -> (excl, incl)
-    ) ([], []) children
+    ) children
   in
   (excludes, includes)
 
 let parse_conditions (children : Kdl.node list) : conditions =
   let known = ["skip_taint_check"; "skip_all_literals"; "check_args_contain"; "check_args_missing"] in
-  List.fold_left (fun acc (child : Kdl.node) ->
+  List.fold_left ~init:(default_conditions ()) ~f:(fun acc (child : Kdl.node) ->
     match child.name with
     | "skip_taint_check" ->
       { acc with requires_tainted_args = false }
@@ -87,7 +89,7 @@ let parse_conditions (children : Kdl.node list) : conditions =
         | None -> ""
       in
       { acc with check_args_missing = pattern :: acc.check_args_missing }
-    | k when List.mem k known ->
+    | k when List.mem known ~equal:String.equal k ->
       { acc with extensions = (k, "true") :: acc.extensions }
     | k ->
       let v = match get_first_arg child.args with
@@ -98,7 +100,7 @@ let parse_conditions (children : Kdl.node list) : conditions =
       in
       Logs.warn (fun m -> m "Unknown rule condition '%s' (value='%s'); ignoring" k v);
       { acc with extensions = (k, v) :: acc.extensions }
-  ) (default_conditions ()) children
+  ) children
 
 let parse_rule_node (node : Kdl.node) : rule_def option =
   (* Node name is "rule", actual id is first positional arg *)
@@ -111,13 +113,13 @@ let parse_rule_node (node : Kdl.node) : rule_def option =
     | None -> "Medium"
   in
   let sinks, sources, conds, message =
-    List.fold_left (fun (sinks, sources, conds, msg) (child : Kdl.node) ->
+    List.fold_left ~init:([], [], default_conditions (), "") ~f:(fun (sinks, sources, conds, msg) (child : Kdl.node) ->
       match child.name with
       | "sinks" ->
-        let new_sinks = List.concat_map parse_sinks_node child.children in
+        let new_sinks = List.concat_map ~f:parse_sinks_node child.children in
         (new_sinks @ sinks, sources, conds, msg)
       | "sources" ->
-        let new_sources = List.concat_map parse_sources_node child.children in
+        let new_sources = List.concat_map ~f:parse_sources_node child.children in
         (sinks, new_sources @ sources, conds, msg)
       | "conditions" ->
         let c = parse_conditions child.children in
@@ -133,36 +135,36 @@ let parse_rule_node (node : Kdl.node) : rule_def option =
         in
         (sinks, sources, conds, msg_text)
       | _ -> (sinks, sources, conds, msg)
-    ) ([], [], default_conditions (), "") node.children
+    ) node.children
   in
   if id = "" then None
   else Some { id; severity; sinks; sources; conditions = conds; message_template = message }
 
-let parse_string (content : string) : (rule_def list, [> `Msg of string ]) result =
+let parse_string (content : string) : (rule_def list, [> `Msg of string ]) Result.t =
   match Kdl.of_string content with
   | Ok doc ->
-    let rules = List.filter_map parse_rule_node doc in
+    let rules = List.filter_map ~f:parse_rule_node doc in
     Ok rules
   | Error (msg, _) ->
     Error (`Msg (Printf.sprintf "KDL parse error: %s" msg))
 
-let load_rules (path : string) : (rule_def list, [> `Msg of string ]) result =
-  if not (Sys.file_exists path) then
+let load_rules (path : string) : (rule_def list, [> `Msg of string ]) Result.t =
+  if not (Stdlib.Sys.file_exists path) then
     Error (`Msg (Printf.sprintf "Rules directory not found: %s" path))
-  else if Sys.is_directory path then begin
+  else if Stdlib.Sys.is_directory path then begin
     let files =
-      Sys.readdir path
+      Stdlib.Sys.readdir path
       |> Array.to_list
-      |> List.filter (fun f -> Filename.check_suffix f ".kdl")
-      |> List.sort String.compare
+      |> List.filter ~f:(fun f -> Stdlib.Filename.check_suffix f ".kdl")
+      |> List.sort ~compare:String.compare
     in
-    let rules = List.concat_map (fun f ->
-      let full_path = Filename.concat path f in
-      let ic = open_in full_path in
-      let len = in_channel_length ic in
+    let rules = List.concat_map ~f:(fun f ->
+      let full_path = Stdlib.Filename.concat path f in
+      let ic = Stdlib.open_in full_path in
+      let len = Stdlib.in_channel_length ic in
       let buf = Bytes.create len in
-      really_input ic buf 0 len;
-      close_in ic;
+      Stdlib.really_input ic buf 0 len;
+      Stdlib.close_in ic;
       let content = Bytes.to_string buf in
       match parse_string content with
       | Ok r -> r
@@ -172,9 +174,9 @@ let load_rules (path : string) : (rule_def list, [> `Msg of string ]) result =
     ) files in
     Ok rules
   end else
-    let ic = open_in path in
-    let len = in_channel_length ic in
+    let ic = Stdlib.open_in path in
+    let len = Stdlib.in_channel_length ic in
     let buf = Bytes.create len in
-    really_input ic buf 0 len;
-    close_in ic;
+    Stdlib.really_input ic buf 0 len;
+    Stdlib.close_in ic;
     parse_string (Bytes.to_string buf)
