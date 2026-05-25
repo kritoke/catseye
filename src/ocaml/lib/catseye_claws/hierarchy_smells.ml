@@ -11,8 +11,6 @@
     - DeepInheritance: >4 levels of inheritance depth
 *)
 
-open Base
-
 open Catseye_types
 
 (* ── Config ─────────────────────────────────────────────────────────── *)
@@ -33,14 +31,14 @@ let contains (str : string) (sub : string) : bool =
   else
     let rec check i =
       if i > slen - slen_sub then false
-      else if String.equal (String.sub str ~pos:i ~len:slen_sub) sub then true
+      else if String.sub str i slen_sub = sub then true
       else check (i + 1)
     in
     check 0
 
 (** Check if a class name suggests it's abstract (Crystal convention) *)
 let is_abstract_class (name : string) : bool =
-  let lower = String.lowercase name in
+  let lower = String.lowercase_ascii name in
   contains lower "abstract"
 
 (* ── Class Registry Building ────────────────────────────────────────── *)
@@ -55,7 +53,7 @@ let is_abstract_class (name : string) : bool =
 let build_registry (nodes : Security_node.t list) :
     (Class_graph.class_info list * string list Class_graph.StringMap.t * Class_graph.class_info Class_graph.StringMap.t) =
   (* Group nodes by file *)
-  let by_file = Hashtbl.create (module String) ~size:16 in
+  let by_file = Hashtbl.create 16 in
   List.iter (fun (n : Security_node.t) ->
     let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
     Hashtbl.replace by_file n.Security_node.file (n :: existing)
@@ -63,18 +61,18 @@ let build_registry (nodes : Security_node.t list) :
 
   let class_infos = ref [] in
   Hashtbl.iter (fun _file file_nodes ->
-    let sorted = List.sort file_nodes ~compare:(fun a b -> Int.compare a.Security_node.line b.Security_node.line) in
+    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
     
     (* Find class boundaries *)
     let class_nodes = List.filter (fun n ->
       n.Security_node.node_type = Security_node.Class
     ) sorted in
 
-    List.iteri class_nodes ~f:(fun i (cn : Security_node.t) ->
+    List.iteri (fun i (cn : Security_node.t) ->
       let start_line = cn.Security_node.line in
       let end_line =
         if i + 1 < List.length class_nodes then
-          (Option.value_exn (List.nth class_nodes (i + 1))).Security_node.line
+          (List.nth class_nodes (i + 1)).Security_node.line
         else 1000000
       in
 
@@ -85,7 +83,7 @@ let build_registry (nodes : Security_node.t list) :
         && n.Security_node.line < end_line
       ) sorted in
 
-      let method_names = List.map methods_in_class ~f:(fun n -> n.Security_node.name) in
+      let method_names = List.map (fun n -> n.Security_node.name) methods_in_class in
       let parent = Security_node.get_metadata cn "parent" in
       let loc = end_line - start_line in
       let name = cn.Security_node.name in
@@ -100,24 +98,24 @@ let build_registry (nodes : Security_node.t list) :
         Class_graph.loc = loc;
         Class_graph.is_abstract = is_abstract;
       } :: !class_infos
-    )
+    ) class_nodes
   ) by_file;
 
   let infos = List.rev !class_infos in
 
   (* Build parent -> children map *)
-  let parent_to_children = List.fold_left infos ~init:Class_graph.StringMap.empty ~f:(fun acc info ->
+  let parent_to_children = List.fold_left (fun acc info ->
     match info.Class_graph.parent with
     | Some parent ->
         let children = try Class_graph.StringMap.find parent acc with Not_found -> [] in
         Class_graph.StringMap.add parent (info.Class_graph.name :: children) acc
     | None -> acc
-  ) in
+  ) Class_graph.StringMap.empty infos in
 
   (* Build name -> info map *)
-  let graph = List.fold_left infos ~init:Class_graph.StringMap.empty ~f:(fun acc info ->
+  let graph = List.fold_left (fun acc info ->
     Class_graph.StringMap.add info.Class_graph.name info acc
-  ) in
+  ) Class_graph.StringMap.empty infos in
 
   (infos, parent_to_children, graph)
 
@@ -129,7 +127,7 @@ let detect_base_class_not_abstract
     (infos : Class_graph.class_info list)
     (parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
-  List.filter_map infos ~f:(fun (info : Class_graph.class_info) ->
+  List.filter_map (fun (info : Class_graph.class_info) ->
     let children = try Class_graph.StringMap.find info.Class_graph.name parent_to_children
                   with Not_found -> [] in
     let child_count = List.length children in
@@ -153,7 +151,7 @@ let detect_base_class_not_abstract
         reachability = None; suggestion = None;
       }
     else None
-  )
+  ) infos
 
 (** 2. SpeculativeGenerality
     An abstract class with few or no children. *)
@@ -161,7 +159,7 @@ let detect_speculative_generality
     (infos : Class_graph.class_info list)
     (parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
-  List.filter_map infos ~f:(fun (info : Class_graph.class_info) ->
+  List.filter_map (fun (info : Class_graph.class_info) ->
     let children = try Class_graph.StringMap.find info.Class_graph.name parent_to_children
                   with Not_found -> [] in
     let child_count = List.length children in
@@ -185,7 +183,7 @@ let detect_speculative_generality
         reachability = None; suggestion = None;
       }
     else None
-  )
+  ) infos
 
 (** 3. DeepInheritance
     Classes with too many levels of inheritance. *)
@@ -193,7 +191,7 @@ let detect_deep_inheritance
     (infos : Class_graph.class_info list)
     (graph : Class_graph.class_info Class_graph.StringMap.t)
     : Finding.t list =
-  List.filter_map infos ~f:(fun (info : Class_graph.class_info) ->
+  List.filter_map (fun (info : Class_graph.class_info) ->
     let depth = Class_graph.get_inheritance_depth graph info.name in
     if depth > deep_inheritance_threshold then
       Some {
@@ -215,7 +213,7 @@ let detect_deep_inheritance
         reachability = None; suggestion = None;
       }
     else None
-  )
+  ) infos
 
 (** 4. TraditionBreaker
     A small class inheriting from a parent with many methods. *)
@@ -224,11 +222,11 @@ let detect_tradition_breaker
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
   (* Flag small children of large parents *)
-  List.filter_map infos ~f:(fun (info : Class_graph.class_info) ->
+  List.filter_map (fun (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent_name ->
         (* Find parent class *)
-        let parent_opt = List.find infos ~f:(fun i -> i.Class_graph.name = parent_name) in
+        let parent_opt = List.find_opt (fun i -> i.Class_graph.name = parent_name) infos in
         (match parent_opt with
          | Some parent 
              when List.length parent.Class_graph.methods >= 10  (* Parent has 10+ methods *)
@@ -256,7 +254,7 @@ let detect_tradition_breaker
                }
          | _ -> None)
     | None -> None
-  )
+  ) infos
 
 (** 5. RefusedParentBequest
     A class overrides a parent method with an empty or near-empty implementation.
@@ -273,18 +271,24 @@ let detect_refused_parent_bequest
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
+  let std_list_mem = Stdlib.List.mem in
+  let std_list_filter = Stdlib.List.filter in
+  let std_list_sort = Stdlib.List.sort in
+  let std_list_find_opt = Stdlib.List.find_opt in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_list_fold_left = Stdlib.List.fold_left in
   let module StringMap = Map.Make(String) in
   (* Group nodes by file using Map *)
-  let by_file = List.fold_left nodes ~init:StringMap.empty ~f:(fun acc (n : Security_node.t) ->
+  let by_file = std_list_fold_left (fun acc (n : Security_node.t) ->
     let existing = match StringMap.find_opt n.Security_node.file acc with
       | Some nodes -> nodes | None -> [] in
     StringMap.add n.Security_node.file (n :: existing) acc
-  ) in
+  ) StringMap.empty nodes in
   (* Helper to get ancestor methods *)
   let rec get_ancestor_methods (name : string) (visited : string list) : string list =
-    if List.mem visited name ~equal:String.equal then []
+    if std_list_mem name visited then []
     else
-      match List.find_opt infos ~f:(fun i -> i.Class_graph.name = name) with
+      match std_list_find_opt (fun i -> i.Class_graph.name = name) infos with
       | Some ci ->
         let methods = ci.Class_graph.methods in
         (match ci.Class_graph.parent with
@@ -293,18 +297,18 @@ let detect_refused_parent_bequest
       | None -> []
   in
   (* Collect findings from each class *)
-  List.concat (List.map infos ~f:(fun (info : Class_graph.class_info) ->
+  std_list_concat_map (fun (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent_name ->
-      (match List.find_opt infos ~f:(fun i -> i.Class_graph.name = parent_name) with
+      (match std_list_find_opt (fun i -> i.Class_graph.name = parent_name) infos with
        | Some _parent ->
          let ancestor_methods = get_ancestor_methods parent_name [] in
-         List.concat (List.map info.Class_graph.methods ~f:(fun method_name ->
-           if not (List.mem ancestor_methods method_name ~equal:String.equal) then [] else
+         std_list_concat_map (fun method_name ->
+           if not (std_list_mem method_name ancestor_methods) then [] else
            let file_nodes = match StringMap.find_opt info.Class_graph.file by_file with
              | Some nodes -> nodes | None -> [] in
-           let sorted = List.sort file_nodes ~compare:(fun a b -> Int.compare a.Security_node.line b.Security_node.line) in
-           let all_classes = List.filter sorted ~f:(fun n -> n.Security_node.node_type = Security_node.Class) in
+           let sorted = std_list_sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
+           let all_classes = std_list_filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in
            let class_start = info.Class_graph.line in
            let class_end = 
              let rec find_next_class = function
@@ -313,19 +317,19 @@ let detect_refused_parent_bequest
                | _ :: rest -> find_next_class rest
              in find_next_class all_classes
            in
-           let def_nodes = List.filter sorted ~f:(fun n -> 
+           let def_nodes = std_list_filter (fun n -> 
              n.Security_node.node_type = Security_node.Def
              && n.Security_node.name = method_name
              && n.Security_node.line >= class_start
              && n.Security_node.line < class_end
-           ) in
-           List.concat (List.map def_nodes ~f:(fun (def_node : Security_node.t) ->
+           ) sorted in
+           std_list_concat_map (fun (def_node : Security_node.t) ->
              let start_line = def_node.Security_node.line in
-             let next_def = List.find_opt sorted ~f:(fun n -> 
+             let next_def = std_list_find_opt (fun n -> 
                n.Security_node.node_type = Security_node.Def 
                && n.Security_node.line > start_line
                && n.Security_node.line < class_end
-             ) in
+             ) sorted in
              let end_line = match next_def with
                | Some d -> d.Security_node.line
                | None -> class_end
@@ -349,11 +353,11 @@ let detect_refused_parent_bequest
                   dependency = None;
                   reachability = None; suggestion = None; }]
              else []
-           ))
-         ))
+           ) def_nodes
+         ) info.Class_graph.methods
        | None -> [])
     | None -> []
-  ))
+  ) infos
 
 (** 6. BaseClassKnowsDerivedClass
     A base class references one of its subclasses by name, indicating tight coupling.
@@ -367,39 +371,45 @@ let detect_base_class_knows_derived
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let std_list_length = Stdlib.List.length in
+  let std_list_map = Stdlib.List.map in
+  let std_list_rev = Stdlib.List.rev in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_string_concat = Stdlib.String.concat in
   let module StringMap = Map.Make(String) in
   (* Build parent -> children map using fold *)
-  let parent_children = List.fold_left infos ~init:StringMap.empty ~f:(fun acc (info : Class_graph.class_info) ->
+  let parent_children = std_list_fold_left (fun acc (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent ->
       let siblings = match StringMap.find_opt parent acc with
         | Some siblings -> siblings | None -> [] in
       StringMap.add parent (info :: siblings) acc
     | None -> acc
-  ) in
+  ) StringMap.empty infos in
   (* Collect findings from each parent class *)
-  List.concat (List.map infos ~f:(fun (info : Class_graph.class_info) ->
+  std_list_concat_map (fun (info : Class_graph.class_info) ->
     match StringMap.find_opt info.Class_graph.name parent_children with
-    | Some children when List.length children >= 3 ->
+    | Some children when std_list_length children >= 3 ->
       [{ Finding.rule = "BaseClassKnowsDerivedClass";
          severity = "Low";
          file = info.Class_graph.file;
          line = info.Class_graph.line;
          message = Printf.sprintf
            "Class '%s' has %d direct children. Consider if it references them directly (factory pattern, type checks with 'is_a?', etc.). Base classes should not know their specific derived types."
-           info.Class_graph.name (List.length children);
+           info.Class_graph.name (std_list_length children);
          flow = [ {
            Finding.file = info.Class_graph.file;
            line = info.Class_graph.line;
            message = Printf.sprintf "Definition of '%s' (%d children: %s)"
-             info.Class_graph.name (List.length children)
-             (String.concat ", " (List.map (List.rev children) ~f:(fun c -> c.Class_graph.name)));
+             info.Class_graph.name (std_list_length children)
+             (std_string_concat ", " (std_list_map (fun c -> c.Class_graph.name) (std_list_rev children)));
          } ];
          language = "crystal";
          dependency = None;
          reachability = None; suggestion = None; }]
     | _ -> []
-  ))
+  ) infos
 
 (** 7. Parallel Inheritance
     Two sibling hierarchies that evolve together but share no code.
@@ -413,16 +423,20 @@ let detect_parallel_inheritance
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
   (* Build set of all class names for quick lookup *)
-  let all_class_names = List.fold_left infos ~init:Class_graph.StringSet.empty ~f:(fun acc info ->
+  let all_class_names = std_list_fold_left (fun acc info ->
     Class_graph.StringSet.add info.Class_graph.name acc
-  ) in
+  ) Class_graph.StringSet.empty infos in
   (* Helper to check all possible splits of a name *)
   let rec check_splits (info : Class_graph.class_info) (name : string) (namelen : int) (pos : int) : Finding.t list =
     if pos >= namelen - 1 then []  (* Need at least 2 chars on each side *)
     else
-      let prefix = String.sub name ~pos:0 ~len:pos in
-      let suffix = String.sub name ~pos ~len:(namelen - pos) in
+      let prefix = std_string_sub name 0 pos in
+      let suffix = std_string_sub name pos (namelen - pos) in
       let new_findings = 
         if Class_graph.StringSet.mem prefix all_class_names && Class_graph.StringSet.mem suffix all_class_names then
           [{ Finding.rule = "ParallelInheritance";
@@ -446,11 +460,11 @@ let detect_parallel_inheritance
       new_findings @ check_splits info name namelen (pos + 1)
   in
   (* Collect findings from each class *)
-  List.concat (List.map infos ~f:(fun info ->
+  std_list_concat_map (fun info ->
     let name = info.Class_graph.name in
-    let namelen = String.length name in
+    let namelen = std_string_length name in
     check_splits info name namelen 1
-  ))
+  ) infos
 
 (* ── Main Analyzer ───────────────────────────────────────────────── *)
 

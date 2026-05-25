@@ -1182,7 +1182,7 @@ let detect_repeated_string_literal (m : t) =
         let strings = collect_strings body in
         let new_by_func = List.fold_left (fun acc s ->
           let funcs = try StringMap.find s acc with Not_found -> [] in
-          if List.mem funcs name then acc
+          if List.mem name funcs then acc
           else StringMap.add s (name :: funcs) acc
         ) by_func strings in
         let new_locs = List.fold_left (fun acc s ->
@@ -1193,16 +1193,18 @@ let detect_repeated_string_literal (m : t) =
         (new_by_func, new_locs)
       | _ -> (by_func, locs)
     ) (lit_by_func, lit_locations) m.mod_items in
-  List.sort_uniq (fun (_, l1) (_, l2) -> Int.compare l1 l2)
-    (List.concat_map (fun (s, locations) ->
+  let all_strings =
+    List.concat_map (fun (s, locations) ->
       if List.length locations >= 2 then
-        let funcs = String.concat ", " (List.map (List.sort_uniq locations ~compare:compare) ~f:fst) in
+        let sorted_locs = Stdlib.List.sort (fun (a, _) (b, _) -> String.compare a b) locations in
+        let funcs = String.concat ", " (Stdlib.List.map fst sorted_locs) in
         let _, line = List.hd locations in
         [Printf.sprintf
           "String \"%s\" appears in %d functions (%s) — extract to a module constant"
           s (List.length locations) funcs, line]
       else []
-    ) (StringMap.bindings lit_locations))
+    ) (StringMap.bindings lit_locations) in
+  List.sort_uniq (fun (_, l1) (_, l2) -> Int.compare l1 l2) all_strings
 
 (** Rule: Use Expression Candidate
     Detects patterns where the `use` keyword could improve readability.
