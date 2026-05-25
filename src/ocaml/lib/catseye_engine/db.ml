@@ -45,7 +45,7 @@ let is_tainted_in_file (db : t) (var : string) (file : string) : bool =
 let get_tainted_vars (db : t) : string list =
   StringMap.fold (fun _ records acc ->
     List.fold_left (fun acc r -> 
-      if List.mem acc r.var_name ~equal:String.equal then acc 
+      if List.exists acc ~f:(fun s -> String.equal s r.var_name) then acc 
       else r.var_name :: acc
     ) acc records
   ) db [] |> List.rev

@@ -16,7 +16,7 @@ Architectural planning, design decisions, and gap analysis for the Catseye stati
 | `PROJECT_STATUS.md` | Overall project health, known issues, next steps |
 | `security-analysis-gaps.md` | Security gap analysis and implementation tracker |
 | `catseye_false_positives.md` | Known false positive patterns (don't fix) |
-| `code-readability-review-2025-05.md` | Code review findings |
+| `ARCHITECTURE.md` | OCaml/Base environment rules for developers |
 
 ## Archived
 
