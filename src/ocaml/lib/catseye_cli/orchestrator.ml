@@ -1,5 +1,6 @@
 (* lib/catseye_cli/orchestrator.ml *)
 
+open Base
 open Catseye_types
 open Config
 open Discovery
@@ -83,8 +84,12 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
        in
        let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full cmd (Unix.environment ()) in
        let output = Buffer.create 4096 in
-       (try while true do Buffer.add_channel output stdout_ch 4096 done
-        with End_of_file -> ());
+       (* Read until End_of_file — robust even if Crystal crashes mid-stream *)
+       (try while true do
+         let line = input_line stdout_ch in
+         Buffer.add_string output line;
+         Buffer.add_char output '\n'
+       done with End_of_file -> ());
        let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
        let json_str = Buffer.contents output in
        if json_str <> "" then
@@ -627,8 +632,8 @@ let run (config : t) : int =
       (* Skip if rule is globally suppressed *)
       if List.mem f.rule suppressed then false
       (* Check per-rule file glob suppressions *)
-      else if Hashtbl.mem ai_suppress f.rule then
-        let patterns = Hashtbl.find ai_suppress f.rule in
+      else if Map.mem ai_suppress f.rule then
+        let patterns = Map.find ai_suppress f.rule in
         not (List.exists (fun pat ->
           (* Glob matching: ** matches anything including /, * matches within a segment *)
           let star = '*' and quest = '?' and slash = '/' in
@@ -764,9 +769,10 @@ let run (config : t) : int =
         not (List.mem f.Finding.rule suppressed)
       ) all_findings in
     let sup = config.taint_suppress in
-    if Hashtbl.length sup = 0 then filtered
+    let sup = config.taint_suppress in
+    if Map.is_empty sup then filtered
     else List.filter (fun (f : Finding.t) ->
-      match Hashtbl.find_opt sup f.Finding.rule with
+      match Map.find sup f.Finding.rule with
       | None -> true
       | Some patterns ->
         not (List.exists (fun pat ->

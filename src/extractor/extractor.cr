@@ -6,6 +6,11 @@
 #
 # Usage: crystal run src/extractor/extractor.cr -- <file.cr>
 
+
+# Ignore SIGPIPE so writes to a closed pipe don't kill this process.
+# OCaml 5.4's fast I/O may close the read side before Crystal finishes flushing.
+Signal::PIPE.trap { }
+
 require "compiler/crystal/syntax"
 require "json"
 
