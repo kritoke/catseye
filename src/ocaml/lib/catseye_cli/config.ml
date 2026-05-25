@@ -3,30 +3,12 @@
 open Base
 open Stdio
 
-(* Expose stdlib functions that Base shadows *)
+(* Note: Base shadows some stdlib functions, but most have same or similar names.
+   Base.String, Base.List, Base.In_channel provide compatible alternatives.
+   Only equality operators need explicit stdlib access since Base's (=) is polymorphic. *)
 let ( = ) = Stdlib.( = )
 let ( <>) = Stdlib.( <> )
 let ( ^ ) = Stdlib.( ^ )
-let concat = Stdlib.Filename.concat
-let dirname = Stdlib.Filename.dirname
-let file_exists = Stdlib.Sys.file_exists
-let executable_name = Stdlib.Sys.executable_name
-let split_on_char = Stdlib.String.split_on_char
-let std_string_length = Stdlib.String.length
-let std_string_get = Stdlib.String.get
-let std_string_sub = Stdlib.String.sub
-let std_string_index_opt = Stdlib.String.index_opt
-let std_string_rindex_opt = Stdlib.String.rindex_opt
-let std_string_trim = Stdlib.String.trim
-let std_list_filter = Stdlib.List.filter
-let std_list_map = Stdlib.List.map
-let std_list_sort_uniq = Stdlib.List.sort_uniq
-let std_list_mem = Stdlib.List.mem
-let std_compare = Stdlib.compare
-let std_list_exists = Stdlib.List.exists
-let std_in_channel_length = Stdlib.in_channel_length
-let std_really_input = Stdlib.really_input
-let std_close_in = Stdlib.close_in
 
 type output_format =
   | Terminal
@@ -118,10 +100,10 @@ let default = {
 (** Walk up from [dir] looking for .catseye.toml. *)
 let find_config dir =
   let rec walk d =
-    let candidate = concat d ".catseye.toml" in
-    if file_exists candidate then Some candidate
+    let candidate = Filename.concat d ".catseye.toml" in
+    if Sys.file_exists candidate then Some candidate
     else
-      let parent = dirname d in
+      let parent = Filename.dirname d in
       if parent = d then None
       else walk parent
   in
@@ -129,7 +111,7 @@ let find_config dir =
 
 (** Read a string list from a TOML table at the given dotted path. *)
 let get_string_list table path =
-  let keys = split_on_char '.' path in
+  let keys = String.split_on_char '.' path in
   let rec descend tbl = function
     | [] -> None
     | [k] ->
@@ -138,20 +120,20 @@ let get_string_list table path =
         match Table.find (Toml.Min.key k) tbl with
         | TArray (NodeString lst) -> Some lst
         | _ -> None
-      with Not_found -> None)
+      with Not_found_s -> None)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> None
-      with Not_found -> None)
+      with Not_found_s -> None)
   in
   descend table keys
 
 (** Read an integer from a TOML table. *)
 let get_int table path default =
-  let keys = split_on_char '.' path in
+  let keys = String.split_on_char '.' path in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -160,20 +142,20 @@ let get_int table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TInt n -> n
         | _ -> default
-      with Not_found -> default)
+      with Not_found_s -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found -> default)
+      with Not_found_s -> default)
   in
   descend table keys
 
 (** Read a string from a TOML table. *)
 let get_string table path default =
-  let keys = split_on_char '.' path in
+  let keys = String.split_on_char '.' path in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -182,14 +164,14 @@ let get_string table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TString s -> s
         | _ -> default
-      with Not_found -> default)
+      with Not_found_s -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found -> default)
+      with Not_found_s -> default)
   in
   descend table keys
 
@@ -201,33 +183,38 @@ let parse_glob_list_to_map lines section_name =
   let rec process_lines acc = function
     | [] -> acc
     | line :: rest ->
-      let trimmed = std_string_trim line in
+      let trimmed = String.strip line in
       let new_section =
-        if std_string_length trimmed > 0 && trimmed.[0] = '[' then
-          match std_string_index_opt trimmed ']' with
-          | Some i -> std_string_sub trimmed 1 (i - 1)
+        if String.length trimmed > 0 && trimmed.[0] = '[' then
+          match String.index_opt trimmed ']' with
+          | Some i -> String.slice trimmed ~pos:1 ~stop:i
           | None -> !current_section
         else !current_section
       in
       current_section := new_section;
       if new_section = section_name then
-        match std_string_index_opt trimmed '=' with
+        match String.index_opt trimmed '=' with
         | Some eq_pos ->
-            let rule_name = std_string_trim (std_string_sub trimmed 0 eq_pos) in
-            let rest_str = std_string_trim (std_string_sub trimmed (eq_pos + 1) (std_string_length trimmed - eq_pos - 1)) in
-            if std_string_length rest_str >= 2 && rest_str.[0] = '[' then
-              let close_bracket = match std_string_rindex_opt rest_str ']' with
+            let rule_name = String.strip (String.slice trimmed ~pos:0 ~stop:eq_pos) in
+            let rest_str = String.strip (String.slice trimmed ~pos:(eq_pos + 1) ~stop:(String.length trimmed)) in
+            if String.length rest_str >= 2 && rest_str.[0] = '[' then
+              let close_bracket = match String.rindex_opt rest_str ']' with
                 | Some idx -> idx
-                | None -> std_string_length rest_str - 1
+                | None -> String.length rest_str - 1
               in
-              let inner = std_string_sub rest_str 1 (close_bracket - 1) in
-              let pats = std_list_filter (fun s -> std_string_length s > 0) (std_list_map (fun s ->
-                let s = std_string_trim s in
-                if std_string_length s >= 2 && s.[0] = '"' && s.[std_string_length s - 1] = '"' then
-                  std_string_sub s 1 (std_string_length s - 2)
-                else s
-              ) (split_on_char ',' inner)) in
-              if pats <> []
+              let inner = String.slice rest_str ~pos:1 ~stop:close_bracket in
+              let parts = String.split ~on:',' inner in
+              let pats = 
+                parts
+                |> List.filter ~f:(fun s -> String.length s > 0)
+                |> List.map ~f:(fun s ->
+                  let s = String.strip s in
+                  if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
+                    String.slice s ~pos:1 ~stop:(String.length s - 1)
+                  else s
+                )
+              in
+              if not (List.is_empty pats)
               then process_lines (Map.set acc ~key:rule_name ~data:pats) rest
               else process_lines acc rest
             else process_lines acc rest
@@ -241,10 +228,10 @@ let load_toml (path : string) (cfg : t) : t =
   try
     let table =
       let ic = In_channel.create path in
-      let len = std_in_channel_length ic in
-      let buf = Bytes.create len in
-      std_really_input ic buf 0 len;
-      std_close_in ic;
+      let len = In_channel.length ic in
+      let buf = Bytes.create (Int.to_int_exn len) in
+      really_input ic buf ~len:(Int.to_int_exn len);
+      close_in ic;
       Toml.Parser.(from_string (Bytes.to_string buf) |> unsafe) in
     let get_bool table path default =
       match get_int table path (-1) with
@@ -254,7 +241,7 @@ let load_toml (path : string) (cfg : t) : t =
     in
     (* Read raw TOML for suppress sections *)
     let raw_toml = In_channel.read_all path in
-    let toml_lines = split_on_char '\n' raw_toml in
+    let toml_lines = String.split_on_char '\n' raw_toml in
     { cfg with
       lang_filter =
         (match get_string_list table "languages.enabled" with
@@ -267,11 +254,11 @@ let load_toml (path : string) (cfg : t) : t =
                 | All -> ["crystal"; "gleam"]
                 | Only langs -> langs
               in
-              Only (std_list_filter (fun l -> not (std_list_mem l disabled)) all_langs)
+              Only (List.filter all_langs ~f:(fun l -> not (List.mem disabled l)))
             | None -> cfg.lang_filter))
     ; exclude_dirs =
         (match get_string_list table "scan.exclude" with
-         | Some extra -> std_list_sort_uniq std_compare (cfg.exclude_dirs @ extra)
+         | Some extra -> List.sort_uniq String.compare (cfg.exclude_dirs @ extra)
          | None -> cfg.exclude_dirs)
     ; extra_sources = (match get_string_list table "analysis.extra_sources" with Some l -> l | None -> [])
     ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
@@ -324,16 +311,16 @@ let load_toml (path : string) (cfg : t) : t =
     Looks for the crystal binary on PATH, or a pre-compiled extractor binary. *)
 let detect_crystal () : bool =
   (* Check for pre-compiled extractor binary next to the executable *)
-  let exe_dir = dirname (executable_name) in
-  let flat_bin = exe_dir ^ "/catseye-crystal-extractor" in
-  let hier_bin = exe_dir ^ "/catseye-hierarchical-extractor" in
-  if file_exists flat_bin || file_exists hier_bin then true
+  let exe_dir = Filename.dirname Sys.executable_name in
+  let flat_bin = Filename.concat exe_dir "catseye-crystal-extractor" in
+  let hier_bin = Filename.concat exe_dir "catseye-hierarchical-extractor" in
+  if Sys.file_exists flat_bin || Sys.file_exists hier_bin then true
   else
     (* Check for crystal compiler on PATH *)
     try
       let ic = Unix.open_process_in "which crystal 2>/dev/null" in
       let buf = Buffer.create 256 in
-      (try while true do Stdlib.Buffer.add_channel buf ic 1 done
+      (try while true do Buffer.add_channel buf ic 1 done
        with End_of_file -> ());
       let _ = Unix.close_process_in ic in
       Buffer.length buf > 0
@@ -345,7 +332,7 @@ and detect_elixir () : bool =
   try
     let ic = Unix.open_process_in "which mix 2>/dev/null" in
     let buf = Buffer.create 256 in
-    (try while true do Stdlib.Buffer.add_channel buf ic 1 done
+    (try while true do Buffer.add_channel buf ic 1 done
      with End_of_file -> ());
     let _ = Unix.close_process_in ic in
     Buffer.length buf > 0
