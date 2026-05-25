@@ -100,10 +100,10 @@ let default = {
 (** Walk up from [dir] looking for .catseye.toml. *)
 let find_config dir =
   let rec walk d =
-    let candidate = Filename.concat d ".catseye.toml" in
-    if Sys.file_exists candidate then Some candidate
+    let candidate = Stdlib.Filename.concat d ".catseye.toml" in
+    if Stdlib.Sys.file_exists candidate then Some candidate
     else
-      let parent = Filename.dirname d in
+      let parent = Stdlib.Filename.dirname d in
       if parent = d then None
       else walk parent
   in
@@ -111,7 +111,7 @@ let find_config dir =
 
 (** Read a string list from a TOML table at the given dotted path. *)
 let get_string_list table path =
-  let keys = String.split_on_char '.' path in
+  let keys = String.split path ~on:'.' in
   let rec descend tbl = function
     | [] -> None
     | [k] ->
@@ -120,20 +120,20 @@ let get_string_list table path =
         match Table.find (Toml.Min.key k) tbl with
         | TArray (NodeString lst) -> Some lst
         | _ -> None
-      with Not_found_s -> None)
+      with Not_found_s _ -> None)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> None
-      with Not_found_s -> None)
+      with Not_found_s _ -> None)
   in
   descend table keys
 
 (** Read an integer from a TOML table. *)
 let get_int table path default =
-  let keys = String.split_on_char '.' path in
+  let keys = String.split path ~on:'.' in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -142,20 +142,20 @@ let get_int table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TInt n -> n
         | _ -> default
-      with Not_found_s -> default)
+      with Not_found_s _ -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found_s -> default)
+      with Not_found_s _ -> default)
   in
   descend table keys
 
 (** Read a string from a TOML table. *)
 let get_string table path default =
-  let keys = String.split_on_char '.' path in
+  let keys = String.split path ~on:'.' in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -164,14 +164,14 @@ let get_string table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TString s -> s
         | _ -> default
-      with Not_found_s -> default)
+      with Not_found_s _ -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found_s -> default)
+      with Not_found_s _ -> default)
   in
   descend table keys
 
@@ -186,23 +186,23 @@ let parse_glob_list_to_map lines section_name =
       let trimmed = String.strip line in
       let new_section =
         if String.length trimmed > 0 && trimmed.[0] = '[' then
-          match String.index_opt trimmed ']' with
-          | Some i -> String.slice trimmed ~pos:1 ~stop:i
+          match Stdlib.String.index_opt trimmed ']' with
+          | Some i -> String.sub trimmed ~pos:1 ~len:(i - 1)
           | None -> !current_section
         else !current_section
       in
       current_section := new_section;
       if new_section = section_name then
-        match String.index_opt trimmed '=' with
+        match Stdlib.String.index_opt trimmed '=' with
         | Some eq_pos ->
-            let rule_name = String.strip (String.slice trimmed ~pos:0 ~stop:eq_pos) in
-            let rest_str = String.strip (String.slice trimmed ~pos:(eq_pos + 1) ~stop:(String.length trimmed)) in
+            let rule_name = String.strip (String.sub trimmed ~pos:0 ~len:eq_pos) in
+            let rest_str = String.strip (String.sub trimmed ~pos:(eq_pos + 1) ~len:(String.length trimmed - eq_pos - 1)) in
             if String.length rest_str >= 2 && rest_str.[0] = '[' then
-              let close_bracket = match String.rindex_opt rest_str ']' with
-                | Some idx -> idx
-                | None -> String.length rest_str - 1
-              in
-              let inner = String.slice rest_str ~pos:1 ~stop:close_bracket in
+              let close_bracket = match Stdlib.String.rindex_opt rest_str ']' with
+              | Some idx -> idx
+              | None -> String.length rest_str - 1
+            in
+            let inner = String.sub rest_str ~pos:1 ~len:(close_bracket - 1) in
               let parts = String.split ~on:',' inner in
               let pats = 
                 parts
@@ -210,7 +210,7 @@ let parse_glob_list_to_map lines section_name =
                 |> List.map ~f:(fun s ->
                   let s = String.strip s in
                   if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
-                    String.slice s ~pos:1 ~stop:(String.length s - 1)
+                    String.sub s ~pos:1 ~len:(String.length s - 2)
                   else s
                 )
               in
@@ -227,12 +227,8 @@ let parse_glob_list_to_map lines section_name =
 let load_toml (path : string) (cfg : t) : t =
   try
     let table =
-      let ic = In_channel.create path in
-      let len = In_channel.length ic in
-      let buf = Bytes.create (Int.to_int_exn len) in
-      really_input ic buf ~len:(Int.to_int_exn len);
-      close_in ic;
-      Toml.Parser.(from_string (Bytes.to_string buf) |> unsafe) in
+      let contents = In_channel.read_all path in
+      Toml.Parser.(from_string contents |> unsafe) in
     let get_bool table path default =
       match get_int table path (-1) with
       | 0 -> false
@@ -241,7 +237,7 @@ let load_toml (path : string) (cfg : t) : t =
     in
     (* Read raw TOML for suppress sections *)
     let raw_toml = In_channel.read_all path in
-    let toml_lines = String.split_on_char '\n' raw_toml in
+    let toml_lines = String.split raw_toml ~on:'\n' in
     { cfg with
       lang_filter =
         (match get_string_list table "languages.enabled" with
@@ -254,11 +250,20 @@ let load_toml (path : string) (cfg : t) : t =
                 | All -> ["crystal"; "gleam"]
                 | Only langs -> langs
               in
-              Only (List.filter all_langs ~f:(fun l -> not (List.mem disabled l)))
+              Only (List.filter all_langs ~f:(fun l -> not (List.mem disabled l ~equal:String.equal)))
             | None -> cfg.lang_filter))
     ; exclude_dirs =
         (match get_string_list table "scan.exclude" with
-         | Some extra -> List.sort_uniq String.compare (cfg.exclude_dirs @ extra)
+         | Some extra ->
+           let combined = cfg.exclude_dirs @ extra in
+           let sorted = List.sort ~compare:String.compare combined in
+           let rec dedup acc = function
+             | [] -> List.rev acc
+             | [x] -> List.rev (x :: acc)
+             | x :: y :: rest when String.equal x y -> dedup acc (y :: rest)
+             | x :: rest -> dedup (x :: acc) rest
+           in
+           dedup [] sorted
          | None -> cfg.exclude_dirs)
     ; extra_sources = (match get_string_list table "analysis.extra_sources" with Some l -> l | None -> [])
     ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
@@ -311,19 +316,17 @@ let load_toml (path : string) (cfg : t) : t =
     Looks for the crystal binary on PATH, or a pre-compiled extractor binary. *)
 let detect_crystal () : bool =
   (* Check for pre-compiled extractor binary next to the executable *)
-  let exe_dir = Filename.dirname Sys.executable_name in
-  let flat_bin = Filename.concat exe_dir "catseye-crystal-extractor" in
-  let hier_bin = Filename.concat exe_dir "catseye-hierarchical-extractor" in
-  if Sys.file_exists flat_bin || Sys.file_exists hier_bin then true
+  let exe_dir = Stdlib.Filename.dirname Stdlib.Sys.executable_name in
+  let flat_bin = Stdlib.Filename.concat exe_dir "catseye-crystal-extractor" in
+  let hier_bin = Stdlib.Filename.concat exe_dir "catseye-hierarchical-extractor" in
+  if Stdlib.Sys.file_exists flat_bin || Stdlib.Sys.file_exists hier_bin then true
   else
     (* Check for crystal compiler on PATH *)
     try
       let ic = Unix.open_process_in "which crystal 2>/dev/null" in
-      let buf = Buffer.create 256 in
-      (try while true do Buffer.add_channel buf ic 1 done
-       with End_of_file -> ());
+      let output = In_channel.input_lines ic |> String.concat ~sep:"\n" in
       let _ = Unix.close_process_in ic in
-      Buffer.length buf > 0
+      not (String.is_empty (String.strip output))
     with _ -> false
 
 (** Check if Elixir toolchain is available.
@@ -331,11 +334,9 @@ let detect_crystal () : bool =
 and detect_elixir () : bool =
   try
     let ic = Unix.open_process_in "which mix 2>/dev/null" in
-    let buf = Buffer.create 256 in
-    (try while true do Buffer.add_channel buf ic 1 done
-     with End_of_file -> ());
+    let output = In_channel.input_lines ic |> String.concat ~sep:"\n" in
     let _ = Unix.close_process_in ic in
-    Buffer.length buf > 0
+    not (String.is_empty (String.strip output))
   with _ -> false
 
 (** Initialize Crystal extractor registry if toolchain is available.

@@ -58,7 +58,6 @@ let () =
   let by_file = List.map (fun f -> (f, Catseye_engine.Db.get_tainted_vars_in_file db f)) files in
   let ctx = Catseye_rules.Interpreter.make_taint_context
     ~global:tainted ~by_file
-    ~import_map:(Catseye_engine.Symbol_table.build_import_map nodes)
     () in
   
   (* Run rules *)

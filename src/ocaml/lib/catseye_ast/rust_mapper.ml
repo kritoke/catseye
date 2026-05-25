@@ -362,7 +362,7 @@ let parse_with_grammar ~grammar ~path : (t, parse_error) result =
   (* Use --lib-path for native .so parsers, --grammar-path for WASM/compiled grammars *)
   let cmd =
     (* Check if grammar looks like a native .so (exports tree_sitter_rust) *)
-    if Sys.file_exists grammar && not (Sys.is_directory grammar) then
+    if Stdlib.Sys.file_exists grammar && not (Stdlib.Sys.is_directory grammar) then
       (* Native parser - use --lib-path with --lang-name *)
       Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name rust -x '%s' 2>/dev/null" grammar path
     else

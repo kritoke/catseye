@@ -122,7 +122,7 @@ let get_suggestion (name : string) : string =
 
 (* Helper to format sink call into a finding message *)
 let format_sink_message (category : string) (fn_name : string) (fn_arity : int) : string =
-  let arity_str = string_of_int fn_arity in
+  let arity_str = Int.to_string fn_arity in
   "Tainted " ^ category ^ " call in " ^ fn_name ^ "/" ^ arity_str
 
 (* Convert extractor output to Catseye findings *)
@@ -172,7 +172,7 @@ let find_catseye_root (start_dir : string) : string option =
     if depth > 10 then None
     else
       let mix_path = Filename.concat dir "scripts/elixir-extractor/mix.exs" in
-      if Sys.file_exists mix_path then Some dir
+      if Stdlib.Sys.file_exists mix_path then Some dir
       else
         let parent = Filename.concat dir ".." in
         if parent = dir then None
@@ -196,15 +196,15 @@ let realpath (path : string) : string =
 (* Run extractor and return both sink findings and raw JSON for Claws analysis *)
 let extract_with_data (project_dir : string) : (Catseye_types.Finding.t list * Yojson.Safe.t list) =
   (* Find our extractor script by traversing up from current working dir *)
-  let catseye_root = match find_catseye_root (Sys.getcwd ()) with
+  let catseye_root = match find_catseye_root (Stdlib.Sys.getcwd ()) with
     | Some dir -> dir
-    | None -> Sys.getcwd ()
+    | None -> Stdlib.Sys.getcwd ()
   in
   (* Get absolute paths to avoid cd issues with relative paths *)
   let catseye_root_abs = realpath catseye_root in
   let extractor_dir = Filename.concat catseye_root_abs "scripts/elixir-extractor" in
   let extractor_dir_abs = realpath extractor_dir in
-  let has_extractor = Sys.file_exists (Filename.concat extractor_dir_abs "mix.exs") in
+  let has_extractor = Stdlib.Sys.file_exists (Filename.concat extractor_dir_abs "mix.exs") in
   let (status, lines) =
     if has_extractor then
       let cmd = Printf.sprintf "cd %s && MIX_ENV=prod mix run -e 'CatseyeExtractor.run_dir(\"%s\")' 2>&1"

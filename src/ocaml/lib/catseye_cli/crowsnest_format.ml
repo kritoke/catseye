@@ -31,8 +31,8 @@ let osv_summary = function
     let worst = List.hd vulns in
     Printf.sprintf "%s %s" worst.Catseye_crowsnest.Osv.id
       (if worst.Catseye_crowsnest.Osv.summary <> "" then
-         let words = String.split_on_char ' ' worst.Catseye_crowsnest.Osv.summary in
-         String.concat " " (List.filteri (fun i _ -> i < 6) words) ^
+         let words = Stdlib.String.split_on_char ' ' worst.Catseye_crowsnest.Osv.summary in
+         Stdlib.String.concat " " (List.filteri (fun i _ -> i < 6) words) ^
          (if List.length words > 6 then "..." else "")
        else "")
   | Catseye_crowsnest.Osv.Query_failed _ -> "Query failed (offline?)"

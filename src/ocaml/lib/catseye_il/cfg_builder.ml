@@ -131,11 +131,11 @@ let string_of_node = function
   | ILCall (Some lv, fn, args, _) ->
     string_of_lval lv ^ " = " ^ fn ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
   | ILBranch (_, then_, else_, _) ->
-    "if ... then [" ^ string_of_int (List.length then_) ^ " nodes]" ^
-    (match else_ with Some b -> " else [" ^ string_of_int (List.length b) ^ " nodes]" | None -> "")
+    "if ... then [" ^ Int.to_string (List.length then_) ^ " nodes]" ^
+    (match else_ with Some b -> " else [" ^ Int.to_string (List.length b) ^ " nodes]" | None -> "")
   | ILReturn (expr, _) -> "return " ^ string_of_expr expr
   | ILThrow (expr, _) -> "throw " ^ string_of_expr expr
-  | ILResume (block, _) -> "rescue [" ^ string_of_int (List.length block) ^ " nodes]"
+  | ILResume (block, _) -> "rescue [" ^ Int.to_string (List.length block) ^ " nodes]"
 
 let print_cfg (cfg : Cfg_graph.t) : string =
   let buf = Buffer.create 256 in
@@ -148,6 +148,6 @@ let print_cfg (cfg : Cfg_graph.t) : string =
     ) (Cfg_graph.block_nodes cfg vid);
     let succs = Cfg_graph.succ_list cfg vid in
     if succs <> [] then
-      pr "    → %s\n" (String.concat ", " (List.map string_of_int succs))
+      pr "    → %s\n" (String.concat ", " (List.map Int.to_string succs))
   );
   Buffer.contents buf

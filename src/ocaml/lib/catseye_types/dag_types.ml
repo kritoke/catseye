@@ -1,6 +1,10 @@
 (* lib/catseye_types/dag_types.ml
    Vulnerability DAG types — represent multi-path taint flows. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+
 (** A node in the vulnerability DAG. *)
 type node_id = string
 

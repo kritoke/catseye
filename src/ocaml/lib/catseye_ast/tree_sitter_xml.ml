@@ -202,26 +202,26 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
   (* 1. User tree-sitter directory first (~/.tree-sitter/{lang}.so) *)
   (* Native parsers compiled from npm packages are more reliable than nix store *)
   let user_so = Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
-  if Sys.file_exists user_so then Some user_so
+  if Stdlib.Sys.file_exists user_so then Some user_so
   else
     (* 2. Explicit env var *)
-    (match Sys.getenv env_var with
+    (match Stdlib.Sys.getenv env_var with
      | path -> Some path
      | exception Not_found ->
        (* 3. Grammar directory from env *)
-       (match Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
+       (match Stdlib.Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
         | dir ->
           (* Try .so first, then .wasm for WASM-based grammars *)
           let so_path = Filename.concat dir (lang ^ ".so") in
           let wasm_path = Filename.concat dir (lang ^ ".wasm") in
-          if Sys.file_exists so_path then Some so_path
-          else if Sys.file_exists wasm_path then Some wasm_path
+          if Stdlib.Sys.file_exists so_path then Some so_path
+          else if Stdlib.Sys.file_exists wasm_path then Some wasm_path
           else None
         | exception Not_found ->
           (* 4. Bundled grammars next to executable *)
-          let exe_dir = Filename.dirname (Sys.executable_name) in
+          let exe_dir = Filename.dirname (Stdlib.Sys.executable_name) in
           let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
-          if Sys.file_exists bundled then Some bundled
+          if Stdlib.Sys.file_exists bundled then Some bundled
           else
             (* 5. Nix store discovery - look for 'parser' binary in tree-sitter-* dirs *)
             let discovered =
@@ -232,7 +232,7 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
                 let line = try Some (input_line ic) with End_of_file -> None in
                 let _ = Unix.close_process_in ic in
                 (match line with
-                 | Some p when Sys.file_exists p -> Some p
+                 | Some p when Stdlib.Sys.file_exists p -> Some p
                  | _ -> None)
               with _ -> None
             in
@@ -240,5 +240,5 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
              | Some p -> Some p
              | None ->
                (* 6. CWD fallback *)
-               let local = Filename.concat (Sys.getcwd ()) (lang ^ "_parser.so") in
-               if Sys.file_exists local then Some local else None)))
+               let local = Filename.concat (Stdlib.Sys.getcwd ()) (lang ^ "_parser.so") in
+               if Stdlib.Sys.file_exists local then Some local else None)))

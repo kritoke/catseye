@@ -409,7 +409,7 @@ let analyze_unit ?(opts : analyze_opts = default_opts) (unit : il_unit)
   let seen = Hashtbl.create 64 in
   let deduped = List.filter (fun (f : Catseye_types.Finding.t) ->
     let key = f.Catseye_types.Finding.rule ^ ":" ^ f.Catseye_types.Finding.file
-              ^ ":" ^ string_of_int f.Catseye_types.Finding.line in
+              ^ ":" ^ Int.to_string f.Catseye_types.Finding.line in
     if Hashtbl.mem seen key then false
     else (Hashtbl.replace seen key true; true)
   ) !raw in

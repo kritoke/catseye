@@ -9,26 +9,7 @@ open Catseye_ast.Types
 
 module T = Types
 
-(* Expose stdlib functions that may be shadowed *)
-let std_string_sub = Stdlib.String.sub
-let std_string_length = Stdlib.String.length
-let std_string_index_opt = Stdlib.String.index_opt
-let std_string_contains = Stdlib.String.contains
-let std_list_concat_map = Stdlib.List.concat_map
-let std_list_length = Stdlib.List.length
-
-(* String.map for transforming characters *)
-let std_string_map f s =
-  String.init (String.length s) (fun i -> f s.[i])
-
-(* List.hd - head of list *)
-let std_list_hd = List.hd
-
-(* List.fold_left - fold over list from left *)
-let std_list_fold_left = List.fold_left
-
-(* List.sort_uniq - sort and remove duplicates *)
-let std_list_sort_uniq cmp l =
+let list_sort_uniq cmp l =
   let sorted = List.sort (fun a b -> cmp a b) l in
   let rec dedup acc = function
     | [] -> List.rev acc
@@ -231,17 +212,17 @@ let detect_hallucinated_stdlib (m : t) =
       ) (collect_app_names body)
     | _ -> ()
   ) m.mod_items;
-  List.sort_uniq (fun (m1, l1) (m2, l2) ->
+  list_sort_uniq (fun (m1, l1) (m2, l2) ->
     let c = compare l1 l2 in if c <> 0 then c else String.compare m1 m2
   ) !collected
 
 (** Rule 1.2: Legacy/Deprecated Syntax *)
 let detect_deprecated_syntax (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      List.concat_map (fun (name, line) ->
         if name = "puts" then [("puts used for debugging", line)]
         else if name = "p" then [("p used for debugging", line)]
         else if name = "pp" then [("pp used for debugging", line)]
@@ -256,15 +237,15 @@ let detect_deprecated_syntax (m : t) =
     Detect while loops with counter variable and index access patterns
     that could be replaced with .each, .map, .select, etc. *)
 let detect_manual_loop (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_string_sub = Stdlib.String.sub in
-  let std_string_length = Stdlib.String.length in
+  
+  
+  
   let has_suffix s suffix =
-    let sslen = std_string_length s in
-    let slen = std_string_length suffix in
-    sslen >= slen && std_string_sub s (sslen - slen) slen = suffix
+    let sslen = String.length s in
+    let slen = String.length suffix in
+    sslen >= slen && String.sub s (sslen - slen) slen = suffix
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       let calls = collect_app_names body in
@@ -323,8 +304,8 @@ let detect_nil_chaser (m : t) =
         (* Pattern 4: Raising accessor used without rescue *)
         let findings = (match Type_inference.lookup_crystal name with
           | Some { kind = Safe; type_name = "T"; _ } when
-              std_string_length name >= 2 &&
-              std_string_sub name (std_string_length name - 2) 2 = "[]" ->
+              String.length name >= 2 &&
+              String.sub name (String.length name - 2) 2 = "[]" ->
             (Printf.sprintf "%s raises on missing key/index — use []? variant or nil check" name, line) :: findings
           | _ -> findings) in
         findings
@@ -352,19 +333,18 @@ let detect_ignored_return (m : t) =
     "chmod"; "chown"; "chgrp";
     "File.chmod"; "File.chown"; "File.chgrp";
   ] in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let is_important (name : string) =
-    std_list_exists (fun prefix ->
-      std_string_length name >= std_string_length prefix &&
-      std_string_sub name 0 (std_string_length prefix) = prefix
+    List.exists (fun prefix ->
+      String.length name >= String.length prefix &&
+      String.sub name 0 (String.length prefix) = prefix
     ) important_returns
   in
   let rec check_items (items : item list) =
-    std_list_concat_map (fun item ->
+    List.concat_map (fun item ->
       match item.item_value with
       | IFunction (_, _, _, body) ->
-        std_list_concat_map (fun (name, line) ->
+        List.concat_map (fun (name, line) ->
           if is_important name then
             [Printf.sprintf "Return value of %s is discarded — capture and check the result" name, line]
           else []
@@ -377,18 +357,18 @@ let detect_ignored_return (m : t) =
   check_items m.mod_items
 
 let detect_unsafe_pointers (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      List.concat_map (fun (name, line) ->
         if name = "Pointer.malloc" then
           [("Pointer.malloc is unsafe — use Slice or Array for safe memory management", line)]
         else if name = "Pointer.null" then
           [("Pointer.null is unsafe — use Nil or Option(T) for absent values", line)]
         else if name = "Pointer.new" then
           [("Pointer.new is unsafe — consider Slice or a safe wrapper", line)]
-        else if std_string_length name >= 6 && std_string_sub name 0 6 = "unsafe" then
+        else if String.length name >= 6 && String.sub name 0 6 = "unsafe" then
           [(Printf.sprintf "%s bypasses safety checks — use safe alternative if available" name, line)]
         else []
       ) (collect_app_names body)
@@ -397,11 +377,11 @@ let detect_unsafe_pointers (m : t) =
 
 (** Rule: Sleep in production code *)
 let detect_sleep_in_prod (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      List.concat_map (fun (name, line) ->
         if name = "sleep" then [("sleep() in production code — remove or gate behind debug flag", line)]
         else []
       ) (collect_app_names body)
@@ -432,13 +412,12 @@ let detect_hardcoded_secrets (m : t) =
     "eyJ";
     pem_marker;
   ] in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let is_likely_secret (s : string) =
-    std_string_length s >= 20 &&
-    std_list_exists (fun prefix ->
-      std_string_length prefix <= std_string_length s &&
-      std_string_sub s 0 (std_string_length prefix) = prefix
+    String.length s >= 20 &&
+    List.exists (fun prefix ->
+      String.length prefix <= String.length s &&
+      String.sub s 0 (String.length prefix) = prefix
     ) secret_prefixes
   in
   let rec collect_string_literals (e : expr) : (string * int) list =
@@ -447,20 +426,20 @@ let detect_hardcoded_secrets (m : t) =
       [(s, e.expr_location.start.line)]
     | ELiteral _ -> []
     | EApp (fn, args) ->
-      collect_string_literals fn @ std_list_concat_map collect_string_literals args
+      collect_string_literals fn @ List.concat_map collect_string_literals args
     | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
       collect_string_literals e1 @ collect_string_literals e2
     | EIf (_, then_, else_) ->
       collect_string_literals then_ @
       (match else_ with Some e -> collect_string_literals e | None -> [])
-    | EBlock es -> std_list_concat_map collect_string_literals es
+    | EBlock es -> List.concat_map collect_string_literals es
     | _ -> []
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
-      std_list_concat_map (fun (s, line) ->
-        let masked = std_string_sub s 0 (min 8 (std_string_length s)) ^ "..." in
+      List.concat_map (fun (s, line) ->
+        let masked = String.sub s 0 (min 8 (String.length s)) ^ "..." in
         [Printf.sprintf "Potential hardcoded secret in '%s': %s — use environment variables or config" name masked, line]
       ) (collect_string_literals body)
     | _ -> []
@@ -536,23 +515,21 @@ let detect_duplicate_validation (m : t) =
   match m.mod_lang with
   | Crystal -> []
   | _ ->
-  let std_list_filter = Stdlib.List.filter in
-  let std_list_length = Stdlib.List.length in
-  let std_list_iter = Stdlib.List.iter in
+  
   let rec check_item (item : item) =
     match item.item_value with
     | IFunction (_, _, _, body) ->
       let calls = collect_app_names body in
       let validation_methods = ["empty?"; "nil?"; "blank?"; "valid?"; "present?"; "includes?"] in
-      std_list_iter (fun method_name ->
-        let matching = std_list_filter (fun (n, _) ->
-          std_string_length n >= std_string_length method_name &&
-          std_string_sub n (std_string_length n - std_string_length method_name) (std_string_length method_name) = method_name
+      List.iter (fun method_name ->
+        let matching = List.filter (fun (n, _) ->
+          String.length n >= String.length method_name &&
+          String.sub n (String.length n - String.length method_name) (String.length method_name) = method_name
         ) calls in
-        if std_list_length matching >= 3 then
+        if List.length matching >= 3 then
           let line = match matching with (_, l) :: _ -> l | [] -> 0 in
           findings := (Printf.sprintf "%s called %d times — check for duplicate validation logic"
-            method_name (std_list_length matching), line) :: !findings
+            method_name (List.length matching), line) :: !findings
       ) validation_methods
     | _ -> ()
   and findings = ref [] in
@@ -606,12 +583,11 @@ let detect_debug_require (m : t) =
     "debug"; "pry"; "byebug"; "binding_of_caller"; "irb";
     "debugger"; "pry-byebug"; "pry-doc"; "pry-stack_explorer";
   ] in
-  let std_list_mem = Stdlib.List.mem in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IImport (name, _) ->
-      if std_list_mem name debug_requires then
+      if List.mem name debug_requires then
         [let line = item.item_location.start.line in
          (Printf.sprintf "require \"%s\" is a debug dependency — remove for production" name, line)]
       else []
@@ -624,19 +600,17 @@ let detect_debug_require (m : t) =
     Detects rescue/except blocks with empty bodies — errors swallowed silently.
     AI often generates empty rescue blocks as placeholders. *)
 let detect_empty_catch (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_find_map = Stdlib.List.find_map in
+  
   let rec has_empty_rescue (e : expr) =
     match e.expr_value with
     | EApp (fn, args) when get_full_name fn = "rescue" ->
-        let has_body = std_list_exists (fun a ->
+        let has_body = List.exists (fun a ->
           match a.expr_value with
           | EBlock [] | EUnit -> false
           | _ -> true
         ) args in
         if not has_body then Some e.expr_location.start.line else None
-    | EBlock es -> std_list_find_map has_empty_rescue es
+    | EBlock es -> List.find_map has_empty_rescue es
     | ELet (_, e1, e2) ->
         (match has_empty_rescue e1 with Some l -> Some l | None -> has_empty_rescue e2)
     | EIf (_, then_, else_) ->
@@ -645,7 +619,7 @@ let detect_empty_catch (m : t) =
          | None -> (match else_ with Some e -> has_empty_rescue e | None -> None))
     | _ -> None
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       (match has_empty_rescue body with
@@ -658,22 +632,20 @@ let detect_empty_catch (m : t) =
     Detects boolean-style parameters (is_X, should_X, has_X, with_X, no_X).
     AI-generated code often uses flag arguments instead of separate methods or enums. *)
 let detect_flag_argument (m : t) =
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_filter_map = Stdlib.List.filter_map in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let is_flag_name (s : string) =
-    std_string_length s >= 3 &&
+    String.length s >= 3 &&
     let prefixes = ["is_"; "should_"; "has_"; "with_"; "no_"; "use_"; "enable_"; "disable_"] in
-    std_list_exists (fun p -> std_string_length s > std_string_length p && std_string_sub s 0 (std_string_length p) = p) prefixes
+    List.exists (fun p -> String.length s > String.length p && String.sub s 0 (String.length p) = p) prefixes
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (name, patterns, _, _) ->
-      let flag_params = std_list_filter_map (function
+      let flag_params = List.filter_map (function
         | PVar v when is_flag_name v -> Some v
         | _ -> None
       ) patterns in
-      std_list_concat_map (fun p ->
+      List.concat_map (fun p ->
         [let line = item.item_location.start.line in
          (Printf.sprintf "Function '%s' has flag argument '%s' — consider splitting into separate methods or using an enum" name p, line)]
       ) flag_params
@@ -702,23 +674,22 @@ let detect_long_method (m : t) =
         (match else_body with Some e -> count_nodes e | None -> 0)
     | _ -> 1
   in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_fold_left = Stdlib.List.fold_left in
+  
   let rec count_nodes (e : expr) : int =
     match e.expr_value with
-    | EBlock es -> std_list_fold_left (fun acc e -> acc + count_nodes e) 0 es
-    | EApp (_, args) -> 1 + std_list_fold_left (fun acc a -> acc + count_nodes a) 0 args
+    | EBlock es -> List.fold_left (fun acc e -> acc + count_nodes e) 0 es
+    | EApp (_, args) -> 1 + List.fold_left (fun acc a -> acc + count_nodes a) 0 args
     | EIf (_, then_, else_) ->
       1 + count_nodes then_ +
       (match else_ with Some e -> count_nodes e | None -> 0)
     | ELet (_, e1, e2) -> 1 + count_nodes e1 + count_nodes e2
     | ECase (_, branches) ->
-      1 + std_list_fold_left (fun acc (_, body) -> acc + count_nodes body) 0 branches
+      1 + List.fold_left (fun acc (_, body) -> acc + count_nodes body) 0 branches
     | _ -> 1
   in
   let max_nodes = 80 in
   let rec collect_functions (items : item list) =
-    std_list_concat_map (fun item ->
+    List.concat_map (fun item ->
       match item.item_value with
       | IFunction (name, _, _, body) ->
         let count = count_nodes body in
@@ -739,20 +710,17 @@ let detect_long_method (m : t) =
     Detects a function that calls itself with the same argument names
     unchanged — a common AI mistake when generating recursive functions. *)
 let detect_infinite_recursion (m : t) =
-  let std_list_filter_map = Stdlib.List.filter_map in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (fname, params, _, body) ->
-      let param_names = std_list_filter_map (function PVar v -> Some v | _ -> None) params in
+      let param_names = List.filter_map (function PVar v -> Some v | _ -> None) params in
       let calls = collect_app_names body in
-      std_list_iter (fun (name, line) ->
+      List.iter (fun (name, line) ->
         if name = fname then begin
-          let is_unchanged = std_list_exists (fun p ->
-            std_list_exists (fun (n, _) -> n = p) calls
+          let is_unchanged = List.exists (fun p ->
+            List.exists (fun (n, _) -> n = p) calls
           ) param_names in
           if is_unchanged then
             collected := (Printf.sprintf
@@ -772,19 +740,18 @@ let detect_debug_print (m : t) =
     "stderr.puts"; "STDERR.puts"; "STDERR.print"; "STDERR.printf";
     "debug_print"; "debug_puts"; "log.debug";
   ] in
-  let std_list_exists = Stdlib.List.exists in
   let is_debug (name : string) =
-    std_list_exists (fun prefix ->
+    List.exists (fun prefix ->
       name = prefix ||
-      (std_string_length name > std_string_length prefix + 1 &&
-       std_string_sub name (std_string_length name - std_string_length prefix - 1) (std_string_length prefix + 1) = "." ^ prefix)
+      (String.length name > String.length prefix + 1 &&
+       String.sub name (String.length name - String.length prefix - 1) (String.length prefix + 1) = "." ^ prefix)
     ) debug_calls
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_concat_map (fun (name, line) ->
+      List.concat_map (fun (name, line) ->
         if is_debug name then
           [(Printf.sprintf "Debug output via %s — remove or gate behind a debug flag before production" name, line)]
         else []
@@ -801,25 +768,23 @@ let detect_string_interpolation_in_query (m : t) =
     "DB.query"; "DB.exec"; "DB.query_one"; "DB.query_one?";
     "database.query"; "db.query"; "repo.query"; "repo.exec";
   ] in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_find_opt = Stdlib.List.find_opt in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let is_query (name : string) =
-    std_list_exists (fun q ->
-      std_string_length name >= std_string_length q &&
-      std_string_sub name (std_string_length name - std_string_length q) (std_string_length q) = q
+    List.exists (fun q ->
+      String.length name >= String.length q &&
+      String.sub name (String.length name - String.length q) (String.length q) = q
     ) query_methods
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       let calls = collect_app_names body in
-      let has_interpolation = std_list_exists (fun (n, _) ->
+      let has_interpolation = List.exists (fun (n, _) ->
         n = "String.interpolation" || n = "String.concat" || n = "sprintf"
       ) calls in
-      let has_query = std_list_exists (fun (n, _) -> is_query n) calls in
+      let has_query = List.exists (fun (n, _) -> is_query n) calls in
       if has_interpolation && has_query then
-        [let line = match std_list_find_opt (fun (n, _) -> is_query n) calls with
+        [let line = match List.find_opt (fun (n, _) -> is_query n) calls with
           | Some (_, l) -> l | None -> 0
         in ("String interpolation used near database query — use parameterized queries instead", line)]
       else []
@@ -845,8 +810,8 @@ let detect_complex_conditional (m : t) =
         count_bool_ops then_ + (match else_ with Some e -> count_bool_ops e | None -> 0)
     | _ -> 0
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
       let count = count_bool_ops body in
@@ -879,13 +844,12 @@ let detect_message_chain (m : t) =
         find_chains then_ @ (match else_ with Some e -> find_chains e | None -> [])
     | _ -> []
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_iter = Stdlib.List.iter in
+  
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_iter (fun (depth, line) ->
+      List.iter (fun (depth, line) ->
         collected := (Printf.sprintf
           "Call chain has %d segments (max %d) — violates Law of Demeter, use intermediate variables"
           depth max_depth, line) :: !collected
@@ -918,13 +882,12 @@ let detect_nested_ternary (m : t) =
     | ELet (_, e1, e2) -> find_nested_ternaries e1 @ find_nested_ternaries e2
     | _ -> []
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_iter = Stdlib.List.iter in
+  
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      std_list_iter (fun line ->
+      List.iter (fun line ->
         collected := ("Nested ternary expression (3+ levels) — use case/cond for readability", line) :: !collected
       ) (find_nested_ternaries body)
     | _ -> ()
@@ -956,7 +919,7 @@ let detect_data_clump (m : t) =
   (* Find pairs that co-occur in 3+ functions *)
   let pair_counts = Hashtbl.create 64 in
   List.iter (fun params ->
-    let sorted = List.sort_uniq String.compare params in
+    let sorted = list_sort_uniq String.compare params in
     let rec count_pairs = function
       | [] | [_] -> ()
       | a :: rest ->
@@ -975,26 +938,23 @@ let detect_data_clump (m : t) =
     AI often generates repetitive parameter lists instead of grouping into a record. *)
 let detect_data_clump (m : t) =
   let min_co_occurrence = 3 in
-  let std_list_filter_map = Stdlib.List.filter_map in
-  let std_list_sort_uniq = Stdlib.List.sort_uniq in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_length = Stdlib.List.length in
-  let std_list_hd = Stdlib.List.hd in
-  let std_string_map = Stdlib.String.map in
-  let param_sets = std_list_filter_map (fun item ->
+  
+  
+  
+  
+  let param_sets = List.filter_map (fun item ->
     match item.item_value with
     | IFunction (_, params, _, _) ->
-      Some (std_list_filter_map (function PVar v -> Some v | _ -> None) params)
+      Some (List.filter_map (function PVar v -> Some v | _ -> None) params)
     | _ -> None
   ) m.mod_items in
   let pair_counts = Hashtbl.create 64 in
-  std_list_iter (fun params ->
-    let sorted = std_list_sort_uniq String.compare params in
+  List.iter (fun params ->
+    let sorted = list_sort_uniq String.compare params in
     let rec count_pairs = function
       | [] | [_] -> ()
       | a :: rest ->
-        std_list_iter (fun b ->
+        List.iter (fun b ->
           let key = a ^ "," ^ b in
           let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
           Hashtbl.replace pair_counts key (current + 1)
@@ -1003,14 +963,14 @@ let detect_data_clump (m : t) =
     in
     count_pairs sorted
   ) param_sets in
-  let collected = std_list_concat_map (fun (key, count) ->
+  let collected = List.concat_map (fun (key, count) ->
     if count >= min_co_occurrence then
-      let pair_name = std_string_map (fun c -> if c = ',' then ' ' else c) key in
-      let line = std_list_hd m.mod_items |> fun i -> i.item_location.start.line in
+      let pair_name = String.map (fun c -> if c = ',' then ' ' else c) key in
+      let line = List.hd m.mod_items |> fun i -> i.item_location.start.line in
       [Printf.sprintf "Parameters %s appear together in %d functions — consider grouping into a record" pair_name count, line]
     else []
   ) (Hashtbl.fold (fun key count acc -> (key, count) :: acc) pair_counts []) in
-  std_list_sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) collected
+  list_sort_uniq (fun (_, l1) (_, l2) -> compare l1 l2) collected
 
 (** Rule: Feature Envy
     Detects functions that make most of their calls on a single external type.
@@ -1019,17 +979,16 @@ let detect_feature_envy (m : t) =
   let min_calls = 5 in
   let envy_threshold = 0.7 in
   let collected = ref [] in
-  let std_list_iter = Stdlib.List.iter in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
       let calls = collect_app_names body in
       (* Count calls by receiver prefix *)
       let receiver_counts = Hashtbl.create 16 in
-      std_list_iter (fun (call_name, _) ->
-        (match std_string_index_opt call_name '.' with
+      List.iter (fun (call_name, _) ->
+        (match String.index_opt call_name '.' with
          | Some idx ->
-             let receiver = std_string_sub call_name 0 idx in
+             let receiver = String.sub call_name 0 idx in
              let current = try Hashtbl.find receiver_counts receiver with Not_found -> 0 in
              Hashtbl.replace receiver_counts receiver (current + 1)
          | None -> ());
@@ -1067,21 +1026,20 @@ let detect_dead_code_after_error (m : t) =
   match m.mod_lang with
   | Crystal -> []
   | _ ->
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan_block (exprs : expr list) : (string * int) list =
     match exprs with
     | [] | [_] -> []
     | e :: rest ->
       let results = (match e.expr_value with
        | EError _ ->
-         std_list_concat_map (fun dead ->
+         List.concat_map (fun dead ->
            [Printf.sprintf "Unreachable code after raise/error on line %d" e.expr_location.start.line,
             dead.expr_location.start.line]
          ) rest
        | EIf (_, then_, else_) ->
          let then_results = (match then_.expr_value with EError _ ->
-           std_list_concat_map (fun dead ->
+           List.concat_map (fun dead ->
              [Printf.sprintf "Unreachable code after raise in conditional on line %d"
                then_.expr_location.start.line, dead.expr_location.start.line]
            ) rest
@@ -1089,7 +1047,7 @@ let detect_dead_code_after_error (m : t) =
          let else_results = (match else_ with
           | Some e2 -> (match e2.expr_value with
             | EError _ ->
-              std_list_concat_map (fun dead ->
+              List.concat_map (fun dead ->
                 [Printf.sprintf "Unreachable code after raise in conditional on line %d"
                   e2.expr_location.start.line, dead.expr_location.start.line]
               ) rest
@@ -1099,7 +1057,7 @@ let detect_dead_code_after_error (m : t) =
        | _ -> []) in
       results @ scan_block rest
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       (match body.expr_value with
@@ -1115,19 +1073,16 @@ let detect_dead_code_after_error (m : t) =
     This is a non-atomic operation that creates a race window.
     Suggest using File.atomic_write or setting permissions during creation. *)
 let detect_non_atomic_file_op (m : t) =
-  let std_list_filter = Stdlib.List.filter in
-  let std_list_mem = Stdlib.List.mem in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec check_items (items : item list) =
-    std_list_concat_map (fun item ->
+    List.concat_map (fun item ->
       match item.item_value with
       | IFunction (_name, _, _, body) ->
         let calls = collect_app_names body in
-        let perm_calls = std_list_filter (fun (call_name, _) ->
-          std_list_mem call_name ["chmod"; "chown"; "chgrp"; "File.chmod"; "File.chown"; "File.chgrp"]
+        let perm_calls = List.filter (fun (call_name, _) ->
+          List.mem call_name ["chmod"; "chown"; "chgrp"; "File.chmod"; "File.chown"; "File.chgrp"]
         ) calls in
-        std_list_concat_map (fun (perm_call, perm_line) ->
+        List.concat_map (fun (perm_call, perm_line) ->
           [Printf.sprintf
             "Non-atomic file operation: %s should be combined with file creation or use File.atomic_write with proper permissions"
             perm_call, perm_line]
@@ -1147,16 +1102,15 @@ let detect_unbounded_file_read (m : t) =
     "File.read"; "File.read?";
     "IO.copy";
   ] in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec check_items (items : item list) =
-    std_list_concat_map (fun item ->
+    List.concat_map (fun item ->
       match item.item_value with
       | IFunction (_name, _, _, body) ->
-        std_list_concat_map (fun (call_name, line) ->
-          if std_list_exists (fun p ->
-            std_string_length call_name >= std_string_length p &&
-            std_string_sub call_name 0 (std_string_length p) = p
+        List.concat_map (fun (call_name, line) ->
+          if List.exists (fun p ->
+            String.length call_name >= String.length p &&
+            String.sub call_name 0 (String.length p) = p
           ) unbounded_reads then
             [let msg = Printf.sprintf "Unbounded file read: %s loads entire file into memory - OOM risk for large files" call_name in (msg, line)]
           else []
@@ -1184,9 +1138,8 @@ let detect_callback_hell (m : t) =
     | EApp (fn, args) -> max (fn_depth fn) (List.fold_left (fun acc a -> max acc (fn_depth a)) 0 args)
     | _ -> 0
   in
-  let std_list_iter = Stdlib.List.iter in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
       let depth = fn_depth body in
@@ -1205,38 +1158,36 @@ let detect_repeated_regex (m : t) =
   let module StringMap = Map.Make(String) in
   let regex_by_func = StringMap.empty in
   let regex_locations = StringMap.empty in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_map = Stdlib.List.map in
-  let std_string_contains = Stdlib.String.contains in
+  
   let rec collect_regexes (e : expr) : string list =
     match e.expr_value with
     | ELiteral (LString s) when
-        std_string_length s >= 3 &&
-        (std_string_length s >= 2 && std_string_sub s 0 1 = "/" ||
-         std_string_length s >= 3 && std_string_sub s 0 2 = "r/") ->
+        String.length s >= 3 &&
+        (String.length s >= 2 && String.sub s 0 1 = "/" ||
+         String.length s >= 3 && String.sub s 0 2 = "r/") ->
         [s]
     | ELiteral (LString s) when
-        std_string_length s >= 4 &&
-        (std_string_sub s 0 1 = "^" || std_string_sub s (std_string_length s - 1) 1 = "$") &&
-        std_list_exists (fun c -> std_string_contains s c) ['.'; '*'; '+'; '?'; '['; '('; '|'] ->
+        String.length s >= 4 &&
+        (String.sub s 0 1 = "^" || String.sub s (String.length s - 1) 1 = "$") &&
+        List.exists (fun c -> String.contains s c) ['.'; '*'; '+'; '?'; '['; '('; '|'] ->
         [s]
-    | EBlock es -> std_list_concat_map collect_regexes es
+    | EBlock es -> List.concat_map collect_regexes es
     | ELet (_, e1, e2) -> collect_regexes e1 @ collect_regexes e2
-    | EApp (fn, args) -> collect_regexes fn @ std_list_concat_map collect_regexes args
+    | EApp (fn, args) -> collect_regexes fn @ List.concat_map collect_regexes args
     | EIf (_, then_, else_) ->
         collect_regexes then_ @ (match else_ with Some e -> collect_regexes e | None -> [])
     | _ -> []
   in
   let (regex_by_func, regex_locations) =
-    std_list_fold_left (fun (by_func, locs) item ->
+    List.fold_left (fun (by_func, locs) item ->
       match item.item_value with
       | IFunction (name, _, _, body) ->
         let rx_list = collect_regexes body in
-        let new_by_func = std_list_fold_left (fun acc rx ->
+        let new_by_func = List.fold_left (fun acc rx ->
           let funcs = try StringMap.find rx acc with Not_found -> [] in
           StringMap.add rx (name :: funcs) acc
         ) by_func rx_list in
-        let new_locs = std_list_fold_left (fun acc rx ->
+        let new_locs = List.fold_left (fun acc rx ->
           let line = item.item_location.start.line in
           let existing = try StringMap.find rx acc with Not_found -> [] in
           StringMap.add rx ((name, line) :: existing) acc
@@ -1244,10 +1195,10 @@ let detect_repeated_regex (m : t) =
         (new_by_func, new_locs)
       | _ -> (by_func, locs)
     ) (regex_by_func, regex_locations) m.mod_items in
-  std_list_concat_map (fun (rx, locations) ->
-    if std_list_length locations >= 2 then
-      let funcs = String.concat ", " (std_list_map fst locations) in
-      let _, line = std_list_hd locations in
+  List.concat_map (fun (rx, locations) ->
+    if List.length locations >= 2 then
+      let funcs = String.concat ", " (List.map fst locations) in
+      let _, line = List.hd locations in
       [Printf.sprintf "Regex %s duplicated in functions: %s — extract to a constant" rx funcs, line]
     else []
   ) (StringMap.bindings regex_locations)
@@ -1260,13 +1211,12 @@ let detect_repeated_regex (m : t) =
     grouping into a configuration record/struct. *)
 let detect_too_many_params (m : t) =
   let max_params = 6 in
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_length = Stdlib.List.length in
+  
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (name, params, _, _) ->
-      let count = std_list_length params in
+      let count = List.length params in
       if count > max_params then
         collected := (Printf.sprintf
           "Function '%s' has %d parameters (max %d) — group into a configuration record"
@@ -1282,22 +1232,22 @@ let detect_too_many_params (m : t) =
     AI often generates bare 'rescue' or 'rescue ex' instead of 'rescue SpecificError'.
     Catches everything including SignalException, NoMemoryError etc. *)
 let detect_open_rescue (m : t) =
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EApp (fn, args) ->
       (if get_full_name fn = "rescue" then
         [("Open rescue catches all exceptions — specify the exception type (e.g. rescue ArgumentError)", e.expr_location.start.line)]
       else []) @
-      scan fn @ std_list_concat_map scan args
-    | EBlock es -> std_list_concat_map scan es
+      scan fn @ List.concat_map scan args
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) -> scan body
     | _ -> []
@@ -1309,8 +1259,7 @@ let detect_open_rescue (m : t) =
     Missing else means nil is implicitly returned for the false branch.
     AI often forgets the else branch, causing unexpected nil values. *)
 let detect_missing_else (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EIf (cond, then_, None) ->
@@ -1318,13 +1267,13 @@ let detect_missing_else (m : t) =
       @ scan cond @ scan then_
     | EIf (cond, then_, Some else_) ->
       scan cond @ scan then_ @ scan else_
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1339,8 +1288,7 @@ let detect_missing_else (m : t) =
     AI sometimes mutates variables in conditions, leading to subtle bugs
     and hard-to-read code. *)
 let detect_reassignment_in_condition (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EIf (cond, then_, else_) ->
@@ -1349,14 +1297,14 @@ let detect_reassignment_in_condition (m : t) =
          [("Assignment inside if condition — extract to a separate binding for clarity", cond.expr_location.start.line)]
        | _ -> []) @
       scan cond @ scan then_ @ (match else_ with Some e -> scan e | None -> [])
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
-    | ECase (_, branches) -> std_list_concat_map (fun (_, e) -> scan e) branches
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> scan e) branches
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1383,8 +1331,7 @@ let detect_unreachable_code (m : t) =
   match m.mod_lang with
   | Crystal -> []
   | _ ->
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let is_terminal (e : expr) =
     match e.expr_value with
     | EError _ -> true
@@ -1397,7 +1344,7 @@ let detect_unreachable_code (m : t) =
   let rec scan_block terminal_line = function
     | [] | [_] -> []
     | e :: rest when is_terminal e ->
-      std_list_concat_map (fun dead ->
+      List.concat_map (fun dead ->
         [Printf.sprintf "Unreachable code after terminal statement on line %d"
           terminal_line, dead.expr_location.start.line]
       ) rest
@@ -1409,21 +1356,21 @@ let detect_unreachable_code (m : t) =
       let dead = (match es with
         | [] -> []
         | terminal :: _ when is_terminal terminal ->
-          std_list_concat_map (fun dead ->
+          List.concat_map (fun dead ->
             [Printf.sprintf "Unreachable code after terminal statement on line %d"
               terminal.expr_location.start.line, dead.expr_location.start.line]
           ) (List.tl es)
         | _ -> []) in
-      dead @ std_list_concat_map scan es
+      dead @ List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
-    | ECase (_, branches) -> std_list_concat_map (fun (_, e) -> scan e) branches
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> scan e) branches
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1439,27 +1386,24 @@ let detect_unreachable_code (m : t) =
     Indicates the function should be split or use method dispatch. *)
 let detect_type_checker_abuse (m : t) =
   let max_checks = 2 in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_filter = Stdlib.List.filter in
-  let std_list_length = Stdlib.List.length in
-  let std_list_iter = Stdlib.List.iter in
+  
   let is_type_check (name : string) =
-    std_string_length name >= 5 &&
+    String.length name >= 5 &&
     let suffixes = ["is_a?"; "responds_to?"; "kind_of?"; "nil?"; "is_a"] in
-    std_list_exists (fun s ->
-      std_string_length name >= std_string_length s &&
-      std_string_sub name (std_string_length name - std_string_length s) (std_string_length s) = s
+    List.exists (fun s ->
+      String.length name >= String.length s &&
+      String.sub name (String.length name - String.length s) (String.length s) = s
     ) suffixes
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
-      let checks = std_list_filter (fun (n, _) -> is_type_check n) (collect_app_names body) in
-      if std_list_length checks > max_checks then
+      let checks = List.filter (fun (n, _) -> is_type_check n) (collect_app_names body) in
+      if List.length checks > max_checks then
         collected := (Printf.sprintf
           "Function '%s' has %d type-check calls (max %d) — use polymorphism or overloads"
-          name (std_list_length checks) max_checks, item.item_location.start.line) :: !collected
+          name (List.length checks) max_checks, item.item_location.start.line) :: !collected
     | _ -> ()
   ) m.mod_items;
   !collected
@@ -1471,13 +1415,11 @@ let detect_type_checker_abuse (m : t) =
 let detect_hardcoded_port (m : t) =
   let common_ports = [80; 443; 3000; 4000; 5000; 8000; 8080; 8443; 9090] in
   let network_prefixes = ["HTTP::"; "http"; "TCPServer"; "TCPSocket"; "URI"; "socket"] in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_mem = Stdlib.List.mem in
   let is_network_context (calls : (string * int) list) =
-    std_list_exists (fun (n, _) ->
-      std_list_exists (fun prefix ->
-        std_string_length n >= std_string_length prefix &&
-        std_string_sub n 0 (std_string_length prefix) = prefix
+    List.exists (fun (n, _) ->
+      List.exists (fun prefix ->
+        String.length n >= String.length prefix &&
+        String.sub n 0 (String.length prefix) = prefix
       ) network_prefixes
     ) calls
   in
@@ -1486,20 +1428,20 @@ let detect_hardcoded_port (m : t) =
     | ELiteral (LInt i) ->
       let port_val = int_of_string_opt i in
       (match port_val with
-       | Some v when std_list_mem v common_ports -> [(v, e.expr_location.start.line)]
+       | Some v when List.mem v common_ports -> [(v, e.expr_location.start.line)]
        | _ -> [])
     | EBlock es -> List.concat_map find_port_literals es
     | ELet (_, e1, e2) -> find_port_literals e1 @ find_port_literals e2
     | EApp (fn, args) -> find_port_literals fn @ List.concat_map find_port_literals args
     | _ -> []
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun item ->
+  
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       let calls = collect_app_names body in
       if is_network_context calls then
-        std_list_concat_map (fun (port, line) ->
+        List.concat_map (fun (port, line) ->
           [Printf.sprintf "Hardcoded port %d in network context — use environment variable or config" port, line]
         ) (find_port_literals body)
       else []
@@ -1513,24 +1455,23 @@ let detect_hardcoded_port (m : t) =
     AI often generates 'unless condition else ...' which should be
     rewritten as 'if condition ... else ...'. *)
 let detect_unless_with_else (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_length = Stdlib.List.length in
+  
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EApp (fn, args) ->
-      (if get_full_name fn = "unless" && std_list_length args >= 2 then
+      (if get_full_name fn = "unless" && List.length args >= 2 then
         [("unless with else is a double-negative — rewrite as if/else", e.expr_location.start.line)]
       else []) @
-      scan fn @ std_list_concat_map scan args
-    | EBlock es -> std_list_concat_map scan es
+      scan fn @ List.concat_map scan args
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1545,22 +1486,21 @@ let detect_unless_with_else (m : t) =
     AI trained on Ruby often uses $globals which are a code smell in Crystal.
     Use class variables, constants, or module-level state instead. *)
 let detect_global_variable (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
-    | EVar v when std_string_length v > 1 && std_string_sub v 0 1 = "$" ->
+    | EVar v when String.length v > 1 && String.sub v 0 1 = "$" ->
       [Printf.sprintf "Global variable $%s — use a constant or module-level binding instead"
-        (std_string_sub v 1 (std_string_length v - 1)), e.expr_location.start.line]
-    | EBlock es -> std_list_concat_map scan es
+        (String.sub v 1 (String.length v - 1)), e.expr_location.start.line]
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
-    | ECase (_, branches) -> std_list_concat_map (fun (_, e) -> scan e) branches
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
+    | ECase (_, branches) -> List.concat_map (fun (_, e) -> scan e) branches
     | _ -> []
   in
-  std_list_concat_map (fun item ->
+  List.concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) -> scan body
     | _ -> []
@@ -1571,28 +1511,24 @@ let detect_global_variable (m : t) =
     Float equality is unreliable due to precision — use delta comparison.
     AI often generates naive float == float checks. *)
 let detect_float_equality (m : t) =
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_for_all = Stdlib.List.for_all in
-  let std_list_init = Stdlib.List.init in
-  let std_list_iter = Stdlib.List.iter in
   let is_float_expr (e : expr) =
     match e.expr_value with
     | ELiteral (LFloat _) -> true
     | ELiteral (LString s) ->
-      std_string_length s > 0 &&
-      let has_dot = std_string_contains s '.' in
-      let is_num = std_list_for_all (fun c -> Char.code c >= 48 && Char.code c <= 57 || c = '.')
-        (std_list_init (std_string_length s) (fun i -> s.[i])) in
+      String.length s > 0 &&
+      let has_dot = String.contains s '.' in
+      let is_num = List.for_all (fun c -> Char.code c >= 48 && Char.code c <= 57 || c = '.')
+        (List.init (String.length s) (fun i -> s.[i])) in
       has_dot && is_num
     | _ -> false
   in
   let is_float_fn (name : string) =
-    std_list_exists (fun s ->
-      std_string_length name >= std_string_length s &&
-      std_string_sub name (std_string_length name - std_string_length s) (std_string_length s) = s
+    List.exists (fun s ->
+      String.length name >= String.length s &&
+      String.sub name (String.length name - String.length s) (String.length s) = s
     ) ["to_f"; ".floor"; ".ceil"; ".round"; ".abs"; "Float"; "rand"]
   in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EBinOp (e1, op, e2) when op = "==" || op = "!=" ->
@@ -1602,15 +1538,15 @@ let detect_float_equality (m : t) =
           e.expr_location.start.line)]
       else []) @
       scan e1 @ scan e2
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1634,11 +1570,10 @@ let detect_sequential_blocking (m : t) =
   let blocking_prefixes = [
     "HTTP::Client"; "DB."; "File."; "Process";
   ] in
-  let std_list_exists = Stdlib.List.exists in
   let is_blocking (name : string) =
-    std_list_exists (fun prefix ->
-      std_string_length name >= std_string_length prefix &&
-      std_string_sub name 0 (std_string_length prefix) = prefix
+    List.exists (fun prefix ->
+      String.length name >= String.length prefix &&
+      String.sub name 0 (String.length prefix) = prefix
     ) blocking_prefixes
   in
   let rec collect_blocking_calls (e : expr) : string list =
@@ -1654,14 +1589,13 @@ let detect_sequential_blocking (m : t) =
       (match else_ with Some e -> collect_blocking_calls e | None -> [])
     | _ -> []
   in
-  let std_list_length = Stdlib.List.length in
-  let std_list_iter = Stdlib.List.iter in
+  
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
       let blocking_calls = collect_blocking_calls body in
-      let count = std_list_length blocking_calls in
+      let count = List.length blocking_calls in
       if count >= 3 then
         collected := (Printf.sprintf
           "Function '%s' has %d sequential blocking calls — consider parallelizing with spawn/fiber"
@@ -1674,8 +1608,7 @@ let detect_sequential_blocking (m : t) =
     Detects str == "" or str != "" instead of str.empty?.
     AI often generates string comparisons instead of using the idiomatic method. *)
 let detect_empty_string_comparison (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EBinOp (e1, op, e2) when op = "==" || op = "!=" ->
@@ -1684,15 +1617,15 @@ let detect_empty_string_comparison (m : t) =
          [("Compare with empty string using .empty? instead of == \"\"", e.expr_location.start.line)]
        | _ -> []) @
       scan e1 @ scan e2
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1704,8 +1637,7 @@ let detect_empty_string_comparison (m : t) =
     Detects not(x == y) instead of x != y, or not(x != y) instead of x == y.
     AI sometimes generates inverted comparisons that are harder to read. *)
 let detect_negated_comparison (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EApp (fn, [arg]) when get_full_name fn = "not" || get_full_name fn = "!" ->
@@ -1714,15 +1646,15 @@ let detect_negated_comparison (m : t) =
          [Printf.sprintf "not(x %s y) is clearer written with the negated operator" op, e.expr_location.start.line]
        | _ -> []) @
       scan arg
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1741,12 +1673,10 @@ let detect_string_concat_loop (m : t) =
   match m.mod_lang with
   | Crystal -> []
   | _ ->
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_list_mem = Stdlib.List.mem in
+  
   let rec find_concat_in_iter (e : expr) : (string * int) list =
     match e.expr_value with
-    | EBlock es -> std_list_concat_map find_concat_in_iter es
+    | EBlock es -> List.concat_map find_concat_in_iter es
     | EApp (fn, [arg]) when is_iterator_method (get_full_name fn) ->
       (match arg.expr_value with
        | EFn (_, body) -> find_concat_in_iter body
@@ -1756,15 +1686,15 @@ let detect_string_concat_loop (m : t) =
     | ELet (_, _, body) -> find_concat_in_iter body
     | EIf (_, then_, else_) ->
       find_concat_in_iter then_ @ (match else_ with Some x -> find_concat_in_iter x | None -> [])
-    | ECase (_, branches) -> std_list_concat_map (fun (_, body) -> find_concat_in_iter body) branches
+    | ECase (_, branches) -> List.concat_map (fun (_, body) -> find_concat_in_iter body) branches
     | _ -> []
   and is_iterator_method (name : string) =
-    std_list_mem name ["each"; "map"; "select"; "reject"; "transform"; "each_with_index"]
+    List.mem name ["each"; "map"; "select"; "reject"; "transform"; "each_with_index"]
   and is_string_concat (name : string) =
     name = "String.+" || name = "+@" || name = "+"
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := find_concat_in_iter body @ !collected
@@ -1776,46 +1706,43 @@ let detect_string_concat_loop (m : t) =
     Detects accesses to instance variables without defensive checks.
     This is a heuristic rule - actual nil-safety depends on type declarations. *)
 let detect_nilable_ivar_access (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_exists = Stdlib.List.exists in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  let std_string_ends_with = Stdlib.String.ends_with in
+  
   let rec find_ivar_accesses (e : expr) : (string * int) list =
     match e.expr_value with
     | EFieldAccess ({ expr_value = EVar name; _ }, field)
-      when std_string_length name > 0 && std_string_sub name 0 1 = "@" ->
-      if std_string_length name >= 2 && std_string_sub name 1 1 = "@" then []
+      when String.length name > 0 && String.sub name 0 1 = "@" ->
+      if String.length name >= 2 && String.sub name 1 1 = "@" then []
       else [(name ^ "." ^ field, e.expr_location.start.line)]
-    | EVar name when std_string_length name > 0 && std_string_sub name 0 1 = "@" ->
-      if std_string_length name >= 2 && std_string_sub name 1 1 = "@" then []
+    | EVar name when String.length name > 0 && String.sub name 0 1 = "@" ->
+      if String.length name >= 2 && String.sub name 1 1 = "@" then []
       else [(name, e.expr_location.start.line)]
-    | EBlock es -> std_list_concat_map find_ivar_accesses es
+    | EBlock es -> List.concat_map find_ivar_accesses es
     | ELet (_, _, body) -> find_ivar_accesses body
     | EApp (fn, args) ->
-      std_list_concat_map find_ivar_accesses (fn :: args)
+      List.concat_map find_ivar_accesses (fn :: args)
     | EIf (_, then_, else_) ->
       find_ivar_accesses then_ @ (match else_ with Some x -> find_ivar_accesses x | None -> [])
     | ECase (_, branches) ->
-      std_list_concat_map (fun (_, body) -> find_ivar_accesses body) branches
+      List.concat_map (fun (_, body) -> find_ivar_accesses body) branches
     | _ -> []
   in
   let rec has_defensive_check (e : expr) : bool =
     match e.expr_value with
     | EApp (fn, _) ->
       let name = get_full_name fn in
-      name = "not_nil!" || name = "try" || std_string_ends_with name ".try"
+      name = "not_nil!" || name = "try" || String.ends_with name ".try"
     | EIf (_, then_, else_) ->
       has_defensive_check then_ || (match else_ with Some x -> has_defensive_check x | None -> false)
     | ECase (_, branches) ->
-      std_list_exists (fun (_, body) -> has_defensive_check body) branches
+      List.exists (fun (_, body) -> has_defensive_check body) branches
     | _ -> false
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       let ivar_accesses = find_ivar_accesses body in
-      std_list_iter (fun (ivar, line) ->
+      List.iter (fun (ivar, line) ->
         if not (has_defensive_check body) then
           collected := (Printf.sprintf "Instance var '%s' access — verify nil-safety" ivar, line) :: !collected
       ) ivar_accesses
@@ -1829,25 +1756,24 @@ let detect_nilable_ivar_access (m : t) =
     Detects explicit self. method calls where implicit self would suffice.
     AI trained on Python/Ruby often adds unnecessary self. prefixes. *)
 let detect_redundant_self (m : t) =
-  let std_list_iter = Stdlib.List.iter in
-  let std_list_concat_map = Stdlib.List.concat_map in
+  
   let rec scan (e : expr) =
     match e.expr_value with
     | EFieldAccess (recv, field) ->
       (match recv.expr_value with
-       | EVar v when v = "self" && std_string_length field > 0 ->
+       | EVar v when v = "self" && String.length field > 0 ->
          [Printf.sprintf "self.%s is redundant — method calls are implicitly on self" field, e.expr_location.start.line]
        | _ -> []) @
       scan recv
-    | EBlock es -> std_list_concat_map scan es
+    | EBlock es -> List.concat_map scan es
     | ELet (_, e1, e2) -> scan e1 @ scan e2
-    | EApp (fn, args) -> scan fn @ std_list_concat_map scan args
+    | EApp (fn, args) -> scan fn @ List.concat_map scan args
     | EIf (_, then_, else_) ->
       scan then_ @ (match else_ with Some e -> scan e | None -> [])
     | _ -> []
   in
   let collected = ref [] in
-  std_list_iter (fun item ->
+  List.iter (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
       collected := scan body @ !collected
@@ -1957,12 +1883,10 @@ let analyze_module (m : t) : Types.finding list =
   (* Get file path for test/exempt filtering *)
   let file_path = m.mod_path in
   let is_test = is_test_or_spec_file file_path in
-  let std_list_mem = Stdlib.List.mem in
-  let std_list_map = Stdlib.List.map in
-  let std_list_concat_map = Stdlib.List.concat_map in
-  std_list_concat_map (fun (rule_id, sev, detector) ->
+  
+  List.concat_map (fun (rule_id, sev, detector) ->
     (* Skip certain rules for test files *)
-    if is_test && std_list_mem rule_id [
+    if is_test && List.mem rule_id [
       "deprecated-syntax";  (* puts/p/pp are fine in tests *)
       "ignored-return";     (* return values often ignored in test helpers *)
       "primitive-obsession"; (* many params are fine in test data setup *)
@@ -1970,7 +1894,7 @@ let analyze_module (m : t) : Types.finding list =
       "debug-print";
       "hallucinated-stdlib";
     ] then []
-    else std_list_map (fun (msg, line) ->
+    else List.map (fun (msg, line) ->
       { Types.file = file_path;
         Types.line = line;
         Types.rule_id = rule_id;

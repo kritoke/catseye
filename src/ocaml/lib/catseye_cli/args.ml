@@ -1,5 +1,5 @@
 (* lib/catseye_cli/args.ml *)
-(* Type-safe CLI using Core.Command *)
+(* CLI argument parsing *)
 
 open Base
 
@@ -15,293 +15,182 @@ let format_of_string = function
 
 let lang_of_string = function
   | "all" -> Config.All
-  | s -> Config.Only (String.split_on_char ',' s)
+  | s -> Config.Only (String.split s ~on:',')
 
 (* ── Path Resolution ─────────────────────────────────────────────────── *)
 
-(** Resolve a path to absolute, using [base] as the reference directory.
-    If already absolute, return as-is. *)
 let resolve_path ~(base : string) (path : string) : string =
-  if Filename.is_relative path then Filename.concat base path
+  if Stdlib.Filename.is_relative path then Stdlib.Filename.concat base path
   else path
 
-(** Get executable directory for finding bundled extractors.
-    Uses Sys.executable_name to locate the running binary. *)
 let get_exe_dir () : string =
-  Filename.dirname Sys.executable_name
+  Stdlib.Filename.dirname Stdlib.Sys.executable_name
 
-(* ── Core.Command Construction ───────────────────────────────────────── *)
+(* ── Help text ───────────────────────────────────────────────────────── *)
 
-let command =
-  let open Command in
-  let open Command.Param in
-  
-  (* Flag definitions *)
-  let format_flag =
-    flag "--format" ~doc:"FMT Output format: terminal (default), json, sarif, markdown, dot"
-      (optional_with_default "terminal" string)
-  in
-  let lang_flag =
-    flag "--lang" ~doc:"LANGS Language filter: all (default), crystal, gleam, or comma-separated list"
-      (optional_with_default "all" string)
-  in
-  let output_flag =
-    flag "--output" ~doc:"PATH Write results to file"
-      (optional string)
-  in
-  let config_flag =
-    flag "--config" ~doc:"PATH Config file path (default: .catseye.toml)"
-      (optional string)
-  in
-  let rules_flag =
-    flag "--rules" ~doc:"PATH Rules directory (default: rules/)"
-      (optional string)
-  in
-  let no_color_flag =
-    flag "--no-color" ~doc:" Disable colored output"
-      no_arg
-  in
-  let no_cache_flag =
-    flag "--no-cache" ~doc:" Disable extraction cache"
-      no_arg
-  in
-  let clear_cache_flag =
-    flag "--clear-cache" ~doc:" Clear cache and run fuller scan"
-      no_arg
-  in
-  let cache_dir_flag =
-    flag "--cache-dir" ~doc:"PATH Cache directory (default: .catseye)"
-      (optional string)
-  in
-  let predator_vision_flag =
-    flag "--predator-vision" ~aliases:["-pv"] ~doc:" Enable reachability heatmap"
-      no_arg
-  in
-  let crows_nest_flag =
-    flag "--crows-nest" ~aliases:["-cn"] ~doc:" Enable supply chain audit"
-      no_arg
-  in
-  let claws_flag =
-    flag "--claws" ~aliases:["-cl"] ~doc:" Enable code smell & DRY detection"
-      no_arg
-  in
-  let ai_lint_flag =
-    flag "--ai-lint" ~aliases:["-ai"] ~doc:" Enable AI antipattern detection"
-      no_arg
-  in
-  let bridge_flag =
-    flag "--bridge" ~doc:" Force AST bridge for extraction"
-      no_arg
-  in
-  let include_deps_flag =
-    flag "--include-deps" ~doc:" Include shard dependencies in scan"
-      no_arg
-  in
-  let suppress_flag =
-    flag "--suppress" ~doc:"RULES Comma-separated rule IDs to suppress"
-      (optional string)
-  in
-  let cfg_flag =
-    flag "--cfg" ~doc:" Use IL/CFG-based taint engine"
-      no_arg
-  in
-  let no_cfg_flag =
-    flag "--no-cfg" ~doc:" Use flat taint engine (by default)"
-      no_arg
-  in
-  let analysis_timeout_flag =
-    flag "--analysis-timeout" ~doc:"MS Timeout for analysis phase (0=disabled)"
-      (optional int)
-  in
-  let cfg_max_blocks_flag =
-    flag "--cfg-max-blocks" ~doc:"N Max blocks per function CFG (default: 500)"
-      (optional int)
-  in
-  let cfg_timeout_ms_flag =
-    flag "--cfg-timeout-ms" ~doc:"MS Timeout per function CFG build (default: 5000)"
-      (optional int)
-  in
-  let elixir_flag =
-    flag "--elixir" ~aliases:["-ex"] ~doc:" Enable Elixir tool integration"
-      no_arg
-  in
-  let no_elixir_flag =
-    flag "--no-elixir" ~doc:" Disable Elixir tool integration"
-      no_arg
-  in
-  let parallelism_flag =
-    flag "--parallelism" ~aliases:["-p"] ~doc:"N Parallel workers (0 = auto)"
-      (optional int)
-  in
-  let version_flag =
-    flag "--version" ~aliases:["-v"] ~doc:" Show version"
-      no_arg
-  in
-  
-  (* Positional argument *)
-  let target_arg =
-    anon ("TARGET_DIR" %: string)
-  in
-  
-  (* Build config from arguments *)
-  let make_config
-        ~(format : string)
-        ~(lang : string)
-        ~(output : string option)
-        ~(config : string option)
-        ~(rules : string option)
-        ~(no_color : bool)
-        ~(no_cache : bool)
-        ~(clear_cache : bool)
-        ~(cache_dir : string option)
-        ~(predator_vision : bool)
-        ~(crows_nest : bool)
-        ~(claws : bool)
-        ~(ai_lint : bool)
-        ~(bridge : bool)
-        ~(include_deps : bool)
-        ~(suppress : string option)
-        ~(cfg : bool)
-        ~(no_cfg : bool)
-        ~(analysis_timeout : int option)
-        ~(cfg_max_blocks : int option)
-        ~(cfg_timeout_ms : int option)
-        ~(elixir : bool)
-        ~(no_elixir : bool)
-        ~(parallelism : int option)
-        ~(version : bool)
-        (target_dir : string)
-        : Config.t =
-    
-    (* Handle version flag early *)
-    if version then (
-      Printf.printf "Catseye v%s\n" Catseye_engine.Engine.version;
-      exit 0
-    );
-    
-    (* Get reference directories *)
-    let cwd = Sys.getcwd () in
-    let exe_dir = get_exe_dir () in
-    let default_rules = Filename.concat cwd "rules" in
-    
-    (* Build initial config *)
-    let base_cfg = Config.{
-      default with
-      target_dir;
-      format = format_of_string format;
-      lang_filter = lang_of_string lang;
-      output_path = Option.value_map output ~default:"" ~f:(resolve_path ~base:cwd);
-      config_path = Option.map (resolve_path ~base:cwd) config;
-      rules_dir = Option.value_map rules ~default:default_rules ~f:(resolve_path ~base:cwd);
-      color = not no_color;
-      no_cache;
-      clear_cache;
-      cache_dir = Option.value_map cache_dir ~default:".catseye" ~f:(resolve_path ~base:cwd);
-      predator_vision;
-      crows_nest;
-      claws;
-      ai_lint;
-      ast_bridge = bridge;
-      include_deps;
-      suppress = 
-        (match suppress with
-         | Some s -> String.split_on_char ',' s
-         | None -> []);
-      use_cfg = cfg && not no_cfg;
-      no_cfg_use = no_cfg;
-      analysis_timeout_ms = Option.value analysis_timeout ~default:0;
-      cfg_max_blocks = Option.value cfg_max_blocks ~default:500;
-      cfg_timeout_ms = Option.value cfg_timeout_ms ~default:5000;
-      elixir_enabled = elixir && not no_elixir;
-      parallelism = Option.value parallelism ~default:0;
-    } in
-    
-    (* Resolve rules_dir - try CWD first, then exe dir for global installs *)
-    let rules_exists_in_cwd = Sys.file_exists base_cfg.rules_dir in
-    let rules_from_exe = Filename.concat exe_dir "rules" in
-    let rules_dir = 
-      if rules_exists_in_cwd then base_cfg.rules_dir
-      else if Sys.file_exists rules_from_exe then rules_from_exe
-      else base_cfg.rules_dir
-    in
-    
-    { base_cfg with rules_dir }
-  in
-  
-  (* Create the command *)
-  Command.basic
-    ~summary:"Catseye v0.4.0 — Static security analysis"
-    (let%map_open.Command
-        tgt = target_arg
-     and format = format_flag
-     and lang = lang_flag
-     and output = output_flag
-     and config = config_flag
-     and rules = rules_flag
-     and no_color = no_color_flag
-     and no_cache = no_cache_flag
-     and clear_cache = clear_cache_flag
-     and cache_dir = cache_dir_flag
-     and predator_vision = predator_vision_flag
-     and crows_nest = crows_nest_flag
-     and claws = claws_flag
-     and ai_lint = ai_lint_flag
-     and bridge = bridge_flag
-     and include_deps = include_deps_flag
-     and suppress = suppress_flag
-     and cfg = cfg_flag
-     and no_cfg = no_cfg_flag
-     and analysis_timeout = analysis_timeout_flag
-     and cfg_max_blocks = cfg_max_blocks_flag
-     and cfg_timeout_ms = cfg_timeout_ms_flag
-     and elixir = elixir_flag
-     and no_elixir = no_elixir_flag
-     and parallelism = parallelism_flag
-     and version = version_flag
-     in
-     make_config
-       ~format ~lang ~output ~config ~rules
-       ~no_color ~no_cache ~clear_cache ~cache_dir
-       ~predator_vision ~crows_nest ~claws ~ai_lint
-       ~bridge ~include_deps ~suppress
-       ~cfg ~no_cfg
-       ~analysis_timeout ~cfg_max_blocks ~cfg_timeout_ms
-       ~elixir ~no_elixir ~parallelism ~version
-       tgt)
-    ~readme:(fun () ->
-      "Catseye v0.4.0 — Static security analysis for Crystal, Gleam, and beyond.\n\n\
-      Usage: catseye [options] <directory>\n\n\
-      Options:\n\
-        --format <fmt>       Output: terminal (default), json, sarif, markdown, dot\n\
-        --lang <langs>       Language filter: all (default), crystal, gleam, comma-separated\n\
-        --output <path>      Write results to file\n\
-        --config <path>      Config file path (default: .catseye.toml)\n\
-        --rules <path>       Rules directory (default: rules/)\n\
-        --no-color           Disable colored output\n\
-        --no-cache           Disable extraction cache\n\
-        --clear-cache        Clear cache and run full scan\n\
-        --cache-dir <path>   Cache directory (default: .catseye)\n\
-        --predator-vision    Enable reachability heatmap\n\
-        --crows-nest         Enable supply chain audit\n\
-        --claws              Enable code smell & DRY detection\n\
-        --ai-lint            Enable AI antipattern detection\n\
-        --cfg                Use IL/CFG-based taint engine\n\
-        --include-deps       Include shard dependencies in scan\n\
-        --suppress <rules>   Comma-separated rule IDs to suppress\n\
-        --analysis-timeout <ms>  Timeout for analysis phase\n\
-        --elixir             Enable Elixir tool integration\n\
-        --parallelism <n>    Parallel workers (0 = auto)\n\
-        --version            Show version\n"
-      )
+let help_text = {|
+catseye - Security analysis tool for Crystal and Gleam
 
-(* ── Entry Point ─────────────────────────────────────────────────────── *)
+Usage:
+  catseye [OPTIONS] PATH
 
-let run_command () : unit =
-  Command.run command
+General options:
+  --help                      Show this help message
+  --version                   Show version
 
-(* ── Backward-compatible parse_args ─────────────────────────────────── *)
+Analysis options:
+  --format FMT                Output format: terminal (default), json, sarif, markdown, dot
+  --lang LANGS                Language filter: all (default), crystal, gleam, or comma-separated
+  --rules PATH                Rules directory (default: rules/)
+  --ai-lint                   Enable AI-powered linting
+  --ast-bridge                Enable AST bridge for JS/TS/Svelte
+  --no-color                  Disable colored output
+  --include-deps              Include dependency analysis
 
-(** Parse CLI args and return Config.t.
-    Uses Core.Command internally. *)
+Performance options:
+  --parallel N                Number of parallel workers (default: auto)
+  --analysis-timeout MS       Analysis timeout in milliseconds (default: 0 = none)
+  --cfg-max-blocks N          Max CFG blocks per function (default: 500)
+  --cfg-timeout MS            CFG analysis timeout (default: 5000ms)
+
+Output options:
+  --output PATH               Write results to file
+  --config PATH               Config file path (default: .catseye.toml)
+  --cache-dir PATH            Cache directory (default: .catseye)
+  --no-cache                  Disable extraction cache
+  --clear-cache               Clear cache before running
+
+Supply chain options:
+  --predator-vision           Enable reachability heatmap
+  --elixir                    Enable Elixir analysis
+  --suppress TAGS             Suppress findings by comma-separated tags
+
+Cache options:
+  --no-cfg                    Skip CFG-based analysis
+  --no-cfg-use                Don't use cached CFG data
+
+Examples:
+  catseye --lang crystal ./src
+  catseye --format json --output results.json .
+  catseye --predator-vision --ai-lint
+|}
+
+(* ── Simple argument parsing ─────────────────────────────────────────── *)
+
+let find_opt key args =
+  let prefix = "--" ^ key ^ "=" in
+  List.find_map args ~f:(fun s ->
+    if String.is_prefix s ~prefix then
+      let rem = String.drop_prefix s (String.length prefix) in
+      Some rem
+    else None)
+
+let has_flag key args =
+  let flag = "--" ^ key in
+  List.exists args ~f:(fun s -> String.equal s flag)
+
 let parse_args () : Config.t =
-  Command.run command
+  let args = Array.to_list Stdlib.Sys.argv in
+  let _program = List.hd args |> Option.value ~default:"catseye" in
+  let args = List.tl args |> Option.value ~default:[] in
+  
+  (* Show help if requested *)
+  if has_flag "help" args || List.mem ~equal:String.equal args "-h" then begin
+    Stdio.print_endline help_text;
+    Stdlib.exit 0
+  end;
+  
+  if has_flag "version" args then begin
+    Stdio.print_endline "catseye v0.4.3";
+    Stdlib.exit 0
+  end;
+  
+  (* Parse path - first non-flag argument *)
+  let path = 
+    match List.find args ~f:(fun s -> not (String.is_prefix ~prefix:"--" s)) with
+    | Some p -> p
+    | None -> "."
+  in
+  
+  (* Parse format *)
+  let format = 
+    match find_opt "format" args with
+    | Some s -> format_of_string s
+    | None -> Config.Terminal
+  in
+  
+  (* Parse language filter *)
+  let lang_filter = 
+    match find_opt "lang" args with
+    | Some s -> lang_of_string s
+    | None -> Config.All
+  in
+  
+  (* Parse boolean flags *)
+  let no_color = has_flag "no-color" args in
+  let no_cache = has_flag "no-cache" args in
+  let clear_cache = has_flag "clear-cache" args in
+  let ai_lint = has_flag "ai-lint" args in
+  let ast_bridge = has_flag "ast-bridge" args in
+  let include_deps = has_flag "include-deps" args in
+  let predator_vision = has_flag "predator-vision" args in
+  let elixir = has_flag "elixir" args in
+  let no_cfg = has_flag "no-cfg" args in
+  let no_cfg_use = has_flag "no-cfg-use" args in
+  
+  (* Parse optional string values *)
+  let output_path = find_opt "output" args in
+  let config_path = find_opt "config" args in
+  let rules_dir = find_opt "rules" args in
+  let cache_dir = find_opt "cache-dir" args in
+  let suppress = find_opt "suppress" args in
+  
+  (* Parse integer values *)
+  let parallelism = 
+    match find_opt "parallel" args with
+    | Some s -> (try Int.of_string s with _ -> 0)
+    | None -> 0
+  in
+  let analysis_timeout = 
+    match find_opt "analysis-timeout" args with
+    | Some s -> (try Int.of_string s with _ -> 0)
+    | None -> 0
+  in
+  let cfg_max_blocks = 
+    match find_opt "cfg-max-blocks" args with
+    | Some s -> (try Int.of_string s with _ -> 500)
+    | None -> 500
+  in
+  let cfg_timeout = 
+    match find_opt "cfg-timeout" args with
+    | Some s -> (try Int.of_string s with _ -> 5000)
+    | None -> 5000
+  in
+  
+  (* Build config - start with defaults and override *)
+  let config = Config.default in
+  {
+    config with
+    target_dir = path;
+    format;
+    lang_filter;
+    output_path = Option.value output_path ~default:config.output_path;
+    color = not no_color;
+    no_cache;
+    clear_cache;
+    config_path;
+    rules_dir = Option.value rules_dir ~default:config.rules_dir;
+    cache_dir = Option.value cache_dir ~default:config.cache_dir;
+    ai_lint;
+    ast_bridge;
+    include_deps;
+    parallelism;
+    analysis_timeout_ms = analysis_timeout;
+    cfg_max_blocks;
+    cfg_timeout_ms = cfg_timeout;
+    elixir_enabled = elixir;
+    predator_vision;
+    use_cfg = not no_cfg;
+    no_cfg_use;
+    suppress = Option.map suppress ~f:(fun s -> String.split s ~on:',') |> Option.value ~default:[];
+  }

@@ -60,14 +60,13 @@ let leading_spaces str =
 
 let parse_shard_yml (dir : string) : (string * string list) =
   let shard_path = Filename.concat dir "shard.yml" in
-  if not (Sys.file_exists shard_path) then ("", [])
+  if not (Stdlib.Sys.file_exists shard_path) then ("", [])
   else begin
     try
       let ic = open_in shard_path in
-      let len = in_channel_length ic in
-      let content = really_input_string ic (min 50000 len) in
+      let content = Stdio.In_channel.input_all ic in
       close_in ic;
-      let lines = String.split_on_char '\n' content in
+      let lines = Stdlib.String.split_on_char '\n' content in
       let project_name = ref "" in
       let deps = ref [] in
       let in_deps = ref false in
@@ -107,7 +106,7 @@ let parse_shard_yml (dir : string) : (string * string list) =
 
 let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
-  let has_shard = Sys.file_exists (Filename.concat dir "shard.yml") in
+  let has_shard = Stdlib.Sys.file_exists (Filename.concat dir "shard.yml") in
   let shard_deps = 
     if include_deps || not has_shard then []
     else begin
@@ -133,7 +132,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
   
   let rec walk path =
     try
-    if Sys.is_directory path then begin
+    if Stdlib.Sys.is_directory path then begin
       (* For Crystal projects with shard.yml, skip entire lib/ directory *)
       if has_shard && not include_deps then begin
         let last_char_pos = String.length path - 1 in
@@ -142,7 +141,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
                                 && path.[last_char_pos-1] = 'i'
                                 && path.[last_char_pos] = 'b' then ()
         else begin
-          let entries = try Sys.readdir path with Sys_error _ -> [||] in
+          let entries = try Stdlib.Sys.readdir path with Sys_error _ -> [||] in
           Array.iter (fun entry ->
             if not (should_skip entry) then begin
               let full = Filename.concat path entry in
@@ -153,7 +152,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
           ) entries
         end
       end else begin
-        let entries = try Sys.readdir path with Sys_error _ -> [||] in
+        let entries = try Stdlib.Sys.readdir path with Sys_error _ -> [||] in
         Array.iter (fun entry ->
           if not (should_skip entry) then begin
             let full = Filename.concat path entry in

@@ -51,7 +51,7 @@ let resolve_svelte_grammar () : string option =
 
 let run_tree_sitter_on_string ~grammar ~lang ~source : xml option =
   let tmp = Filename.temp_file "catseye_svelte" ".src" in
-  let cleanup () = try Sys.remove tmp with _ -> () in
+  let cleanup () = try Stdlib.Sys.remove tmp with _ -> () in
   try
     let oc = open_out tmp in
     output_string oc source;

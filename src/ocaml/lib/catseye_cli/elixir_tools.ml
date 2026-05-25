@@ -39,8 +39,7 @@ let default_elixir_config = {
 let file_contains path pattern =
   try
     let ic = open_in path in
-    let len = in_channel_length ic in
-    let content = really_input_string ic len in
+    let content = Stdio.In_channel.input_all ic in
     close_in ic;
     let plen = String.length pattern in
     let slen = String.length content in
@@ -53,10 +52,10 @@ let file_contains path pattern =
 (** Check if a command exists in PATH *)
 let command_exists cmd =
   let cmd_str = Printf.sprintf "bash -c 'command -v %s >/dev/null 2>&1'" cmd in
-  if Sys.command cmd_str = 0 then true
+  if Stdlib.Sys.command cmd_str = 0 then true
   else
     let cmd_str2 = Printf.sprintf "bash -c 'which %s >/dev/null 2>&1'" cmd in
-    Sys.command cmd_str2 = 0
+    Stdlib.Sys.command cmd_str2 = 0
 
 (** Run command and collect output *)
 let run_cmd cmd =
@@ -71,7 +70,7 @@ let run_cmd cmd =
 (* ── Project Detection ───────────────────────────────────────────────── *)
 
 let is_mix_project dir =
-  Sys.file_exists (Filename.concat dir "mix.exs")
+  Stdlib.Sys.file_exists (Filename.concat dir "mix.exs")
 
 let has_sobelow_exs () =
   command_exists "sobelow"
@@ -83,7 +82,7 @@ let has_credo_dep dir =
   if not (command_exists "mix") then false
   else
     let mix_exs = Filename.concat dir "mix.exs" in
-    if Sys.file_exists mix_exs then
+    if Stdlib.Sys.file_exists mix_exs then
       file_contains mix_exs "credo" || file_contains mix_exs ":credo"
     else false
 
