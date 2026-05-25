@@ -2,6 +2,14 @@
    OSV.dev API client — query for known vulnerabilities in dependencies.
    Uses curl subprocess for zero-dependency HTTP. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
+
 type osv_vulnerability = {
   id : string;
   summary : string;
@@ -25,43 +33,43 @@ let parse_osv_response (json_str : string) : osv_result =
     let to_assoc = Yojson.Safe.Util.to_assoc in
     match json with
     | `Assoc dict ->
-      (match List.assoc_opt "vulns" dict with
+      (match List.Assoc.find dict ~equal:String.equal "vulns" with
        | None -> No_known_cves
        | Some (`List vulns) ->
-         let parsed = List.filter_map (fun v ->
+         let parsed = List.filter_map ~f:(fun v ->
            let d = to_assoc v in
-           let id = get (List.assoc "id" d) in
-           let summary = match List.assoc_opt "summary" d with
+           let id = get (List.Assoc.find_exn d ~equal:String.equal "id") in
+           let summary = match List.Assoc.find d ~equal:String.equal "summary" with
              | Some s -> get s | None -> ""
            in
-           let severity = match List.assoc_opt "database_specific" d with
+           let severity = match List.Assoc.find d ~equal:String.equal "database_specific" with
              | Some (`Assoc spec) ->
-               (match List.assoc_opt "severity" spec with
+               (match List.Assoc.find spec ~equal:String.equal "severity" with
                 | Some s -> Some (get s) | None -> None)
              | None ->
-               (match List.assoc_opt "severity" d with
+               (match List.Assoc.find d ~equal:String.equal "severity" with
                 | Some (`List []) -> None
                 | Some (`List (first :: _)) ->
                   (match first with
                    | `Assoc s ->
-                     (match List.assoc_opt "score" s with
+                     (match List.Assoc.find s ~equal:String.equal "score" with
                       | Some s -> Some (get s) | None -> None)
                    | _ -> None)
                 | _ -> None)
            in
-           let patched = match List.assoc_opt "affected" d with
+           let patched = match List.Assoc.find d ~equal:String.equal "affected" with
              | Some (`List affected) ->
-               List.concat_map (fun a ->
+               List.concat_map ~f:(fun a ->
                  let ad = to_assoc a in
-                 match List.assoc_opt "ranges" ad with
+                 match List.Assoc.find ad ~equal:String.equal "ranges" with
                  | Some (`List ranges) ->
-                   List.concat_map (fun r ->
+                   List.concat_map ~f:(fun r ->
                      let rd = to_assoc r in
-                     match List.assoc_opt "events" rd with
+                     match List.Assoc.find rd ~equal:String.equal "events" with
                      | Some (`List events) ->
-                       List.filter_map (fun e ->
+                       List.filter_map ~f:(fun e ->
                          let ed = to_assoc e in
-                         match List.assoc_opt "fixed" ed with
+                         match List.Assoc.find ed ~equal:String.equal "fixed" with
                          | Some v -> Some (get v)
                          | None -> None
                        ) events
@@ -71,11 +79,11 @@ let parse_osv_response (json_str : string) : osv_result =
                ) affected
              | None -> []
            in
-           let refs = match List.assoc_opt "references" d with
+           let refs = match List.Assoc.find d ~equal:String.equal "references" with
              | Some (`List rlist) ->
-               List.filter_map (fun r ->
+               List.filter_map ~f:(fun r ->
                  let rd = to_assoc r in
-                 match List.assoc_opt "url" rd with
+                 match List.Assoc.find rd ~equal:String.equal "url" with
                  | Some u -> Some (get u)
                  | None -> None
                ) rlist
@@ -101,19 +109,19 @@ let query (ecosystem : string) (package : string) (version : string)
     {|{"package":{"name":"%s","ecosystem":"%s"},"version":"%s"}|}
     package ecosystem version
   in
-  let tmp_in = Filename.temp_file "catseye-osv-in" ".json" in
-  let tmp_out = Filename.temp_file "catseye-osv-out" ".json" in
+  let tmp_in = Stdlib.Filename.temp_file "catseye-osv-in" ".json" in
+  let tmp_out = Stdlib.Filename.temp_file "catseye-osv-out" ".json" in
   try
     (* Write payload to temp file *)
-    let oc = open_out tmp_in in
-    output_string oc json_payload;
-    close_out oc;
+    let oc = Stdlib.open_out tmp_in in
+    Stdlib.output_string oc json_payload;
+    Stdlib.close_out oc;
 
     let cmd = Printf.sprintf
       "curl -s -S --max-time 10 -X POST https://api.osv.dev/v1/query -d @%s -o %s 2>/dev/null"
-      (Filename.quote tmp_in) (Filename.quote tmp_out)
+      (Stdlib.Filename.quote tmp_in) (Stdlib.Filename.quote tmp_out)
     in
-    let exit_code = Sys.command cmd in
+    let exit_code = Stdlib.Sys.command cmd in
     Unix.unlink tmp_in;
     if exit_code <> 0 then begin
       (try Unix.unlink tmp_out with _ -> ());
@@ -121,11 +129,11 @@ let query (ecosystem : string) (package : string) (version : string)
     end
     else begin
       try
-        let ic = open_in tmp_out in
-        let len = in_channel_length ic in
+        let ic = Stdlib.open_in tmp_out in
+        let len = Stdlib.in_channel_length ic in
         let buf = Bytes.create len in
-        really_input ic buf 0 len;
-        close_in ic;
+        Stdlib.really_input ic buf 0 len;
+        Stdlib.close_in ic;
         Unix.unlink tmp_out;
         let response = Bytes.to_string buf in
         if response = "" then No_known_cves
@@ -144,7 +152,7 @@ let query (ecosystem : string) (package : string) (version : string)
     with a small delay to respect rate limits. *)
 let query_batch (ecosystem : string) (packages : (string * string) list)
     : ((string * string) * osv_result) list =
-  List.map (fun (name, version) ->
+  List.map ~f:(fun (name, version) ->
     let result = query ecosystem name version in
     ((name, version), result)
   ) packages

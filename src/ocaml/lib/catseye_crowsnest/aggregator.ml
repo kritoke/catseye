@@ -2,6 +2,14 @@
    Merges OSV results + staleness scores into per-dependency audit results.
    This is the main entry point for the Crow's Nest analysis. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
+
 open Manifest
 open Osv
 open Staleness
@@ -18,15 +26,15 @@ type dep_result = {
 
 let level_of_osv = function
   | Vulnerabilities vulns ->
-    if List.exists (fun v ->
+    if List.exists ~f:(fun v ->
       match v.severity with
       | Some s when
           String.length s >= 4 &&
-          (String.sub s 0 4 = "CRIT" || String.sub s 0 4 = "HIGH")
+          (Stdlib.String.sub s 0 4 = "CRIT" || Stdlib.String.sub s 0 4 = "HIGH")
         -> true
       | Some s when
           String.length s >= 4 &&
-          String.sub s 0 4 = "MOD" || s = "HIGH" || s = "CRITICAL"
+          Stdlib.String.sub s 0 4 = "MOD" || s = "HIGH" || s = "CRITICAL"
         -> true
       | _ -> false
     ) vulns then `Critical
@@ -52,10 +60,10 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
     : dep_result list =
   let results = ref [] in
 
-  List.iter (fun m ->
+  List.iter ~f:(fun m ->
     match m with
     | Shard_yml (path, deps) ->
-      List.iter (fun (dep : Manifest.shard_dep) ->
+      List.iter ~f:(fun (dep : Manifest.shard_dep) ->
         let version = match dep.version with
           | Some v -> v
           | None -> "*"
@@ -113,7 +121,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
         in
 
         let osv_level = level_of_osv osv_result in
-        let level = merge_levels osv_level (Option.map (fun s -> s.Staleness.level) staleness_result) in
+        let level = merge_levels osv_level (Option.map staleness_result ~f:(fun s -> s.Staleness.level)) in
         results := {
           name = dep.name;
           version = dep.version;
@@ -126,7 +134,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
       ) deps
 
     | Gleam_toml (path, deps) ->
-      List.iter (fun (dep : Manifest.hex_dep) ->
+      List.iter ~f:(fun (dep : Manifest.hex_dep) ->
         let version = match dep.version with
           | Some v -> v
           | None -> "*"
@@ -151,7 +159,7 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
           ?hex:hex_info ()) in
 
         let osv_level = level_of_osv osv_result in
-        let level = merge_levels osv_level (Option.map (fun s -> s.Staleness.level) staleness_result) in
+        let level = merge_levels osv_level (Option.map staleness_result ~f:(fun s -> s.Staleness.level)) in
         results := {
           name = dep.name;
           version = dep.version;
@@ -166,4 +174,4 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
 
   (* Sort: Critical first, then Warning, then Clean *)
   let level_rank = function `Critical -> 0 | `Warning -> 1 | `Clean -> 2 in
-  List.sort (fun a b -> compare (level_rank a.level) (level_rank b.level)) !results
+  List.sort ~compare:(fun a b -> Int.compare (level_rank a.level) (level_rank b.level)) !results

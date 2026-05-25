@@ -2,6 +2,14 @@
    SQLite-backed cache for OSV query results and staleness data.
    Stores results keyed by ecosystem:package:version with a TTL. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
+
 type t = {
   db : Sqlite3.db;
   ttl : float;  (* seconds *)
@@ -11,10 +19,10 @@ let default_ttl = 86400.0 (* 24 hours *)
 
 let open_db ?(ttl = default_ttl) (path : string) : t =
   (* Ensure parent directory exists *)
-  let dir = Filename.dirname path in
+  let dir = Stdlib.Filename.dirname path in
   let rec mkdir_p d =
-    if not (Sys.file_exists d) then begin
-      mkdir_p (Filename.dirname d);
+    if not (Stdlib.Sys.file_exists d) then begin
+      mkdir_p (Stdlib.Filename.dirname d);
       Unix.mkdir d 0o755
     end
   in
@@ -38,7 +46,7 @@ let close (t : t) = ignore (Sqlite3.db_close t.db)
 (* ── Helpers ────────────────────────────────────────────────────────── *)
 
 let exec_bind stmt params =
-  List.iteri (fun i p ->
+  List.iteri ~f:(fun i p ->
     Sqlite3.bind stmt (i + 1) p |> ignore
   ) params;
   let _ = Sqlite3.step stmt in
@@ -100,12 +108,12 @@ let lookup_staleness (t : t) (source : string) (package : string)
          if age < t.ttl then begin
            let signals =
              try
-               let json = Yojson.Safe.from_string signals_json in
-               Yojson.Safe.Util.to_list json
-               |> List.map Yojson.Safe.Util.to_string
+let json = Yojson.Safe.from_string signals_json in
+                Yojson.Safe.Util.to_list json
+                |> List.map ~f:Yojson.Safe.Util.to_string
              with _ -> []
            in
-           Some (Int64.to_int score, signals, level)
+           Some (Stdlib.Int64.to_int score, signals, level)
          end
          else None
        | _ -> None)
@@ -118,7 +126,7 @@ let store_staleness (t : t) (source : string) (package : string)
     (score : int) (signals : string list) (level : string) : unit =
   let key = staleness_key source package in
   let signals_json = Yojson.Safe.to_string
-    (`List (List.map (fun s -> `String s) signals))
+    (`List (List.map ~f:(fun s -> `String s) signals))
   in
   let sql = "INSERT OR REPLACE INTO staleness_cache (key, score, signals_json, level, queried_at) VALUES (?1, ?2, ?3, ?4, ?5)" in
   let stmt = Sqlite3.prepare t.db sql in

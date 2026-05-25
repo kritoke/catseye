@@ -1,6 +1,14 @@
-(* lib/catseye_crowsnest/staleness.ml
+(* lib/catseye/crowsnest/staleness.ml
    Staleness detection — composite scoring for abandoned/end-of-life packages.
    Uses GitHub API (commits, releases, issues) and Hex API for Gleam packages. *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
 
 type repo_activity = {
   last_commit_date : float option;
@@ -34,40 +42,40 @@ let months_ago (ts : float) : months =
 
 let query_github (repo : string) : repo_activity option =
   (* repo is "user/repo" *)
-  let tmp = Filename.temp_file "catseye-github" ".json" in
+  let tmp = Stdlib.Filename.temp_file "catseye-github" ".json" in
   let cmd = Printf.sprintf
     "curl -s -S --max-time 10 -H 'Accept: application/vnd.github+json' \
      'https://api.github.com/repos/%s' -o %s 2>/dev/null"
-    (Filename.quote repo) (Filename.quote tmp)
+    (Stdlib.Filename.quote repo) (Stdlib.Filename.quote tmp)
   in
-  let _ = Sys.command cmd in
+  let _ = Stdlib.Sys.command cmd in
   try
-    let ic = open_in tmp in
-    let len = in_channel_length ic in
+    let ic = Stdlib.open_in tmp in
+    let len = Stdlib.in_channel_length ic in
     let buf = Bytes.create len in
-    really_input ic buf 0 len;
-    close_in ic;
+    Stdlib.really_input ic buf 0 len;
+    Stdlib.close_in ic;
     Unix.unlink tmp;
     let json = Yojson.Safe.from_string (Bytes.to_string buf) in
     let get = Yojson.Safe.Util.to_string in
     let int_val = Yojson.Safe.Util.to_int in
     let to_assoc = Yojson.Safe.Util.to_assoc in
     let d = to_assoc json in
-    let push_date = match List.assoc_opt "pushed_at" d with
+    let push_date = match List.Assoc.find d ~equal:String.equal "pushed_at" with
       | Some v -> (try
         let s = get v in
-        let ys = String.sub s 0 4 in
-        let ms = String.sub s 5 2 in
-        let ds = String.sub s 8 2 in
-        let year = int_of_string ys in
-        let month = int_of_string ms in
-        let day = int_of_string ds in
+        let ys = String.sub s ~pos:0 ~len:4 in
+        let ms = String.sub s ~pos:5 ~len:2 in
+        let ds = String.sub s ~pos:8 ~len:2 in
+        let year = Int.of_string ys in
+        let month = Int.of_string ms in
+        let day = Int.of_string ds in
         Some (Unix.mktime { Unix.tm_year = year - 1900; tm_mon = month - 1; tm_mday = day;
           tm_hour = 0; tm_min = 0; tm_sec = 0; tm_wday = 0; tm_yday = 0; tm_isdst = false } |> fst)
         with _ -> None)
       | None -> None
     in
-    let issues = match List.assoc_opt "open_issues_count" d with
+    let issues = match List.Assoc.find d ~equal:String.equal "open_issues_count" with
       | Some v -> (try Some (int_val v) with _ -> None)
       | None -> None
     in
@@ -84,47 +92,47 @@ let query_github (repo : string) : repo_activity option =
 (* ── Hex API ────────────────────────────────────────────────────────── *)
 
 let query_hex (package : string) : hex_package_info option =
-  let tmp = Filename.temp_file "catseye-hex" ".json" in
+  let tmp = Stdlib.Filename.temp_file "catseye-hex" ".json" in
   let cmd = Printf.sprintf
     "curl -s -S --max-time 10 'https://hex.pm/api/packages/%s' -o %s 2>/dev/null"
-    (Filename.quote package) (Filename.quote tmp)
+    (Stdlib.Filename.quote package) (Stdlib.Filename.quote tmp)
   in
-  let _ = Sys.command cmd in
+  let _ = Stdlib.Sys.command cmd in
   try
-    let ic = open_in tmp in
-    let len = in_channel_length ic in
+    let ic = Stdlib.open_in tmp in
+    let len = Stdlib.in_channel_length ic in
     let buf = Bytes.create len in
-    really_input ic buf 0 len;
-    close_in ic;
+    Stdlib.really_input ic buf 0 len;
+    Stdlib.close_in ic;
     Unix.unlink tmp;
     let json = Yojson.Safe.from_string (Bytes.to_string buf) in
     let get = Yojson.Safe.Util.to_string in
     let to_assoc = Yojson.Safe.Util.to_assoc in
     let d = to_assoc json in
-    let retired = match List.assoc_opt "retirement" d with
+    let retired = match List.Assoc.find d ~equal:String.equal "retirement" with
       | Some (`Assoc r) ->
-        (match List.assoc_opt "status" r with
+        (match List.Assoc.find r ~equal:String.equal "status" with
          | Some (`String "retired") ->
-           (match List.assoc_opt "message" r with
+           (match List.Assoc.find r ~equal:String.equal "message" with
             | Some (`String m) -> `Retired m
             | None -> `Retired "retired")
          | _ -> `Active)
       | _ -> `Unknown
     in
-    let last_release = match List.assoc_opt "latest_version" d with
+    let last_release = match List.Assoc.find d ~equal:String.equal "latest_version" with
       | Some (`Assoc v) ->
-        (match List.assoc_opt "inserted_at" v with
+        (match List.Assoc.find v ~equal:String.equal "inserted_at" with
          | Some (`String s) ->
            (try
-             let ys = String.sub s 0 4 in
-             let ms = String.sub s 5 2 in
-             let ds = String.sub s 8 2 in
-             let year = int_of_string ys in
-             let month = int_of_string ms in
-             let day = int_of_string ds in
-             Some (Unix.mktime { Unix.tm_year = year - 1900; tm_mon = month - 1; tm_mday = day;
-               tm_hour = 0; tm_min = 0; tm_sec = 0; tm_wday = 0; tm_yday = 0; tm_isdst = false } |> fst)
-           with _ -> None)
+              let ys = String.sub s ~pos:0 ~len:4 in
+              let ms = String.sub s ~pos:5 ~len:2 in
+              let ds = String.sub s ~pos:8 ~len:2 in
+              let year = Int.of_string ys in
+              let month = Int.of_string ms in
+              let day = Int.of_string ds in
+              Some (Unix.mktime { Unix.tm_year = year - 1900; tm_mon = month - 1; tm_mday = day;
+                tm_hour = 0; tm_min = 0; tm_sec = 0; tm_wday = 0; tm_yday = 0; tm_isdst = false } |> fst)
+            with _ -> None)
          | _ -> None)
       | _ -> None
     in
