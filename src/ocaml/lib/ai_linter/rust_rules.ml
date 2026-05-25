@@ -12,16 +12,23 @@
 open Catseye_ast.Types
 open Types
 
+(* Expose stdlib functions that may be shadowed *)
+let std_list_concat_map = Stdlib.List.concat_map
+let std_list_exists = Stdlib.List.exists
+let std_string_length = Stdlib.String.length
+let std_string_sub = Stdlib.String.sub
+let std_string_contains = Stdlib.String.contains
+
 (* ── Helpers ──────────────────────────────────────────────────────── *)
 
 let is_test_or_bench (file : string) : bool =
   let lower = String.lowercase_ascii file in
   (* Check for common test/benchmark patterns: suffix and path markers *)
-  List.exists (fun pat ->
-    let plen = String.length pat in
-    String.length lower >= plen &&
-    let suffix = String.sub lower (String.length lower - plen) plen in
-    pat = suffix || (String.length lower >= 5 && String.sub lower 0 5 = "test_")
+  std_list_exists (fun pat ->
+    let plen = std_string_length pat in
+    std_string_length lower >= plen &&
+    let suffix = std_string_sub lower (std_string_length lower - plen) plen in
+    pat = suffix || (std_string_length lower >= 5 && std_string_sub lower 0 5 = "test_")
   ) ["_test.rs"; "_bench.rs"; "_tests.rs"; "/test/"; "/bench/"; "/tests/"]
 
 (* ── Hallucinated Functions Detection ─────────────────────────────── *)
@@ -91,19 +98,18 @@ let detect_long_method (m : t) : finding list =
   in
   if is_test_or_bench m.mod_path then []
   else
-    let findings = ref [] in
-    List.iter (fun item ->
+    std_list_concat_map (fun item ->
       match item.item_value with
       | IFunction (name, _, _, body) ->
         let stmts = aux body in
         if stmts > threshold then
-          findings := { rule_id = "LongMethod"; severity = Warning;
+          [{ rule_id = "LongMethod"; severity = Warning;
             file = m.mod_path; line = item.item_location.start.line;
             message = Printf.sprintf "Function '%s' has %d statements (threshold: %d)" name stmts threshold;
-            suggestion = Some "Consider extracting helper functions or refactoring" } :: !findings
-      | _ -> ()
-    ) m.mod_items;
-    !findings
+            suggestion = Some "Consider extracting helper functions or refactoring" }]
+        else []
+      | _ -> []
+    ) m.mod_items
 
 (* ── Rule: Magic String / Hardcoded Values ────────────────────────── *)
 
@@ -131,45 +137,43 @@ let is_likely_safe_string (s : string) : bool =
 let detect_magic_strings (m : t) : finding list =
   if is_test_or_bench m.mod_path then []
   else
-    let findings = ref [] in
-    let rec check (e : expr) =
+    let rec collect (e : expr) : finding list =
       match e.expr_value with
-      | ELiteral (LString s) when String.length s > 40 && not (is_likely_safe_string s) && not (String.contains s ' ') ->
+      | ELiteral (LString s) when std_string_length s > 40 && not (is_likely_safe_string s) && not (std_string_contains s ' ') ->
           (* Likely a magic string - long no-space strings that aren't in safe patterns *)
-          findings := { rule_id = "MagicString"; severity = Hint;
+          [{ rule_id = "MagicString"; severity = Hint;
             file = m.mod_path; line = e.expr_location.start.line;
             message = "Hardcoded string literal should be a named constant";
-            suggestion = Some ("Extract to a named const") } :: !findings
-      | EBlock es -> List.iter check es
-      | ELet (_, e1, e2) -> check e1; check e2
-      | EIf (_, t, o) -> check t; (match o with Some e -> check e | None -> ())
-      | _ -> ()
+            suggestion = Some ("Extract to a named const") }]
+      | EBlock es -> List.concat (List.map collect es)
+      | ELet (_, e1, e2) -> collect e1 @ collect e2
+      | EIf (_, t, o) -> collect t @ (match o with Some e -> collect e | None -> [])
+      | _ -> []
     in
-    List.iter (fun item ->
+    List.concat (List.map (fun item ->
       match item.item_value with
-      | IFunction (_, _, _, body) -> check body
-      | _ -> ()
-    ) m.mod_items;
-    !findings
+      | IFunction (_, _, _, body) -> collect body
+      | _ -> []
+    ) m.mod_items)
 
 (* ── Rule: Non-atomic File Operations ─────────────────────────────── *)
 
 let detect_non_atomic_file_ops (m : t) : finding list =
-  let findings = ref [] in
-  List.iter (fun item ->
+  let std_list_mem = Stdlib.List.mem in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  std_list_concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      let calls = collect_apps body in
-      List.iter (fun (name, line) ->
-        if List.mem name ["set_permissions"; "std::fs::set_permissions"; ".set_permissions"; "chmod"] then
-          findings := { rule_id = "NonAtomicFileOp"; severity = Hint;
+      std_list_concat_map (fun (name, line) ->
+        if std_list_mem name ["set_permissions"; "std::fs::set_permissions"; ".set_permissions"; "chmod"] then
+          [{ rule_id = "NonAtomicFileOp"; severity = Hint;
             file = m.mod_path; line;
             message = "Non-atomic file permission change - use File::create or atomic_write with permissions";
-            suggestion = Some "Consider using std::fs::OpenOptions with .create(true).mode() for atomic permission setting" } :: !findings
-      ) calls
-    | _ -> ()
-  ) m.mod_items;
-  !findings
+            suggestion = Some "Consider using std::fs::OpenOptions with .create(true).mode() for atomic permission setting" }]
+        else []
+      ) (collect_apps body)
+    | _ -> []
+  ) m.mod_items
 
 (* ── Rule: Unbounded File Read ─────────────────────────────────────── *)
 
@@ -178,34 +182,36 @@ let detect_unbounded_read (m : t) : finding list =
     "std::fs::read"; "fs::read"; "std::fs::read_to_string"; "fs::read_to_string";
     "std::io::read_to_end"; "read_to_end"; "read_to_string";
   ] in
-  let findings = ref [] in
-  List.iter (fun item ->
+  let std_list_exists = Stdlib.List.exists in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
+  std_list_concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      let calls = collect_apps body in
-      List.iter (fun (call_name, line) ->
-        if List.exists (fun p ->
-          String.length call_name >= String.length p &&
-          String.sub call_name 0 (String.length p) = p
+      std_list_concat_map (fun (call_name, line) ->
+        if std_list_exists (fun p ->
+          std_string_length call_name >= std_string_length p &&
+          std_string_sub call_name 0 (std_string_length p) = p
         ) unbounded_reads then
-          findings := { rule_id = "UnboundedRead"; severity = Warning;
+          [{ rule_id = "UnboundedRead"; severity = Warning;
             file = m.mod_path; line;
             message = "Unbounded file read: " ^ call_name ^ " - may cause OOM for large files";
-            suggestion = Some "Consider reading with a size limit or using a streaming approach" } :: !findings
-      ) calls
-    | _ -> ()
-  ) m.mod_items;
-  !findings
+            suggestion = Some "Consider reading with a size limit or using a streaming approach" }]
+        else []
+      ) (collect_apps body)
+    | _ -> []
+  ) m.mod_items
 
 (* ── Rule: Hardcoded URLs ──────────────────────────────────────────── *)
 
 let has_url_scheme (s : string) : bool =
-  let len = String.length s in
+  let len = std_string_length s in
   (* Require :// scheme separator to avoid false positives *)
-  (len >= 7 && String.sub s 0 7 = "http://") ||
-  (len >= 8 && String.sub s 0 8 = "https://") ||
-  (len >= 6 && String.sub s 0 6 = "ftp://") ||
-  (len >= 7 && String.sub s 0 7 = "sftp://")
+  (len >= 7 && std_string_sub s 0 7 = "http://") ||
+  (len >= 8 && std_string_sub s 0 8 = "https://") ||
+  (len >= 6 && std_string_sub s 0 6 = "ftp://") ||
+  (len >= 7 && std_string_sub s 0 7 = "sftp://")
 
 let is_localhost (s : string) : bool =
   s = "localhost" || s = "127.0.0.1" || s = "0.0.0.0"
@@ -213,47 +219,45 @@ let is_localhost (s : string) : bool =
 let detect_hardcoded_urls (m : t) : finding list =
   if is_test_or_bench m.mod_path then []
   else
-    let findings = ref [] in
-    let rec check (e : expr) =
+    let rec collect (e : expr) : finding list =
       match e.expr_value with
       | ELiteral (LString s) ->
         if has_url_scheme s || is_localhost s then
-          findings := { rule_id = "HardcodedUrl"; severity = Warning;
+          [{ rule_id = "HardcodedUrl"; severity = Warning;
             file = m.mod_path; line = e.expr_location.start.line;
             message = "Hardcoded URL should be configurable via environment or config file";
-            suggestion = Some "Use std::env::var(\"API_URL\") or a config module" } :: !findings
-      | EBlock es -> List.iter check es
-      | ELet (_, e1, e2) -> check e1; check e2
-      | EIf (_, t, o) -> check t; (match o with Some e -> check e | None -> ())
-      | _ -> ()
+            suggestion = Some "Use std::env::var(\"API_URL\") or a config module" }]
+        else []
+      | EBlock es -> List.concat (List.map collect es)
+      | ELet (_, e1, e2) -> collect e1 @ collect e2
+      | EIf (_, t, o) -> collect t @ (match o with Some e -> collect e | None -> [])
+      | _ -> []
     in
-    List.iter (fun item ->
+    List.concat (List.map (fun item ->
       match item.item_value with
-      | IFunction (_, _, _, body) -> check body
-      | _ -> ()
-    ) m.mod_items;
-    !findings
+      | IFunction (_, _, _, body) -> collect body
+      | _ -> []
+    ) m.mod_items)
 
 (* ── Rule: unwrap/expect in Library Code ───────────────────────────── *)
 
 let detect_unsafe_in_lib (m : t) : finding list =
   if is_test_or_bench m.mod_path then []
   else
-    let findings = ref [] in
-    List.iter (fun item ->
+    let std_list_concat_map = Stdlib.List.concat_map in
+    std_list_concat_map (fun item ->
       match item.item_value with
       | IFunction (_, _, _, body) ->
-        let calls = collect_apps body in
-        List.iter (fun (call_name, line) ->
+        std_list_concat_map (fun (call_name, line) ->
           if call_name = "unwrap" || call_name = "expect" || call_name = ".unwrap" || call_name = ".expect" then
-            findings := { rule_id = "UnsafeInLib"; severity = Warning;
+            [{ rule_id = "UnsafeInLib"; severity = Warning;
               file = m.mod_path; line;
               message = "unwrap/expect in library function may panic - library should propagate errors";
-              suggestion = Some "Return Result<T, E> and use ? operator" } :: !findings
-        ) calls
-      | _ -> ()
-    ) m.mod_items;
-    !findings
+              suggestion = Some "Return Result<T, E> and use ? operator" }]
+          else []
+        ) (collect_apps body)
+      | _ -> []
+    ) m.mod_items
 
 (* ── Rule: Ignored Permission Operations ────────────────────────────── *)
 
@@ -266,24 +270,26 @@ let detect_ignored_permissions (m : t) : finding list =
     "chmod";
     "std::fs::chmod";
   ] in
-  let findings = ref [] in
-  List.iter (fun item ->
+  let std_list_exists = Stdlib.List.exists in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
+  std_list_concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-      let calls = collect_apps body in
-      List.iter (fun (name, line) ->
-        if List.exists (fun p ->
-          String.length name >= String.length p &&
-          String.sub name 0 (String.length p) = p
+      std_list_concat_map (fun (name, line) ->
+        if std_list_exists (fun p ->
+          std_string_length name >= std_string_length p &&
+          std_string_sub name 0 (std_string_length p) = p
         ) permission_calls then
-          findings := { rule_id = "IgnoredPermission"; severity = Warning;
+          [{ rule_id = "IgnoredPermission"; severity = Warning;
             file = m.mod_path; line;
             message = "Permission operation " ^ name ^ " return value should be checked";
-            suggestion = Some "Handle the Result<(), Error> properly instead of ignoring it" } :: !findings
-      ) calls
-    | _ -> ()
-  ) m.mod_items;
-  !findings
+            suggestion = Some "Handle the Result<(), Error> properly instead of ignoring it" }]
+        else []
+      ) (collect_apps body)
+    | _ -> []
+  ) m.mod_items
 
 (* ── Main analysis ─────────────────────────────────────────────────── *)
 

@@ -1,5 +1,33 @@
 (* lib/catseye_cli/config.ml *)
 
+open Base
+open Stdio
+
+(* Expose stdlib functions that Base shadows *)
+let ( = ) = Stdlib.( = )
+let ( <>) = Stdlib.( <> )
+let ( ^ ) = Stdlib.( ^ )
+let concat = Stdlib.Filename.concat
+let dirname = Stdlib.Filename.dirname
+let file_exists = Stdlib.Sys.file_exists
+let executable_name = Stdlib.Sys.executable_name
+let split_on_char = Stdlib.String.split_on_char
+let std_string_length = Stdlib.String.length
+let std_string_get = Stdlib.String.get
+let std_string_sub = Stdlib.String.sub
+let std_string_index_opt = Stdlib.String.index_opt
+let std_string_rindex_opt = Stdlib.String.rindex_opt
+let std_string_trim = Stdlib.String.trim
+let std_list_filter = Stdlib.List.filter
+let std_list_map = Stdlib.List.map
+let std_list_sort_uniq = Stdlib.List.sort_uniq
+let std_list_mem = Stdlib.List.mem
+let std_compare = Stdlib.compare
+let std_list_exists = Stdlib.List.exists
+let std_in_channel_length = Stdlib.in_channel_length
+let std_really_input = Stdlib.really_input
+let std_close_in = Stdlib.close_in
+
 type output_format =
   | Terminal
   | Json
@@ -41,9 +69,9 @@ type t = {
   cfg_max_blocks : int;       (* Max blocks per function CFG (safety limit) *)
   cfg_timeout_ms : int;       (* Timeout per function CFG build (safety limit) *)
   claws_config : Catseye_claws.Types.claws_config;
-  taint_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress taint findings *)
+  taint_suppress : string list Map.M(String).t;  (* per-rule file globs to suppress taint findings *)
   suppress : string list;  (* Rule IDs to suppress (--suppress flag) *)
-  ai_suppress : (string, string list) Hashtbl.t;  (* per-rule file globs to suppress AI lint findings *)
+  ai_suppress : string list Map.M(String).t;  (* per-rule file globs to suppress AI lint findings *)
   include_deps : bool;  (* Include shard dependencies in scan (Crystal only) *)
   elixir_enabled : bool;  (* Enable Elixir tool integration *)
   elixir_tools : string list;  (* Which Elixir tools to run *)
@@ -80,9 +108,9 @@ let default = {
   cfg_max_blocks = 500;
   cfg_timeout_ms = 5000;
   claws_config = Catseye_claws.Types.default_config;
-  taint_suppress = Hashtbl.create 0;
+  taint_suppress = Map.empty (module String);
   suppress = [];
-  ai_suppress = Hashtbl.create 0;
+  ai_suppress = Map.empty (module String);
   elixir_enabled = false;
   elixir_tools = ["sobelow"; "credo"; "reach"];
 }
@@ -90,10 +118,10 @@ let default = {
 (** Walk up from [dir] looking for .catseye.toml. *)
 let find_config dir =
   let rec walk d =
-    let candidate = Filename.concat d ".catseye.toml" in
-    if Sys.file_exists candidate then Some candidate
+    let candidate = concat d ".catseye.toml" in
+    if file_exists candidate then Some candidate
     else
-      let parent = Filename.dirname d in
+      let parent = dirname d in
       if parent = d then None
       else walk parent
   in
@@ -101,7 +129,7 @@ let find_config dir =
 
 (** Read a string list from a TOML table at the given dotted path. *)
 let get_string_list table path =
-  let keys = String.split_on_char '.' path in
+  let keys = split_on_char '.' path in
   let rec descend tbl = function
     | [] -> None
     | [k] ->
@@ -123,7 +151,7 @@ let get_string_list table path =
 
 (** Read an integer from a TOML table. *)
 let get_int table path default =
-  let keys = String.split_on_char '.' path in
+  let keys = split_on_char '.' path in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -145,7 +173,7 @@ let get_int table path default =
 
 (** Read a string from a TOML table. *)
 let get_string table path default =
-  let keys = String.split_on_char '.' path in
+  let keys = split_on_char '.' path in
   let rec descend tbl = function
     | [] -> default
     | [k] ->
@@ -165,50 +193,58 @@ let get_string table path default =
   in
   descend table keys
 
-(** Parse a glob pattern list from raw TOML lines. Helper for suppress sections. *)
-let parse_glob_list lines section_name =
-  let sup = Hashtbl.create 8 in
+(** Parse a glob pattern list from raw TOML lines.
+    Returns a String.Map.t instead of Hashtbl.t for thread-safety. *)
+let parse_glob_list_to_map lines section_name =
+  let initial_map = Map.empty (module String) in
   let current_section = ref "" in
-  List.iter (fun line ->
-    let trimmed = String.trim line in
-    if String.length trimmed > 0 && trimmed.[0] = '[' then
-      (let close = String.index_opt trimmed ']' in
-       match close with
-       | Some i -> current_section := String.sub trimmed 1 (i - 1)
-       | None -> ())
-    else if !current_section = section_name then begin
-      match String.index_opt trimmed '=' with
-      | Some eq_pos ->
-          let rule_name = String.trim (String.sub trimmed 0 eq_pos) in
-          let rest = String.trim (String.sub trimmed (eq_pos + 1) (String.length trimmed - eq_pos - 1)) in
-          if String.length rest >= 2 && rest.[0] = '[' then
-            (* Find the closing ] for the array *)
-            let close_bracket = match String.rindex_opt rest ']' with
-              | Some idx -> idx
-              | None -> String.length rest - 1
-            in
-            let inner = String.sub rest 1 (close_bracket - 1) in
-            let pats = List.filter (fun s -> String.length s > 0) (List.map (fun s ->
-              let s = String.trim s in
-              if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
-                String.sub s 1 (String.length s - 2)
-              else s
-            ) (String.split_on_char ',' inner)) in
-            if pats <> [] then Hashtbl.replace sup rule_name pats
-      | None -> ()
-    end
-  ) lines;
-  sup
+  let rec process_lines acc = function
+    | [] -> acc
+    | line :: rest ->
+      let trimmed = std_string_trim line in
+      let new_section =
+        if std_string_length trimmed > 0 && trimmed.[0] = '[' then
+          match std_string_index_opt trimmed ']' with
+          | Some i -> std_string_sub trimmed 1 (i - 1)
+          | None -> !current_section
+        else !current_section
+      in
+      current_section := new_section;
+      if new_section = section_name then
+        match std_string_index_opt trimmed '=' with
+        | Some eq_pos ->
+            let rule_name = std_string_trim (std_string_sub trimmed 0 eq_pos) in
+            let rest_str = std_string_trim (std_string_sub trimmed (eq_pos + 1) (std_string_length trimmed - eq_pos - 1)) in
+            if std_string_length rest_str >= 2 && rest_str.[0] = '[' then
+              let close_bracket = match std_string_rindex_opt rest_str ']' with
+                | Some idx -> idx
+                | None -> std_string_length rest_str - 1
+              in
+              let inner = std_string_sub rest_str 1 (close_bracket - 1) in
+              let pats = std_list_filter (fun s -> std_string_length s > 0) (std_list_map (fun s ->
+                let s = std_string_trim s in
+                if std_string_length s >= 2 && s.[0] = '"' && s.[std_string_length s - 1] = '"' then
+                  std_string_sub s 1 (std_string_length s - 2)
+                else s
+              ) (split_on_char ',' inner)) in
+              if pats <> []
+              then process_lines (Map.set acc ~key:rule_name ~data:pats) rest
+              else process_lines acc rest
+            else process_lines acc rest
+        | None -> process_lines acc rest
+      else process_lines acc rest
+  in
+  process_lines initial_map lines
 
 (** Load .catseye.toml and overlay onto config. *)
 let load_toml (path : string) (cfg : t) : t =
   try
     let table =
-      let ic = open_in path in
-      let len = in_channel_length ic in
+      let ic = In_channel.create path in
+      let len = std_in_channel_length ic in
       let buf = Bytes.create len in
-      really_input ic buf 0 len;
-      close_in ic;
+      std_really_input ic buf 0 len;
+      std_close_in ic;
       Toml.Parser.(from_string (Bytes.to_string buf) |> unsafe) in
     let get_bool table path default =
       match get_int table path (-1) with
@@ -217,15 +253,8 @@ let load_toml (path : string) (cfg : t) : t =
       | _ -> default
     in
     (* Read raw TOML for suppress sections *)
-    let raw_toml =
-      let ic = open_in path in
-      let len = in_channel_length ic in
-      let buf = Bytes.create len in
-      really_input ic buf 0 len;
-      close_in ic;
-      Bytes.to_string buf
-    in
-    let toml_lines = String.split_on_char '\n' raw_toml in
+    let raw_toml = In_channel.read_all path in
+    let toml_lines = split_on_char '\n' raw_toml in
     { cfg with
       lang_filter =
         (match get_string_list table "languages.enabled" with
@@ -238,11 +267,11 @@ let load_toml (path : string) (cfg : t) : t =
                 | All -> ["crystal"; "gleam"]
                 | Only langs -> langs
               in
-              Only (List.filter (fun l -> not (List.mem l disabled)) all_langs)
+              Only (std_list_filter (fun l -> not (std_list_mem l disabled)) all_langs)
             | None -> cfg.lang_filter))
     ; exclude_dirs =
         (match get_string_list table "scan.exclude" with
-         | Some extra -> List.sort_uniq String.compare (cfg.exclude_dirs @ extra)
+         | Some extra -> std_list_sort_uniq std_compare (cfg.exclude_dirs @ extra)
          | None -> cfg.exclude_dirs)
     ; extra_sources = (match get_string_list table "analysis.extra_sources" with Some l -> l | None -> [])
     ; extra_sanitizers = (match get_string_list table "analysis.extra_sanitizers" with Some l -> l | None -> [])
@@ -284,10 +313,10 @@ let load_toml (path : string) (cfg : t) : t =
         lazy_class_method_threshold = get_int table "claws.lazy_class_method_threshold" 3;
         large_class_loc_warning = get_int table "claws.large_class_loc_warning" 200;
         large_class_loc_critical = get_int table "claws.large_class_loc_critical" 500;
-        suppress = parse_glob_list toml_lines "claws.suppress";
+        suppress = parse_glob_list_to_map toml_lines "claws.suppress";
       };
-      ai_suppress = parse_glob_list toml_lines "ai.suppress";
-      taint_suppress = parse_glob_list toml_lines "taint.suppress";
+      ai_suppress = parse_glob_list_to_map toml_lines "ai.suppress";
+      taint_suppress = parse_glob_list_to_map toml_lines "taint.suppress";
     }
   with _ -> cfg
 
@@ -295,16 +324,16 @@ let load_toml (path : string) (cfg : t) : t =
     Looks for the crystal binary on PATH, or a pre-compiled extractor binary. *)
 let detect_crystal () : bool =
   (* Check for pre-compiled extractor binary next to the executable *)
-  let exe_dir = Filename.dirname (Sys.executable_name) in
+  let exe_dir = dirname (executable_name) in
   let flat_bin = exe_dir ^ "/catseye-crystal-extractor" in
   let hier_bin = exe_dir ^ "/catseye-hierarchical-extractor" in
-  if Sys.file_exists flat_bin || Sys.file_exists hier_bin then true
+  if file_exists flat_bin || file_exists hier_bin then true
   else
     (* Check for crystal compiler on PATH *)
     try
       let ic = Unix.open_process_in "which crystal 2>/dev/null" in
       let buf = Buffer.create 256 in
-      (try while true do Buffer.add_channel buf ic 1 done
+      (try while true do Stdlib.Buffer.add_channel buf ic 1 done
        with End_of_file -> ());
       let _ = Unix.close_process_in ic in
       Buffer.length buf > 0
@@ -316,7 +345,7 @@ and detect_elixir () : bool =
   try
     let ic = Unix.open_process_in "which mix 2>/dev/null" in
     let buf = Buffer.create 256 in
-    (try while true do Buffer.add_channel buf ic 1 done
+    (try while true do Stdlib.Buffer.add_channel buf ic 1 done
      with End_of_file -> ());
     let _ = Unix.close_process_in ic in
     Buffer.length buf > 0

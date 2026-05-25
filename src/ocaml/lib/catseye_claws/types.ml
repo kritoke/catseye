@@ -1,5 +1,7 @@
 (* lib/catseye_claws/types.ml *)
 
+open Base
+
 (** Claws — code health module types and configuration.
 
     Claws detects code smells (complexity, structural issues) and DRY
@@ -57,7 +59,7 @@ type claws_config = {
   large_class_loc_critical : int;    (** default: 500 lines *)
 
   (* Per-rule suppression: rule name -> glob patterns for files to suppress *)
-  suppress : (string, string list) Hashtbl.t;  (** default: empty *)
+  suppress : string list Map.M(String).t;  (** default: empty *)
 }
 
 let default_config = {
@@ -91,5 +93,5 @@ let default_config = {
   lazy_class_method_threshold = 3;
   large_class_loc_warning = 200;
   large_class_loc_critical = 500;
-  suppress = Hashtbl.create 0;
+  suppress = Map.empty (module String);
 }

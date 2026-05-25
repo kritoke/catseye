@@ -271,105 +271,93 @@ let detect_refused_parent_bequest
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
-  (* Group nodes by file for body size calculation *)
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
-  ) nodes;
-  
-  let findings = ref [] in
-  
-  List.iter (fun (info : Class_graph.class_info) ->
+  let std_list_mem = Stdlib.List.mem in
+  let std_list_filter = Stdlib.List.filter in
+  let std_list_sort = Stdlib.List.sort in
+  let std_list_find_opt = Stdlib.List.find_opt in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let module StringMap = Map.Make(String) in
+  (* Group nodes by file using Map *)
+  let by_file = std_list_fold_left (fun acc (n : Security_node.t) ->
+    let existing = match StringMap.find_opt n.Security_node.file acc with
+      | Some nodes -> nodes | None -> [] in
+    StringMap.add n.Security_node.file (n :: existing) acc
+  ) StringMap.empty nodes in
+  (* Helper to get ancestor methods *)
+  let rec get_ancestor_methods (name : string) (visited : string list) : string list =
+    if std_list_mem name visited then []
+    else
+      match std_list_find_opt (fun i -> i.Class_graph.name = name) infos with
+      | Some ci ->
+        let methods = ci.Class_graph.methods in
+        (match ci.Class_graph.parent with
+         | Some p -> methods @ get_ancestor_methods p (name :: visited)
+         | None -> methods)
+      | None -> []
+  in
+  (* Collect findings from each class *)
+  std_list_concat_map (fun (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent_name ->
-        (* Find parent's methods *)
-        let parent_opt = List.find_opt (fun i -> i.Class_graph.name = parent_name) infos in
-        (match parent_opt with
-         | Some _parent ->
-             (* Get all ancestor methods *)
-             let rec get_ancestor_methods (name : string) (visited : string list) : string list =
-               if List.mem name visited then []
-               else
-                 match List.find_opt (fun i -> i.Class_graph.name = name) infos with
-                 | Some ci ->
-                     let methods = ci.Class_graph.methods in
-                     (match ci.Class_graph.parent with
-                      | Some p -> methods @ get_ancestor_methods p (name :: visited)
-                      | None -> methods)
-                 | None -> []
+      (match std_list_find_opt (fun i -> i.Class_graph.name = parent_name) infos with
+       | Some _parent ->
+         let ancestor_methods = get_ancestor_methods parent_name [] in
+         std_list_concat_map (fun method_name ->
+           if not (std_list_mem method_name ancestor_methods) then [] else
+           let file_nodes = match StringMap.find_opt info.Class_graph.file by_file with
+             | Some nodes -> nodes | None -> [] in
+           let sorted = std_list_sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
+           let all_classes = std_list_filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in
+           let class_start = info.Class_graph.line in
+           let class_end = 
+             let rec find_next_class = function
+               | [] -> 999999
+               | c :: _ when c.Security_node.line > class_start -> c.Security_node.line
+               | _ :: rest -> find_next_class rest
+             in find_next_class all_classes
+           in
+           let def_nodes = std_list_filter (fun n -> 
+             n.Security_node.node_type = Security_node.Def
+             && n.Security_node.name = method_name
+             && n.Security_node.line >= class_start
+             && n.Security_node.line < class_end
+           ) sorted in
+           std_list_concat_map (fun (def_node : Security_node.t) ->
+             let start_line = def_node.Security_node.line in
+             let next_def = std_list_find_opt (fun n -> 
+               n.Security_node.node_type = Security_node.Def 
+               && n.Security_node.line > start_line
+               && n.Security_node.line < class_end
+             ) sorted in
+             let end_line = match next_def with
+               | Some d -> d.Security_node.line
+               | None -> class_end
              in
-             let ancestor_methods = get_ancestor_methods parent_name [] in
-             
-             (* For each method in this class, check if it overrides an ancestor *)
-             List.iter (fun method_name ->
-               if List.mem method_name ancestor_methods then
-                 (* Calculate body size for this method *)
-                 let file_nodes = try Hashtbl.find by_file info.Class_graph.file with Not_found -> [] in
-                 let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-                 
-                 (* Find all classes to determine class boundaries *)
-                 let all_classes = List.filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in
-                 
-                 (* Find this class's boundaries *)
-                 let class_start = info.Class_graph.line in
-                 let class_end = 
-                   let rec find_next_class = function
-                     | [] -> 999999
-                     | c :: _ when c.Security_node.line > class_start -> c.Security_node.line
-                     | _ :: rest -> find_next_class rest
-                   in find_next_class all_classes
-                 in
-                 
-                 (* Find this specific def within this class's boundaries *)
-                 let def_nodes = List.filter (fun n -> 
-                   n.Security_node.node_type = Security_node.Def
-                   && n.Security_node.name = method_name
-                   && n.Security_node.line >= class_start
-                   && n.Security_node.line < class_end
-                 ) sorted in
-                 
-                 List.iter (fun (def_node : Security_node.t) ->
-                   let start_line = def_node.Security_node.line in
-                   (* Find end of method body (next Def in this class, or next class) *)
-                   let next_def = List.find_opt (fun n -> 
-                     n.Security_node.node_type = Security_node.Def 
-                     && n.Security_node.line > start_line
-                     && n.Security_node.line < class_end
-                   ) sorted in
-                   let end_line = match next_def with
-                     | Some d -> d.Security_node.line
-                     | None -> class_end
-                   in
-                   let body_size = end_line - start_line in
-                   
-                   (* Flag if body is suspiciously small (< 3 lines) *)
-                   if body_size <= refused_bequest_min_loc then
-                     findings := {
-                       Finding.rule = "RefusedParentBequest";
-                       severity = "Low";
-                       file = info.Class_graph.file;
-                       line = start_line;
-                       message = Printf.sprintf
-                         "Method '%s' in '%s' overrides parent but has tiny body (%d lines). This is 'Refused Parent Bequest' - the class refuses functionality from its parent."
-                         method_name info.Class_graph.name body_size;
-                       flow = [ {
-                         Finding.file = info.Class_graph.file;
-                         line = start_line;
-                         message = Printf.sprintf "Override of '%s' in '%s' (%d lines)"
-                           method_name parent_name body_size;
-                       } ];
-                       language = "crystal";
-                       dependency = None;
-                       reachability = None; suggestion = None;
-                     } :: !findings
-                 ) def_nodes
-             ) info.Class_graph.methods
-         | None -> ())
-    | None -> ()
-  ) infos;
-  
-  List.rev !findings
+             let body_size = end_line - start_line in
+             if body_size <= refused_bequest_min_loc then
+               [{ Finding.rule = "RefusedParentBequest";
+                  severity = "Low";
+                  file = info.Class_graph.file;
+                  line = start_line;
+                  message = Printf.sprintf
+                    "Method '%s' in '%s' overrides parent but has tiny body (%d lines). This is 'Refused Parent Bequest' - the class refuses functionality from its parent."
+                    method_name info.Class_graph.name body_size;
+                  flow = [ {
+                    Finding.file = info.Class_graph.file;
+                    line = start_line;
+                    message = Printf.sprintf "Override of '%s' in '%s' (%d lines)"
+                      method_name parent_name body_size;
+                  } ];
+                  language = "crystal";
+                  dependency = None;
+                  reachability = None; suggestion = None; }]
+             else []
+           ) def_nodes
+         ) info.Class_graph.methods
+       | None -> [])
+    | None -> []
+  ) infos
 
 (** 6. BaseClassKnowsDerivedClass
     A base class references one of its subclasses by name, indicating tight coupling.
@@ -383,57 +371,45 @@ let detect_base_class_knows_derived
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
-  (* Build sibling sets (classes with same parent) *)
-  let parent_children = Hashtbl.create 16 in
-  List.iter (fun (info : Class_graph.class_info) ->
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let std_list_length = Stdlib.List.length in
+  let std_list_map = Stdlib.List.map in
+  let std_list_rev = Stdlib.List.rev in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_string_concat = Stdlib.String.concat in
+  let module StringMap = Map.Make(String) in
+  (* Build parent -> children map using fold *)
+  let parent_children = std_list_fold_left (fun acc (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent ->
-        let siblings = try Hashtbl.find parent_children parent with Not_found -> [] in
-        Hashtbl.replace parent_children parent (info :: siblings)
-    | None -> ()
-  ) infos;
-  
-  (* For each class that is a parent, check if it references its children *)
-  let findings = ref [] in
-  
-  List.iter (fun (info : Class_graph.class_info) ->
-    (* Skip classes that have no children *)
-    let children = try Hashtbl.find parent_children info.Class_graph.name with Not_found -> [] in
-    if List.length children < 1 then ()
-    else begin
-      (* Get all child names *)
-      let _child_names = List.map (fun c -> c.Class_graph.name) children in
-      
-      (* We'll check call names for any child class reference *)
-      (* For a more accurate check, we'd need to scan actual node content *)
-      (* For now, mark it as a potential finding with low confidence *)
-      (* The pattern is: base class creating/returning child instances directly *)
-      
-      if List.length children >= 3 then
-        (* Common pattern: factory methods returning specific child types *)
-        findings := {
-          Finding.rule = "BaseClassKnowsDerivedClass";
-          severity = "Low";
-          file = info.Class_graph.file;
-          line = info.Class_graph.line;
-          message = Printf.sprintf
-            "Class '%s' has %d direct children. Consider if it references them directly (factory pattern, type checks with 'is_a?', etc.). Base classes should not know their specific derived types."
-            info.Class_graph.name (List.length children);
-          flow = [ {
-            Finding.file = info.Class_graph.file;
-            line = info.Class_graph.line;
-            message = Printf.sprintf "Definition of '%s' (%d children: %s)"
-              info.Class_graph.name (List.length children)
-              (String.concat ", " (List.map (fun c -> c.Class_graph.name) (List.rev children)));
-          } ];
-          language = "crystal";
-          dependency = None;
-          reachability = None; suggestion = None;
-        } :: !findings
-    end
-  ) infos;
-  
-  List.rev !findings
+      let siblings = match StringMap.find_opt parent acc with
+        | Some siblings -> siblings | None -> [] in
+      StringMap.add parent (info :: siblings) acc
+    | None -> acc
+  ) StringMap.empty infos in
+  (* Collect findings from each parent class *)
+  std_list_concat_map (fun (info : Class_graph.class_info) ->
+    match StringMap.find_opt info.Class_graph.name parent_children with
+    | Some children when std_list_length children >= 3 ->
+      [{ Finding.rule = "BaseClassKnowsDerivedClass";
+         severity = "Low";
+         file = info.Class_graph.file;
+         line = info.Class_graph.line;
+         message = Printf.sprintf
+           "Class '%s' has %d direct children. Consider if it references them directly (factory pattern, type checks with 'is_a?', etc.). Base classes should not know their specific derived types."
+           info.Class_graph.name (std_list_length children);
+         flow = [ {
+           Finding.file = info.Class_graph.file;
+           line = info.Class_graph.line;
+           message = Printf.sprintf "Definition of '%s' (%d children: %s)"
+             info.Class_graph.name (std_list_length children)
+             (std_string_concat ", " (std_list_map (fun c -> c.Class_graph.name) (std_list_rev children)));
+         } ];
+         language = "crystal";
+         dependency = None;
+         reachability = None; suggestion = None; }]
+    | _ -> []
+  ) infos
 
 (** 7. Parallel Inheritance
     Two sibling hierarchies that evolve together but share no code.
@@ -447,53 +423,48 @@ let detect_parallel_inheritance
     (infos : Class_graph.class_info list)
     (_parent_to_children : string list Class_graph.StringMap.t)
     : Finding.t list =
-  let findings = ref [] in
-  
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
   (* Build set of all class names for quick lookup *)
-  let all_class_names = List.fold_left (fun acc info ->
+  let all_class_names = std_list_fold_left (fun acc info ->
     Class_graph.StringSet.add info.Class_graph.name acc
   ) Class_graph.StringSet.empty infos in
-  
-  (* For each class, check if its name is a compound of two existing class names *)
-  List.iter (fun info ->
+  (* Helper to check all possible splits of a name *)
+  let rec check_splits (info : Class_graph.class_info) (name : string) (namelen : int) (pos : int) : Finding.t list =
+    if pos >= namelen - 1 then []  (* Need at least 2 chars on each side *)
+    else
+      let prefix = std_string_sub name 0 pos in
+      let suffix = std_string_sub name pos (namelen - pos) in
+      let new_findings = 
+        if Class_graph.StringSet.mem prefix all_class_names && Class_graph.StringSet.mem suffix all_class_names then
+          [{ Finding.rule = "ParallelInheritance";
+             severity = "Low";
+             file = info.Class_graph.file;
+             line = info.Class_graph.line;
+             message = Printf.sprintf
+               "'%s' appears to be a combination of '%s' and '%s'. This suggests parallel hierarchies - when you add a new '%s', you must also add a new '%s'."
+               name prefix suffix suffix suffix;
+             flow = [ {
+               Finding.file = info.Class_graph.file;
+               line = info.Class_graph.line;
+               message = Printf.sprintf "'%s' is a compound class (prefix: '%s', suffix: '%s')"
+                 name prefix suffix;
+             } ];
+             language = "crystal";
+             dependency = None;
+             reachability = None; suggestion = None; }]
+        else []
+      in
+      new_findings @ check_splits info name namelen (pos + 1)
+  in
+  (* Collect findings from each class *)
+  std_list_concat_map (fun info ->
     let name = info.Class_graph.name in
-    let namelen = String.length name in
-    
-    (* Try splitting the name at each position *)
-    let rec check_splits pos =
-      if pos >= namelen - 1 then ()  (* Need at least 2 chars on each side *)
-      else begin
-        let prefix = String.sub name 0 pos in
-        let suffix = String.sub name pos (namelen - pos) in
-        
-        (* Check if both parts are existing class names *)
-        if Class_graph.StringSet.mem prefix all_class_names && Class_graph.StringSet.mem suffix all_class_names then begin
-          findings := {
-            Finding.rule = "ParallelInheritance";
-            severity = "Low";
-            file = info.Class_graph.file;
-            line = info.Class_graph.line;
-            message = Printf.sprintf
-              "'%s' appears to be a combination of '%s' and '%s'. This suggests parallel hierarchies - when you add a new '%s', you must also add a new '%s'."
-              name prefix suffix suffix suffix;
-            flow = [ {
-              Finding.file = info.Class_graph.file;
-              line = info.Class_graph.line;
-              message = Printf.sprintf "'%s' is a compound class (prefix: '%s', suffix: '%s')"
-                name prefix suffix;
-            } ];
-            language = "crystal";
-            dependency = None;
-            reachability = None; suggestion = None;
-          } :: !findings
-        end;
-        check_splits (pos + 1)
-      end
-    in
-    check_splits 1
-  ) infos;
-  
-  List.rev !findings
+    let namelen = std_string_length name in
+    check_splits info name namelen 1
+  ) infos
 
 (* ── Main Analyzer ───────────────────────────────────────────────── *)
 

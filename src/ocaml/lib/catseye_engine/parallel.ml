@@ -1,5 +1,9 @@
 (* lib/catseye_engine/parallel.ml
-   Parallel extraction using OCaml 5 Domains. *)
+   Parallel extraction using OCaml 5 Domains.
+
+   Uses Domain-based parallelism for extraction. This provides good
+   CPU utilization across cores for file extraction tasks.
+*)
 
 (** Run extractions in parallel, one Domain per file.
     Falls back to sequential on single-core or Domain errors. *)

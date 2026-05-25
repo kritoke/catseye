@@ -43,13 +43,14 @@ let is_tainted_in_file (db : t) (var : string) (file : string) : bool =
   | None -> false
 
 let get_tainted_vars (db : t) : string list =
-  let seen = Hashtbl.create taint_dedup_size in
+  let std_list_mem = Stdlib.List.mem in
+  let std_list_fold = Stdlib.List.fold_left in
   StringMap.fold (fun _ records acc ->
-    List.fold_left (fun acc r ->
-      if Hashtbl.mem seen r.var_name then acc
-      else (Hashtbl.add seen r.var_name true; r.var_name :: acc)
+    std_list_fold (fun acc r -> 
+      if std_list_mem r.var_name acc then acc 
+      else r.var_name :: acc
     ) acc records
-  ) db []
+  ) db [] |> List.rev
 
 let get_tainted_vars_in_file (db : t) (file : string) : string list =
   match StringMap.find_opt file db with

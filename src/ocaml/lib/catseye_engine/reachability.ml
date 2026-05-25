@@ -8,9 +8,11 @@
    Findings in reachable functions are "Live", others are "Dormant". *)
 
 open Catseye_types
+open Security_node
 
 module StringMap = Map.Make(String)
 module StringSet = Set.Make(String)
+module StringMap2 = Map.Make(String)
 
 (* ── Types ──────────────────────────────────────────────────────────── *)
 
@@ -80,21 +82,22 @@ type scope_info = {
 }
 
 (** Build scope list per file, then map each node to its enclosing scope. *)
-let build_scopes (nodes : Security_node.t list) : scope_info list =
-  let file_defs = Hashtbl.create 16 in
+let build_scopes (nodes : t list) : scope_info list =
+  let file_defs : scope_info list StringMap2.t ref = ref StringMap2.empty in
   (* Collect Def nodes grouped by file *)
   List.iter (fun n ->
-    if n.Security_node.node_type = Security_node.Def then begin
-      let file = n.Security_node.file in
-      let defs = try Hashtbl.find file_defs file with Not_found -> [] in
-      Hashtbl.replace file_defs file
-        ({ func_name = n.Security_node.name; file; start_line = n.Security_node.line; end_line = max_int } :: defs)
+    if n.node_type = Def then begin
+      let file = n.file in
+      let new_scope = { func_name = n.name; file; start_line = n.line; end_line = max_int } in
+      file_defs := StringMap2.update file
+        (function None -> Some [new_scope] | Some defs -> Some (new_scope :: defs))
+        !file_defs
     end
   ) nodes;
   (* Sort each file's defs by line, set end_line to next def's start_line *)
   let all_scopes = ref [] in
-  Hashtbl.iter (fun _file defs ->
-    let sorted = List.sort (fun a b -> compare a.start_line b.start_line) defs in
+  StringMap2.iter (fun _file defs ->
+    let sorted = List.sort (fun a b -> Int.compare a.start_line b.start_line) defs in
     let rec set_ends = function
       | [] -> ()
       | [last] ->
@@ -104,7 +107,7 @@ let build_scopes (nodes : Security_node.t list) : scope_info list =
         set_ends rest
     in
     set_ends sorted
-  ) file_defs;
+  ) !file_defs;
   !all_scopes
 
 (** Find which function scope contains a given file:line *)
@@ -224,18 +227,21 @@ let reachable_from (entries : entry_point list) (call_graph : call_adjacency)
 
 (* ── Path tracing ───────────────────────────────────────────────────── *)
 
+(* BFS path tracing using Map instead of Hashtbl *)
+module StringOptionMap = Map.Make(String)
+
 (** Trace the shortest call path from an entry point to a target function.
     Returns the path as [(file, line), ...] or [] if unreachable. *)
 let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     (target : string) : (entry_point * (string * int) list) option =
-  (* BFS with parent tracking *)
-  let parent = Hashtbl.create 32 in
-  let visited = Hashtbl.create 32 in
-  let queue = Queue.create () in
+  (* BFS with parent tracking using Map *)
+  let parent : (string * string) option StringOptionMap.t ref = ref StringOptionMap.empty in
+  let visited : StringSet.t ref = ref StringSet.empty in
+  let queue : string Queue.t = Queue.create () in
   List.iter (fun e ->
-    if not (Hashtbl.mem visited e.function_name) then begin
-      Hashtbl.replace visited e.function_name true;
-      Hashtbl.add parent e.function_name None;
+    if not (StringSet.mem e.function_name !visited) then begin
+      visited := StringSet.add e.function_name !visited;
+      parent := StringOptionMap.add e.function_name None !parent;
       Queue.push e.function_name queue
     end
   ) entries;
@@ -248,9 +254,9 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
       (match StringMap.find_opt current call_graph with
        | Some edges ->
          List.iter (fun (called, _f, _l) ->
-           if not (Hashtbl.mem visited called) then begin
-             Hashtbl.replace visited called true;
-             Hashtbl.add parent called (Some (current, called));
+           if not (StringSet.mem called !visited) then begin
+             visited := StringSet.add called !visited;
+             parent := StringOptionMap.add called (Some (current, called)) !parent;
              Queue.push called queue
            end
          ) edges
@@ -262,7 +268,7 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     (* Reconstruct path *)
     let path = ref [] in
     let rec walk name =
-      match Hashtbl.find_opt parent name with
+      match StringOptionMap.find_opt name !parent with
       | None -> () (* entry point reached *)
       | Some None -> ()
       | Some (Some (parent_name, _child)) ->
@@ -278,7 +284,7 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     walk target;
     (* Find which entry point we started from *)
     let rec find_entry name =
-      match Hashtbl.find_opt parent name with
+      match StringOptionMap.find_opt name !parent with
       | None | Some None ->
         List.find (fun e -> e.function_name = name) entries
       | Some (Some (parent_name, _)) ->

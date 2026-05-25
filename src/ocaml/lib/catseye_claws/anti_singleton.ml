@@ -96,76 +96,72 @@ let is_config_class (name : string) : bool =
 
 let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_config)
     : Finding.t list =
-  (* Group nodes by file *)
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
-  ) nodes;
-
-  let findings = ref [] in
-  Hashtbl.iter (fun _file file_nodes ->
-    (* Find class/module boundaries *)
-    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-    let class_nodes = List.filter (fun n ->
-      List.mem n.Security_node.node_type [Security_node.Class; Security_node.Module]
+  let std_list_exists = Stdlib.List.exists in
+  let std_list_filter = Stdlib.List.filter in
+  let std_list_map = Stdlib.List.map in
+  let std_list_length = Stdlib.List.length in
+  let std_list_nth = Stdlib.List.nth in
+  let std_list_iteri = Stdlib.List.iteri in
+  let std_list_sort = Stdlib.List.sort in
+  let std_list_fold_left = Stdlib.List.fold_left in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let std_string_concat = Stdlib.String.concat in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
+  let module StringMap = Map.Make(String) in
+  (* Group nodes by file using Map *)
+  let by_file = std_list_fold_left (fun acc (n : Security_node.t) ->
+    let existing = match StringMap.find_opt n.Security_node.file acc with
+      | Some nodes -> nodes | None -> [] in
+    StringMap.add n.Security_node.file (n :: existing) acc
+  ) StringMap.empty nodes in
+  (* Collect findings from each file's class nodes *)
+  std_list_concat_map (fun (file, file_nodes) ->
+    if is_config_file file then [] else
+    let sorted = std_list_sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
+    let class_nodes = std_list_filter (fun n ->
+      std_list_exists (fun nt -> nt = n.Security_node.node_type) [Security_node.Class; Security_node.Module]
     ) sorted in
-
-    List.iteri (fun i (cn : Security_node.t) ->
-      let file = cn.Security_node.file in
-
-      (* Skip config files entirely *)
-      if is_config_file file then () else
-
-      (* Skip idiomatic singleton classes (managers, caches, stores, etc.) *)
-      if is_singleton_class cn.Security_node.name then () else
-
+    std_list_concat_map (fun (cn : Security_node.t) ->
+      if is_singleton_class cn.Security_node.name then [] else
       let start_line = cn.Security_node.line in
-      let end_line =
-        if i + 1 < List.length class_nodes then
-          (List.nth class_nodes (i + 1)).Security_node.line
-        else max_int
+      let end_line = match std_list_nth class_nodes (std_list_length class_nodes) with
+        | _ when std_list_length class_nodes = 1 -> max_int
+        | _ -> (try (std_list_nth class_nodes 1).Security_node.line with Failure _ -> max_int)
       in
-
-      (* Find class variable assignments within this class *)
-      let class_var_assigns = List.filter (fun (n : Security_node.t) ->
+      let class_var_assigns = std_list_filter (fun (n : Security_node.t) ->
         n.Security_node.node_type = Security_node.Assign
         && n.Security_node.line >= start_line
         && n.Security_node.line < end_line
-        && String.length n.Security_node.name >= 2
+        && std_string_length n.Security_node.name >= 2
         && n.Security_node.name.[0] = '@'
         && n.Security_node.name.[1] = '@'
       ) sorted in
-
-      (* Filter out exempt class variables *)
-      let non_exempt_vars = List.filter (fun n ->
+      let non_exempt_vars = std_list_filter (fun n ->
         not (is_exempt_class_var n.Security_node.name)
       ) class_var_assigns in
-
-      if List.length non_exempt_vars > 0 then
-        let class_vars = List.map (fun n -> n.Security_node.name) non_exempt_vars in
-        let msg = String.concat ", " class_vars in
-        findings := {
-          Finding.rule = "AntiSingleton";
-          severity = "Medium";
-          file = cn.Security_node.file;
-          line = cn.Security_node.line;
-          message = Printf.sprintf
-            "Class '%s' has mutable class variables: %s. \
+      if std_list_length non_exempt_vars > 0 then
+        let class_vars = std_list_map (fun n -> n.Security_node.name) non_exempt_vars in
+        let msg = std_string_concat ", " class_vars in
+        [{ Finding.rule = "AntiSingleton";
+           severity = "Medium";
+           file = cn.Security_node.file;
+           line = cn.Security_node.line;
+           message = Printf.sprintf
+             "Class '%s' has mutable class variables: %s. \
              Class variables can be used as global state. Consider using instance variables or dependency injection."
-            cn.Security_node.name msg;
-          flow = List.map (fun n -> {
-            Finding.file = n.Security_node.file;
-            line = n.Security_node.line;
-            message = Printf.sprintf "Mutable class variable: %s" n.Security_node.name;
-          }) non_exempt_vars;
-          language = cn.Security_node.language;
-          dependency = None;
-          reachability = None; suggestion = None;
-        } :: !findings
+             cn.Security_node.name msg;
+           flow = std_list_map (fun n -> {
+             Finding.file = n.Security_node.file;
+             line = n.Security_node.line;
+             message = Printf.sprintf "Mutable class variable: %s" n.Security_node.name;
+           }) non_exempt_vars;
+           language = cn.Security_node.language;
+           dependency = None;
+           reachability = None; suggestion = None; }]
+      else []
     ) class_nodes
-  ) by_file;
-  List.rev !findings
+  ) (StringMap.bindings by_file)
 
 (* ── Analyzer ─────────────────────────────────────────────────────── *)
 

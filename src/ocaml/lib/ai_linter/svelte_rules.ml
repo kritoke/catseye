@@ -243,122 +243,124 @@ let rec check_expr e =
 
 (** Check for $effect without cleanup for cleanup-requiring patterns (setInterval/setTimeout) *)
 let check_effect_cleanup (items : item list) (path : string) : T.finding list =
-  let findings = ref [] in
-  let rec walk e =
+  let std_list_exists = Stdlib.List.exists in
+  let std_list_hd = Stdlib.List.hd in
+  let std_list_length = Stdlib.List.length in
+  let std_list_map = Stdlib.List.map in
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let rec check_expr e =
     match e.expr_value with
-    | EApp (fn, args) when expr_name fn = "$effect" && List.length args > 0 ->
-      (match (List.hd args).expr_value with
+    | EApp (fn, _) ->
+      let name = expr_name fn in
+      name = "setInterval" || name = "setTimeout"
+    | EBlock es -> std_list_exists check_expr es
+    | EFn (_, body) -> check_expr body
+    | EIf (_, then_, else_) ->
+      check_expr then_ || (match else_ with Some e -> check_expr e | None -> false)
+    | ELet (_, e1, e2) -> check_expr e1 || check_expr e2
+    | ELetAssert (_, e1, e2) -> check_expr e1 || check_expr e2
+    | ECase (_, branches) -> std_list_exists (fun (_, e) -> check_expr e) branches
+    | _ -> false
+  in
+  let rec walk e : int list =
+    match e.expr_value with
+    | EApp (fn, args) when expr_name fn = "$effect" && std_list_length args > 0 ->
+      (match (std_list_hd args).expr_value with
        | EFn (_, block_body) ->
          (match block_body.expr_value with
-          | EBlock es ->
-            if List.exists check_expr es then
-              findings := e.expr_location.start.line :: !findings
-            else ()
-          | _ -> ())
-       | _ -> ())
-    | EApp (fn, args) -> walk fn; List.iter walk args
-    | ELet (_, e1, e2) | ELetAssert (_, e1, e2) -> walk e1; walk e2
-    | EIf (_, then_, else_) -> walk then_; Option.iter walk else_
-    | ECase (_, branches) -> List.iter (fun (_, e) -> walk e) branches
-    | EBlock es -> List.iter walk es
+          | EBlock es when std_list_exists check_expr es ->
+            [e.expr_location.start.line]
+          | _ -> [])
+       | _ -> [])
+    | EApp (fn, args) -> walk fn @ std_list_concat_map walk args
+    | ELet (_, e1, e2) | ELetAssert (_, e1, e2) -> walk e1 @ walk e2
+    | EIf (_, then_, else_) -> walk then_ @ (match else_ with Some e -> walk e | None -> [])
+    | ECase (_, branches) -> std_list_concat_map (fun (_, e) -> walk e) branches
+    | EBlock es -> std_list_concat_map walk es
     | EFn (_, body) -> walk body
-    | _ -> ()
+    | _ -> []
   in
-  List.iter (fun item ->
+  let all_lines = std_list_concat_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) -> walk body
     | IConstant (PVar _, _, body) -> walk body
-    | _ -> ()
-  ) items;
-  List.map (fun line ->
+    | _ -> []
+  ) items in
+  std_list_map (fun line ->
     { T.file = path; line; rule_id = "svelte5-effect-missing-cleanup";
       severity = T.Warning;
       message = "$effect with setInterval/setTimeout without cleanup return";
       suggestion = Some "Return cleanup function: $effect(() => { const id = setInterval(...); return () => clearInterval(id); })" }
-  ) !findings
+  ) all_lines
 
 (* ── $derived reassignment check ─────────────────────────────────────── *)
 
-(** Extract variable name from a pattern (for let declarations) *)
-let rec extract_pattern_var (p : pattern) : string option =
-  match p with
-  | PVar name -> Some name
-  | PAlias (_, alias) -> Some alias
-  | PTuple ps | PList ps ->
-    (match ps with [p] -> extract_pattern_var p | _ -> None)
-  | PRecord fields ->
-    (match fields with [(_, p)] -> extract_pattern_var p | _ -> None)
-  | _ -> None
-
-(** Extract variable name from an expression (handles nested field access) *)
-let rec extract_lvalue (e : expr) : string option =
-  match e.expr_value with
-  | EVar name -> Some name
-  | EFieldAccess (recv, _) -> extract_lvalue recv  (* x.foo = ... → check x *)
-  | _ -> None
-
 (** Find all $derived declarations and their variable names *)
 let find_derived_vars (items : item list) : string list =
-  let derived_vars = ref [] in
-  let rec walk e =
+  let std_list_concat_map = Stdlib.List.concat_map in
+  let rec extract_pattern_var (p : pattern) : string option =
+    match p with
+    | PVar name -> Some name
+    | PAlias (_, alias) -> Some alias
+    | PTuple ps | PList ps ->
+      (match ps with [p] -> extract_pattern_var p | _ -> None)
+    | PRecord fields ->
+      (match fields with [(_, p)] -> extract_pattern_var p | _ -> None)
+    | _ -> None
+  in
+  let rec walk e : string list =
     match e.expr_value with
-    | EApp (fn, _) when expr_name fn = "$derived" -> ()  (* tracked via IConstant items *)
+    | EApp (fn, _) when expr_name fn = "$derived" -> []  (* tracked via IConstant items *)
     | ELet (lhs, rhs, _) ->
       (match extract_pattern_var lhs with
-       | Some var_name when expr_name rhs = "$derived" ->
-         derived_vars := var_name :: !derived_vars
-       | _ -> ());
-      walk rhs
-    | EApp (fn, args) -> walk fn; List.iter walk args
-    | EBlock es -> List.iter walk es
-    | EIf (_, then_, else_) -> walk then_; Option.iter walk else_
-    | ECase (_, branches) -> List.iter (fun (_, e) -> walk e) branches
+       | Some var_name when expr_name rhs = "$derived" -> [var_name]
+       | _ -> []) @ walk rhs
+    | EApp (fn, args) -> walk fn @ std_list_concat_map walk args
+    | EBlock es -> std_list_concat_map walk es
+    | EIf (_, then_, else_) -> walk then_ @ (match else_ with Some e -> walk e | None -> [])
+    | ECase (_, branches) -> std_list_concat_map (fun (_, e) -> walk e) branches
     | EFn (_, body) -> walk body
-    | _ -> ()
+    | _ -> []
   in
-  (* Find $derived variables from IConstant items *)
-  List.iter (fun item ->
+  std_list_concat_map (fun item ->
     match item.item_value with
     | IConstant (PVar name, _, body) ->
-      (* Check if the body is an ELet containing $derived *)
       (match body.expr_value with
        | ELet (lhs, rhs, _) ->
          (match extract_pattern_var lhs, rhs.expr_value with
-          | Some var_name, EApp (fn, _) when expr_name fn = "$derived" ->
-            derived_vars := var_name :: !derived_vars
-          | _ -> ())
-       | EApp (fn, _) when expr_name fn = "$derived" ->
-         derived_vars := name :: !derived_vars
-       | _ -> ())
+          | Some var_name, EApp (fn, _) when expr_name fn = "$derived" -> [var_name]
+          | _ -> [])
+       | EApp (fn, _) when expr_name fn = "$derived" -> [name]
+       | _ -> [])
     | IFunction (_, _, _, body) -> walk body
-    | _ -> ()
-  ) items;
-  !derived_vars
+    | _ -> []
+  ) items
 
 (* ── $derived reassignment check ─────────────────────────────────────── *)
 
 (** Check for assignment to $derived variables *)
 let check_derived_reassignment (items : item list) (path : string) : T.finding list =
   let derived_vars = find_derived_vars items in
-  let findings = ref [] in
-  
-  (* Look for assignment items like __assignment:doubled *)
-  List.iter (fun item ->
-    match item.item_value with
-    | IConstant (PVar name, _, _) ->
-      if String.length name > 13 && String.sub name 0 13 = "__assignment:" then
-        let var_name = String.sub name 13 (String.length name - 13) in
-        if List.mem var_name derived_vars then
-          findings := item.item_location.start.line :: !findings
-    | _ -> ()
-  ) items;
-  
-  List.map (fun line ->
+  let std_list_mem = Stdlib.List.mem in
+  let std_list_filter_map = Stdlib.List.filter_map in
+  let std_list_map = Stdlib.List.map in
+  let std_string_sub = Stdlib.String.sub in
+  let std_string_length = Stdlib.String.length in
+  std_list_map (fun line ->
     { T.file = path; line; rule_id = "svelte5-derived-reassignment";
       severity = T.Error;
       message = "Cannot reassign $derived variable — $derived values are read-only";
       suggestion = Some "Use $state() for mutable values, or recalculate with $derived" }
-  ) !findings
+  )
+    (std_list_filter_map (fun item ->
+      match item.item_value with
+      | IConstant (PVar name, _, _) when
+          std_string_length name > 13 &&
+          std_string_sub name 0 13 = "__assignment:" &&
+          std_list_mem (std_string_sub name 13 (std_string_length name - 13)) derived_vars ->
+        Some item.item_location.start.line
+      | _ -> None
+    ) items)
 
 (* ── Main analyzer ─────────────────────────────────────────────────── *)
 
