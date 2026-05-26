@@ -96,31 +96,15 @@ let send_request (w : worker) (req_id : int) (file : string) : unit =
   output_char w.worker_stdin '\n';
   flush w.worker_stdin
 
-(** Read a response from a worker, draining all available output until EOF.
-    This ensures OCaml fully consumes the Crystal worker's stdout before
-    the process handles are closed, preventing SIGPIPE (141) when Crystal
-    tries to flush final bytes after OCaml has closed the read side. *)
+(** Read a single NDJSON response line from a persistent --serve worker.
+    Each request produces exactly one JSON line; the worker stays alive
+    afterwards, so we must NOT read until EOF. *)
 let read_response (w : worker) : (int * Security_node.t list option) =
-  let output = Buffer.create 4096 in
-  (try
-    while true do
-      let line = input_line w.worker_stdout in
-      Buffer.add_string output line;
-      Buffer.add_char output '\n'
-    done
-  with End_of_file -> ());
-  let json_str = Buffer.contents output in
-  if json_str = "" then (-1, None)
-  else
-    (* Parse the first non-empty line for the response *)
-    let lines = String_utils.split json_str ~on:'\n' in
-    let rec find_first_valid = function
-      | [] -> (-1, None)
-      | "" :: rest -> find_first_valid rest
-      | line :: _ ->
-        (try decode_response line with _ -> (-1, None))
-    in
-    find_first_valid lines
+  try
+    let line = input_line w.worker_stdout in
+    if line = "" then (-1, None)
+    else (try decode_response line with _ -> (-1, None))
+  with End_of_file -> (-1, None)
 
 (** Extract a single file via the pool (round-robin). *)
 let extract (pool : t) (file : string) : Security_node.t list option =
