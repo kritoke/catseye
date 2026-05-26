@@ -1,0 +1,5 @@
+(library
+ (name catseye_pipeline)
+ (public_name catseye.pipeline)
+ (modules process_pool stream_reader version)
+ (libraries base stdio core catseye.types))
