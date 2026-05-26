@@ -20,10 +20,10 @@ let taint_sources =
   ; "url"; "path"; "cmd"; "command"; "input"; "env"
   ; "ARGV"; "STDIN"; "gets" ]
 
-module String_set = Stdlib.Set.Make(String)
+
 
 let skip_calls =
-  String_set.of_list
+  Set.Poly.of_list
   [ "list.map"; "list.filter"; "list.each"; "list.any"; "list.fold"
   ; "list.append"; "list.length"; "list.reverse"
   ; "result.try"; "result.map"; "result.then"; "result.is_ok"
@@ -302,7 +302,7 @@ let extract_nodes root path =
   let calls = List.filter_map ~f:(fun call ->
     match call_name call with
     | None | Some "fn" -> None
-    | Some name when String_set.mem name skip_calls -> None
+    | Some name when Set.Poly.mem skip_calls name -> None
     | Some name ->
       let args = extract_args call in
       let taint = List.exists ~f:(fun a ->

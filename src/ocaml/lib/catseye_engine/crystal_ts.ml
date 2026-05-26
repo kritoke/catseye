@@ -46,9 +46,9 @@ let skip_calls_list =
   ; "Slice.new"; "Bytes.new"
   ]
 
-module String_set = Stdlib.Set.Make(String)
 
-let skip_set = String_set.of_list skip_calls_list
+
+let skip_set = Set.Poly.of_list skip_calls_list
 
 (* ── Substring helper ──────────────────────────────────────────────── *)
 
@@ -359,7 +359,7 @@ let extract_calls_in_def (def : xml) : t list =
   List.filter_map calls ~f:(fun call ->
     let name = full_call_name call in
     let line = line_of call in
-    if name = "" || String_set.mem name skip_set then None
+    if name = "" || Set.Poly.mem skip_set name then None
     else if List.exists chmod_calls ~f:(fun c -> name = c || name = "File." ^ c) then
       Some { node_type = IgnoredReturn; name; args = extract_args call;
              line; taint = false; file = ""; language = "crystal"; metadata = [] }
