@@ -7,6 +7,9 @@ open Base
 module State_manager = State_manager
 module Incremental_graph = Incremental_graph
 
+(* Expose StringMap type for other modules *)
+module StringMap = Incremental_graph.StringMap
+
 (** Source file info for incremental analysis *)
 type source_info = {
   path : string;
@@ -53,57 +56,35 @@ module Session = struct
     (!changed_paths, !added_paths)
 end
 
-(** File-to-AST cache integration *)
+(** File-to-AST cache using reactive map *)
 module Ast_cache = struct
-  let ast_var : string Incremental_graph.SM.t option ref = ref None
+  let get_cached path = Incremental_graph.File_to_AST.get_ast path
   
-  let get_cached path =
-    let open Stdlib in
-    match !ast_var with
-    | None -> None
-    | Some map -> Incremental_graph.SM.find_opt path map
-
-  let store path ast_json =
-    let open Stdlib in
-    match !ast_var with
-    | None -> ast_var := Some (Incremental_graph.SM.add path ast_json Incremental_graph.SM.empty)
-    | Some map -> ast_var := Some (Incremental_graph.SM.add path ast_json map)
-
-  let init map = ast_var := Some map
-  let clear () = ast_var := None
-  let update_file_ast (_path : string) (_ast_json : string) = ()
-  let get_ast (_path : string) = None
-  let clear_ast (_path : string) = ()
+  let store path ast_json = Incremental_graph.File_to_AST.update_file_ast path ast_json
+  
+  let update_file_ast path ast_json = Incremental_graph.File_to_AST.update_file_ast path ast_json
+  let get_ast path = Incremental_graph.File_to_AST.get_ast path
+  let clear_ast path = Incremental_graph.File_to_AST.clear_ast path
+  let get_all () = Incremental_graph.File_to_AST.get_all ()
+  let init (_map : string StringMap.t) = ()
+  let clear () = Incremental_graph.invalidate_all ()
 end
 
-(** Findings cache integration *)
+(** Findings cache using reactive map *)
 module Findings_cache = struct
-  let findings_var : Catseye_types.Finding.t list Incremental_graph.SM.t option ref = ref None
+  let get_cached path = Incremental_graph.AST_to_Findings.get_findings path
 
-  let get_cached path =
-    let open Stdlib in
-    match !findings_var with
-    | None -> None
-    | Some map -> Incremental_graph.SM.find_opt path map
+  let store path findings = Incremental_graph.AST_to_Findings.update_file_findings path findings
 
-  let store path findings =
-    let open Stdlib in
-    match !findings_var with
-    | None -> findings_var := Some (Incremental_graph.SM.add path findings Incremental_graph.SM.empty)
-    | Some map -> findings_var := Some (Incremental_graph.SM.add path findings map)
+  let get_all () = Incremental_graph.AST_to_Findings.all_findings ()
 
-  let get_all () =
-    let open Stdlib in
-    match !findings_var with
-    | None -> []
-    | Some map -> Incremental_graph.SM.fold (fun _ v acc -> v :: acc) map []
-
-  let init map = findings_var := Some map
-  let clear () = findings_var := None
-  let update_file_findings (_path : string) (_findings : Catseye_types.Finding.t list) = ()
-  let get_findings (_path : string) = None
-  let clear_path (_path : string) = ()
-  let all_findings () = []
+  let update_file_findings path findings = 
+    Incremental_graph.AST_to_Findings.update_file_findings path findings
+  let get_findings path = Incremental_graph.AST_to_Findings.get_findings path
+  let clear_path path = Incremental_graph.AST_to_Findings.clear_path path
+  let all_findings () = Incremental_graph.AST_to_Findings.all_findings ()
+  let init (_map : Catseye_types.Finding.t list StringMap.t) = ()
+  let clear () = Incremental_graph.invalidate_all ()
 end
 
 (** Change detection for incremental analysis *)

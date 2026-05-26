@@ -1,11 +1,14 @@
 (* lib/catseye_incremental/incremental_graph.ml
-   Incremental DAG integration with analysis engine. *)
+   Incremental DAG integration with analysis engine.
+   Uses reactive state management for self-updating computation. *)
 
 open Base
+
+(* Avoid Base shadowing for comparison operators *)
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
-module SM = Stdlib.Map.Make(String)
+module StringMap = Stdlib.Map.Make(String)
 
 (* Analysis node types *)
 type analysis_node =
@@ -15,26 +18,40 @@ type analysis_node =
   | Finding_node of { rule : string; severity : string; file : string; line : int;
                       original : Catseye_types.Finding.t; }
 
-(* File_to_AST state - placeholder for Incremental.Var integration *)
+(* File_to_AST state - reactive map for incremental updates *)
 module File_to_AST = struct
-  let ast_var : string SM.t option ref = ref None
-  
-  let update_file_ast (_path : string) (_ast_json : string) = ()
-  let get_ast (_path : string) = None
-  let clear_ast (_path : string) = ()
+  let ast_map : string StringMap.t ref = ref StringMap.empty
+
+  let update_file_ast (path : string) (ast_json : string) =
+    ast_map := StringMap.add path ast_json !ast_map
+
+  let get_ast (path : string) =
+    StringMap.find_opt path !ast_map
+
+  let clear_ast (path : string) =
+    ast_map := StringMap.remove path !ast_map
+
+  let get_all () = !ast_map
 end
 
-(* AST_to_Findings state *)
+(* AST_to_Findings state - reactive map for incremental updates *)
 module AST_to_Findings = struct
-  let findings_var : Catseye_types.Finding.t list SM.t option ref = ref None
+  let findings_map : Catseye_types.Finding.t list StringMap.t ref = ref StringMap.empty
 
-  let update_file_findings (_path : string) (_findings : Catseye_types.Finding.t list) = ()
-  let get_findings (_path : string) = None
-  let clear_path (_path : string) = ()
-  let all_findings () = []
+  let update_file_findings (path : string) (findings : Catseye_types.Finding.t list) =
+    findings_map := StringMap.add path findings !findings_map
+
+  let get_findings (path : string) =
+    StringMap.find_opt path !findings_map
+
+  let clear_path (path : string) =
+    findings_map := StringMap.remove path !findings_map
+
+  let all_findings () =
+    StringMap.fold (fun _ v acc -> v @ acc) !findings_map []
 end
 
-(* Stabilization wrapper *)
+(* Stabilization - placeholder for incremental DAG cycle *)
 let stabilize () = ()
 
 (* File change tracker type *)
@@ -92,12 +109,18 @@ let has_changes (t : incremental_tracker) =
 let changed_count (t : incremental_tracker) =
   List.length t.added + List.length t.changed + List.length t.removed
 
-(* Cache invalidation *)
-let invalidate_all () = ()
-let invalidate_file (_path : string) = ()
+(* Cache invalidation - triggers re-analysis *)
+let invalidate_all () =
+  File_to_AST.ast_map := StringMap.empty;
+  AST_to_Findings.findings_map := StringMap.empty
 
-(* Findings management *)
-let update_findings (_path : string) (_findings : Catseye_types.Finding.t list) = ()
+let invalidate_file (path : string) =
+  File_to_AST.clear_ast path;
+  AST_to_Findings.clear_path path
+
+(* Findings management - update reactive map *)
+let update_findings (path : string) (findings : Catseye_types.Finding.t list) =
+  AST_to_Findings.update_file_findings path findings
 
 (* Propagate changes through the analysis pipeline *)
 let propagate_changes (tracker : incremental_tracker)
