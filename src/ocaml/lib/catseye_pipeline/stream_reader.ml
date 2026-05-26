@@ -8,6 +8,9 @@
 
 open Base
 
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+
 (* ── Stream State ─────────────────────────────────────────────────────── *)
 
 type stream_state =
@@ -57,7 +60,7 @@ let rec process_bytes (s : t) (chunk : bytes) (len : int) : string list =
       in
       s.state <- new_state;
       s.depth <- new_depth;
-      process_chars (i + 1) (results @ new_results)
+      process_chars (i + 1) (List.append results new_results)
     end
   in
   process_chars 0 []
@@ -112,6 +115,44 @@ let split_lines (content : string) : (string list * string) =
     | line :: rest -> split (line :: acc) rest
   in
   split [] lines
+
+(* ── Stream from file descriptor ─────────────────────────────────────── *)
+
+(** Read available bytes from a file descriptor (non-blocking).
+    Returns empty bytes if no data available yet. *)
+let read_available (fd : Unix.file_descr) (buf : bytes) : int =
+  try
+    Unix.read fd buf 0 (Bytes.length buf)
+  with Unix.Unix_error (Unix.EAGAIN, _, _) ->
+    0
+
+(** Stream-process an NDJSON source, calling on_json for each complete object.
+    Returns total bytes and objects processed. *)
+let stream_from_fd 
+    (fd : Unix.file_descr) 
+    ~(on_json : string -> unit)
+    ?(buf_size : int = 65536)
+    () : (int * int) =
+  let stream = create ~initial_size:buf_size () in
+  let buf = Bytes.create buf_size in
+  let total_bytes = ref 0 in
+  let total_objects = ref 0 in
+  
+  let rec loop () =
+    let n = read_available fd buf in
+    if n > 0 then begin
+      total_bytes := !total_bytes + n;
+      let json_objects = process_bytes stream buf n in
+      List.iter ~f:(fun json ->
+        on_json json;
+        total_objects := !total_objects + 1
+      ) json_objects;
+      loop ()
+    end
+  in
+  
+  loop ();
+  (!total_bytes, !total_objects)
 
 (* ── Stats ────────────────────────────────────────────────────────────── *)
 

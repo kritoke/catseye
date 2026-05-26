@@ -70,17 +70,21 @@ Note: The Jane Street Incremental library has a non-standard API that required c
 
 ### Phase 3: Streaming Pipeline (Core_unix + Domains)
 
-**Goal:** Non-blocking Crystal process pool with on-the-fly CFG
+**Goal:** Non-blocking Crystal process pool with streaming JSON extraction
 
 **Changes:**
 - Create `lib/catseye_pipeline/` module
-- Use `Core_unix` for async process management
-- Wire into existing `parallel.ml` Domain pool
-- Stream JSON bytes as Crystal emits them
+- Use OCaml 5 `Domain` parallelism (not Moonpool)
+- Stream JSON bytes as Crystal emits them via non-blocking I/O
+- Implement NDJSON parser with byte-by-byte state machine
 
-**Work unit:** `feat(pipeline): streaming Crystal extractor via Core_unix`
+**Files created/updated:**
+- `stream_reader.ml` — NDJSON streaming parser with UTF-8, escape, and object state handling
+- `process_pool.ml` — Process spawning, timeout handling, Domain-based parallel extraction
 
-**Status:** ✅ Restored as stub (in feat/core-jane-street-integration)
+**Work unit:** `feat(pipeline): streaming Crystal extractor via Domain parallelism`
+
+**Status:** ✅ Complete (in feat/core-jane-street-integration)
 
 ### Phase 4: Monadic Rule Pipelines
 
