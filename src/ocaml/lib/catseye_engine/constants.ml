@@ -1,6 +1,9 @@
 (* lib/catseye_engine/constants.ml
    Shared constants for the taint engine — no dependencies. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+
 let known_sources = [
   "params"; "request"; "req"; "get_body"; "query"; "io.get_line";
   "dynamic.unsafe_coerce"; "request.get_body"; "user_url"; "user_input";
@@ -43,24 +46,22 @@ let known_sanitizers = [
 (* Prefix match: [name] starts with one of the known source prefixes.
    Handles both plain names like "params" and qualified names like "req.params". *)
 let is_source ?(extra = []) name =
-  List.exists (fun s ->
+  List.exists ~f:(fun s ->
     let len = String.length s in
-    String.length name >= len && String.sub name 0 len = s
+    String.length name >= len && Stdlib.String.sub name 0 len = s
   ) (known_sources @ extra)
 
 (* Substring match: [name] contains one of the known sanitizer patterns.
    This handles both plain names and qualified names like "FaviconStorage.get_or_fetch". *)
 let is_sanitizer ?(extra = []) name =
-  List.exists (fun s ->
+  List.exists ~f:(fun s ->
     let slen = String.length s in
     let nlen = String.length name in
     slen > 0 && (
-      (* Prefix match for patterns ending with '.' (wildcard-like) *)
-      (s.[slen - 1] = '.' && nlen >= slen && String.sub name 0 slen = s)
-      (* Substring match for exact patterns *)
+      (s.[slen - 1] = '.' && nlen >= slen && Stdlib.String.sub name 0 slen = s)
       || (let rec check i =
             i + slen <= nlen && (
-              String.sub name i slen = s || check (i + 1)
+              Stdlib.String.sub name i slen = s || check (i + 1)
             )
           in check 0)
     )

@@ -5,18 +5,16 @@
    CPU utilization across cores for file extraction tasks.
 *)
 
-(** Result type for parallel file processing.
-    Wraps extraction results with error information for fault tolerance. *)
+open Base
+
 type 'a processing_result =
-  | Ok of 'a
-  | Error of { file : string; error : string }
+  | Done of 'a
+  | Failed of { file : string; error : string }
 
-(** Convert a processing result to an option (errors become None) *)
 let result_to_option : 'a processing_result -> 'a option = function
-  | Ok v -> Some v
-  | Error _ -> None
+  | Done v -> Some v
+  | Failed _ -> None
 
-(** Helper: filter and map in one pass *)
 let rec filter_map_opt (f : 'a -> 'b option) (lst : 'a list) : 'b list =
   match lst with
   | [] -> []
@@ -34,20 +32,20 @@ let extract_parallel (extract_fn : ('a -> 'b option)) (file_list : 'a list) : 'b
     (* 0-1 files: no parallelism needed *)
     filter_map_opt extract_fn file_list
   | many ->
-    let arr = Array.of_list many in
-    let n = Array.length arr in
-    let results = Array.make n None in
+    let arr = Stdlib.Array.of_list many in
+    let n = Stdlib.Array.length arr in
+    let results = Stdlib.Array.make n None in
     try
-      let domains = Array.init n (fun i ->
+      let domains = Stdlib.Array.init n (fun i ->
         Domain.spawn (fun () -> results.(i) <- extract_fn arr.(i))
       ) in
-      Array.iter Domain.join domains;
-      Array.to_list results
+      Stdlib.Array.iter Domain.join domains;
+      Stdlib.Array.to_list results
       |> filter_map_opt (function Some nodes -> Some nodes | None -> None)
     with exn ->
       (* Domain creation failed — run sequentially *)
-      Printf.eprintf "Parallel extraction failed (%s), falling back to sequential\n"
-        (Printexc.to_string exn);
+      Stdlib.Printf.eprintf "Parallel extraction failed (%s), falling back to sequential\n"
+        (Stdlib.Printexc.to_string exn);
       filter_map_opt extract_fn many
 
 (* ── Native Parallel Workspace Scan ──────────────────────────────────── *)
@@ -73,14 +71,14 @@ let process_file_domain_safe
     : 'b processing_result =
   try
     match extract_fn file with
-    | Some result -> Ok result
-    | None -> Error { file = Printexc.to_string (Invalid_argument "no result") (* placeholder *); 
+    | Some result -> Done result
+    | None -> Failed { file = Stdlib.Printexc.to_string (Invalid_argument "no result") (* placeholder *); 
                       error = "Extraction returned no nodes" }
   with
   | exn ->
-    Error {
+    Failed {
       file = "unknown file";
-      error = Printexc.to_string exn
+      error = Stdlib.Printexc.to_string exn
     }
 
 (** Main parallel workspace scan function.
@@ -99,8 +97,8 @@ let parallel_workspace_scan
     (file_paths : string list)
     : ('a list * (string * string) list) =
   let cfg = Option.value config ~default:default_scan_config in
-  let paths = Array.of_list file_paths in
-  let n = Array.length paths in
+  let paths = Stdlib.Array.of_list file_paths in
+  let n = Stdlib.Array.length paths in
   
   if n = 0 then ([], [])
   else if n = 1 then
@@ -111,12 +109,12 @@ let parallel_workspace_scan
   else
     (* Multiple files: use Domain parallelism *)
     let num_domains = min cfg.max_domains n in
-    let results_arr = Array.make n (Error { file = ""; error = "" }) in
+    let results_arr = Stdlib.Array.make n (Failed { file = ""; error = "" }) in
     
     try
       (* Spawn domains — each processes a subset of files *)
       let domains = 
-        Array.init num_domains (fun d_idx ->
+        Stdlib.Array.init num_domains (fun d_idx ->
           let start_idx = (n * d_idx) / num_domains in
           let end_idx = (n * (d_idx + 1)) / num_domains in
           Domain.spawn (fun () ->
@@ -124,17 +122,17 @@ let parallel_workspace_scan
               let file_path = paths.(i) in
               try
                 match extract_fn file_path with
-                | Some result -> results_arr.(i) <- Ok result
+                | Some result -> results_arr.(i) <- Done result
                 | None -> 
-                  results_arr.(i) <- Error { 
+                  results_arr.(i) <- Failed { 
                     file = file_path; 
                     error = "Extraction returned no nodes" 
                   }
               with exn ->
                 (* Local error catch — domain continues processing other files *)
-                results_arr.(i) <- Error { 
+                results_arr.(i) <- Failed { 
                   file = file_path; 
-                  error = Printexc.to_string exn 
+                  error = Stdlib.Printexc.to_string exn 
                 }
             done
           )
@@ -142,25 +140,25 @@ let parallel_workspace_scan
       in
       
       (* Aggregate results via Domain.join *)
-      Array.iter Domain.join domains;
+      Stdlib.Array.iter Domain.join domains;
       
       (* Partition results into successes and errors *)
       let rec partition i successes errors =
         if i >= n then (List.rev successes, List.rev errors)
         else
           match results_arr.(i) with
-          | Ok result -> partition (i + 1) (result :: successes) errors
-          | Error { file; error } -> 
+          | Done result -> partition (i + 1) (result :: successes) errors
+          | Failed { file; error } -> 
             partition (i + 1) successes ((file, error) :: errors)
       in
       partition 0 [] []
         
     with exn ->
       (* Domain pool creation failed — fallback to sequential *)
-      let success_msg = Printf.sprintf 
+      let success_msg = Stdlib.Printf.sprintf 
         "Parallel scan failed (%s), falling back to sequential\n"
-        (Printexc.to_string exn) in
-      Printf.eprintf "%s" success_msg;
+        (Stdlib.Printexc.to_string exn) in
+      Stdlib.Printf.eprintf "%s" success_msg;
       
       let rec sequential_loop paths successes errors =
         match paths with
@@ -171,7 +169,7 @@ let parallel_workspace_scan
             | Some result -> sequential_loop rest (result :: successes) errors
             | None -> sequential_loop rest successes ((path, "No result") :: errors)
           with e ->
-            sequential_loop rest successes ((path, Printexc.to_string e) :: errors)
+            sequential_loop rest successes ((path, Stdlib.Printexc.to_string e) :: errors)
       in
       sequential_loop file_paths [] []
 
@@ -190,11 +188,11 @@ let extract_security_nodes_parallel
 (* ── Statistics helper ──────────────────────────────────────────────── *)
 
 let scan_stats (nodes : 'a list) (errors : (string * string) list) =
-  let open Printf in
+  let open Stdlib.Printf in
   eprintf "  [parallel] Files processed: %d\n" 
     (List.length nodes + List.length errors);
   eprintf "  [parallel] Successful: %d\n" (List.length nodes);
   eprintf "  [parallel] Errors: %d\n" (List.length errors);
-  List.iter (fun (file, err) ->
+  List.iter ~f:(fun (file, err) ->
     eprintf "  [parallel]   ✗ %s: %s\n" file err
   ) errors
