@@ -106,7 +106,7 @@ let parse_shard_yml (dir : string) : (string * string list) =
     with _ -> ("", [])
   end
 
-let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"]) (dir : string) (exclude : string list) : source_file list =
+let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "shard.yml") in
   let shard_deps = 
@@ -142,7 +142,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
                                 && path.[last_char_pos-2] = 'l'
                                 && path.[last_char_pos-1] = 'i'
                                 && path.[last_char_pos] = 'b' then ()
-        else begin
+        else if recurse then begin
           let entries = try Stdlib.Sys.readdir path with Sys_error _ -> [||] in
           Stdlib.Array.iter (fun entry ->
             if not (should_skip entry) then begin
@@ -153,7 +153,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(extensions=[".cr
             end
           ) entries
         end
-      end else begin
+      end else if recurse then begin
         let entries = try Stdlib.Sys.readdir path with Sys_error _ -> [||] in
         Stdlib.Array.iter (fun entry ->
           if not (should_skip entry) then begin

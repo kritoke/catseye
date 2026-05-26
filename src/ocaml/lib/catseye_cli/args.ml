@@ -68,6 +68,7 @@ Supply chain options:
 Cache options:
   --no-cfg                    Skip CFG-based analysis
   --no-cfg-use                Don't use cached CFG data
+  --no-recurse                Don't recurse into subdirectories
 
 Examples:
   catseye --lang crystal ./src
@@ -137,6 +138,7 @@ let parse_args () : Config.t =
   let elixir = has_flag "elixir" args in
   let no_cfg = has_flag "no-cfg" args in
   let no_cfg_use = has_flag "no-cfg-use" args in
+  let no_recurse = has_flag "no-recurse" args in
   
   (* Parse optional string values *)
   let output_path = find_opt "output" args in
@@ -192,5 +194,6 @@ let parse_args () : Config.t =
     predator_vision;
     use_cfg = not no_cfg;
     no_cfg_use;
+    recurse = not no_recurse;
     suppress = Option.map suppress ~f:(fun s -> String.split s ~on:',') |> Option.value ~default:[];
   }

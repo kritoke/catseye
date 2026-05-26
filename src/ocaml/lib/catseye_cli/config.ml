@@ -55,6 +55,7 @@ type t = {
   suppress : string list;  (* Rule IDs to suppress (--suppress flag) *)
   ai_suppress : string list Map.M(String).t;  (* per-rule file globs to suppress AI lint findings *)
   include_deps : bool;  (* Include shard dependencies in scan (Crystal only) *)
+  recurse : bool;  (* Recurse into subdirectories (default: true) *)
   elixir_enabled : bool;  (* Enable Elixir tool integration *)
   elixir_tools : string list;  (* Which Elixir tools to run *)
 }
@@ -84,6 +85,7 @@ let default = {
   ai_lint = false;
   ast_bridge = false;
   include_deps = false;
+  recurse = true;  (* Recurse into subdirectories by default *)
   use_cfg = false;
   no_cfg_use = false;
   analysis_timeout_ms = 0;  (* 0 = no timeout *)

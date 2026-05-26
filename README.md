@@ -119,6 +119,7 @@ catseye [options] <directory>
   --ai-lint                  enable AI antipattern detection (Crystal, Gleam, Svelte, OCaml, Rust)
   --suppress <rules>         comma-separated rule IDs to suppress (e.g., unused-let,InsecureRandom)
   --include-deps             include shard dependencies in scan (Crystal only)
+  --no-recurse               don't recurse into subdirectories (applies to all languages)
   -p, --parallelism <n>      parallel workers (0 = auto)
   -v, --version              show version
   -h, --help                 show help
