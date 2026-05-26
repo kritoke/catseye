@@ -2,5 +2,5 @@
  (name catseye_cli)
  (public_name catseye.cli)
  (modules args config discovery orchestrator sarif markdown heatmap crowsnest_format dot ai_linter_integration elixir_tools elixir_extractor elixir_claws)
- (libraries base stdio catseye.types catseye.engine catseye.rules catseye.crowsnest catseye.claws catseye.ai_linter catseye.il unix yojson cmdliner bos rresult logs fmt toml ocamlgraph)
+ (libraries base stdio core incremental catseye.types catseye.engine catseye.rules catseye.crowsnest catseye.claws catseye.ai_linter catseye.il catseye.incremental unix yojson cmdliner bos rresult logs fmt toml ocamlgraph)
  (flags (:standard -w -27-26-50-6 -alert -deprecated)))

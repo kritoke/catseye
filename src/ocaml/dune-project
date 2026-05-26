@@ -24,6 +24,8 @@
   dune
   base
   stdio
+  core
+  incremental
   cmdliner
   toml
   kdl
@@ -63,7 +65,10 @@
   dune
   base
   stdio
-  yojson))
+  yojson
+  incremental
+  catseye.types
+  catseye.engine))
 
 (package
  (name catseye-ai-linter)

@@ -21,6 +21,7 @@
         devPackagesQuery = {
           ocaml-lsp-server = "*";
           ocamlformat = "*";
+          incremental = "*";
         };
 
         query = localPackagesQuery // devPackagesQuery // {
