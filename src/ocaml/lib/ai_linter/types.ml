@@ -1,6 +1,8 @@
 (* src/ocaml/lib/ai_linter/types.ml
    AI Linter types - severity and findings
-*)
+ *)
+
+open Base
 
 (** Severity levels *)
 type severity = Hint | Warning | Error

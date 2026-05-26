@@ -1,16 +1,32 @@
 (* src/ocaml/lib/ai_linter/rust_rules.ml
-Rust-specific AST rules for antipattern and AI hallucination detection.
+   Rust-specific AST rules for antipattern and AI hallucination detection.
 
-Key areas:
-1. AI hallucinated functions (Python/Ruby/Go APIs used in Rust)
-2. Unsafe patterns: unwrap(), expect(), panic
-3. Common mistakes: cloning, String vs &str
-4. Best practices: proper error handling
-5. Security: file operations, SQL, hardcoded values
-*)
+   Key areas:
+   1. AI hallucinated functions (Python/Ruby/Go APIs used in Rust)
+   2. Unsafe patterns: unwrap(), expect(), panic
+   3. Common mistakes: cloning, String vs &str
+   4. Best practices: proper error handling
+   5. Security: file operations, SQL, hardcoded values
+ *)
 
+open Base
 open Catseye_ast.Types
 open Types
+
+(* Expose stdlib functions that may be shadowed *)
+module List = Stdlib.List
+module String = Stdlib.String
+module Hashtbl = Stdlib.Hashtbl
+module Printf = Stdlib.Printf
+module Char = Stdlib.Char
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
 
 (* Expose stdlib functions that may be shadowed *)
 

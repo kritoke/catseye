@@ -1,12 +1,22 @@
 (* src/ocaml/lib/ai_linter/svelte_rules.ml
-Svelte-specific AST rules for antipattern and AI hallucination detection.
+   Svelte-specific AST rules for antipattern and AI hallucination detection.
 
-Key areas:
-1. Svelte 4→5 migration: outdated $:, on:click, slot, etc.
-2. XSS via {@html}, bind:this misuse
-3. Reactive antipatterns: reassigning $derived, missing $state
-4. Svelte-specific AI hallucinations
-*)
+   Key areas:
+   1. Svelte 4→5 migration: outdated $:, on:click, slot, etc.
+   2. XSS via {@html}, bind:this misuse
+   3. Reactive antipatterns: reassigning $derived, missing $state
+   4. Svelte-specific AI hallucinations
+ *)
+
+open Base
+module List = Stdlib.List
+module String = Stdlib.String
+module Hashtbl = Stdlib.Hashtbl
+module Printf = Stdlib.Printf
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Catseye_ast.Types
 
@@ -214,7 +224,7 @@ tbl
 
 let check_svelte_hallucinations (all_apps : (string * int) list) (path : string) : T.finding list =
 List.filter_map (fun (name, line) ->
-let last = try let i = String.rindex name '.' in String.sub name (i+1) (String.length name - i - 1) with Not_found -> name in
+let last = try let i = String.rindex name '.' in String.sub name (i+1) (String.length name - i - 1) with Stdlib.Not_found -> name in
 match (Hashtbl.find_opt svelte_hallucination_map name, Hashtbl.find_opt svelte_hallucination_map last) with
 | Some entry, _ | _, Some entry ->
 Some { T.file = path; line; rule_id = "hallucinated-method";

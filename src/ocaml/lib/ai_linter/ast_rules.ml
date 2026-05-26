@@ -1,11 +1,17 @@
 (* src/ocaml/lib/ai_linter/ast_rules.ml
    AST structural rules - operate on CatseyeAST.t only
-   
+
    Per the "Ban the Regex" principle, these rules use pattern matching
    on the typed AST instead of regex.
-*)
+ *)
 
+open Base
 open Catseye_ast.Types
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+module List = Stdlib.List
 
 type severity = Types.severity = Hint | Warning | Error
 
@@ -34,18 +40,18 @@ let all_functions (mod_ : t) =
 (** Check if expression contains todo/panic *)
 let rec contains_todo (expr : expr) =
   match expr.expr_value with
-  | EVar name when String.lowercase_ascii name = "todo" 
-                || String.lowercase_ascii name = "panic" -> true
+  | EVar name when Stdlib.String.lowercase_ascii name = "todo" 
+                || Stdlib.String.lowercase_ascii name = "panic" -> true
   | EApp (fn, args) ->
-      (match fn.expr_value with
-       | EVar name when String.lowercase_ascii name = "todo" -> true
-       | _ -> List.exists contains_todo (fn :: args))
+(match fn.expr_value with
+       | EVar name when Stdlib.String.lowercase_ascii name = "todo" -> true
+        | _ -> Stdlib.List.exists contains_todo (fn :: args))
   | EFn (_, body) -> contains_todo body
   | EIf (_, then_, else_) ->
-      contains_todo then_ || Option.fold ~none:false ~some:contains_todo else_
-  | ECase (_, branches) -> List.exists (fun (_, e) -> contains_todo e) branches
+      contains_todo then_ || (match else_ with None -> false | Some e -> contains_todo e)
+  | ECase (_, branches) -> Stdlib.List.exists (fun (_, e) -> contains_todo e) branches
   | ELet (_, e1, e2) | ELetAssert (_, e1, e2) -> contains_todo e1 || contains_todo e2
-  | EBlock es -> List.exists contains_todo es
+  | EBlock es -> Stdlib.List.exists contains_todo es
   | _ -> false
 
 (** Rule: Detect todo/panic in functions *)
@@ -65,7 +71,7 @@ let analyze_module (mod_ : t) : violation list =
     match item.item_value with
     | IFunction (_, _, _, body) when contains_todo body ->
         { todo_rule with 
-          message = Printf.sprintf "Function '%s' contains todo/panic" name;
+          message = Stdlib.Printf.sprintf "Function '%s' contains todo/panic" name;
           location = item.item_location } :: acc
     | _ -> acc
   ) [] fns

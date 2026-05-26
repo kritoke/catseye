@@ -3,7 +3,24 @@
 
    All rules operate on CatseyeAST.t using typed pattern matching.
    No IUnknown or string-prefix matching.
-*)
+ *)
+
+open Base
+module List = Stdlib.List
+module String = Stdlib.String
+module Hashtbl = Stdlib.Hashtbl
+module Printf = Stdlib.Printf
+module Map = Stdlib.Map
+module Int = Stdlib.Int
+module Char = Stdlib.Char
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
 
 open Catseye_ast.Types
 
@@ -1179,7 +1196,7 @@ let detect_repeated_string_literal (m : t) =
       | IFunction (name, _, _, body) ->
         let strings = collect_strings body in
         let new_locs = List.fold_left (fun acc s ->
-          let existing = try StringMap.find s acc with Not_found -> [] in
+          let existing = try StringMap.find s acc with Stdlib.Not_found -> [] in
           StringMap.add s ((name, item.item_location.start.line) :: existing) acc
         ) locs strings in
         new_locs

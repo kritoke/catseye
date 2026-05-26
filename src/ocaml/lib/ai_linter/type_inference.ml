@@ -8,6 +8,12 @@
    and common library functions. Variables assigned from these calls
    inherit the return type. *)
 
+open Base
+module Hashtbl = Stdlib.Hashtbl
+module String = Stdlib.String
+module Option = Stdlib.Option
+module List = Stdlib.List
+
 (* ── Return type classification ────────────────────────────────────── *)
 
 type return_kind =

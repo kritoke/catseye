@@ -3,14 +3,32 @@
 
    All rules operate on CatseyeAST.t using typed pattern matching.
    Uses the shared Types.finding type from types.ml.
-*)
+ *)
+
+open Base
+module List = Stdlib.List
+module String = Stdlib.String
+module Hashtbl = Stdlib.Hashtbl
+module Printf = Stdlib.Printf
+module Map = Stdlib.Map
+module Float = Stdlib.Float
+module Int = Stdlib.Int
+module Char = Stdlib.Char
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
 
 open Catseye_ast.Types
 
 module T = Types
 
 let list_sort_uniq cmp l =
-  let sorted = List.sort (fun a b -> cmp a b) l in
+  let sorted = Stdlib.List.sort (fun a b -> cmp a b) l in
   let rec dedup acc = function
     | [] -> List.rev acc
     | [x] -> List.rev (x :: acc)
@@ -460,7 +478,7 @@ let detect_hardcoded_urls (m : t) =
   let is_ipish (s : string) =
     let parts = String.split_on_char '.' s in
     List.length parts = 4 &&
-    List.for_all (fun p -> try let _ = int_of_string p in true with _ -> false) parts &&
+    List.for_all (fun p -> try let _ = Stdlib.int_of_string p in true with _ -> false) parts &&
     not (is_loopback_or_meta s)
   in
   let rec collect_suspicious_strings (e : expr) : (string * int) list =
@@ -912,7 +930,7 @@ let detect_data_clump (m : t) =
   let param_counts = Hashtbl.create 32 in
   List.iter (fun params ->
     List.iter (fun p ->
-      let current = try Hashtbl.find param_counts p with Not_found -> 0 in
+      let current = try Hashtbl.find param_counts p with Stdlib.Not_found -> 0 in
       Hashtbl.replace param_counts p (current + 1)
     ) params
   ) param_sets;
@@ -925,7 +943,7 @@ let detect_data_clump (m : t) =
       | a :: rest ->
           List.iter (fun b ->
             let key = a ^ "," ^ b in
-            let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
+            let current = try Hashtbl.find pair_counts key with Stdlib.Not_found -> 0 in
             Hashtbl.replace pair_counts key (current + 1)
           ) rest;
           count_pairs rest
@@ -956,7 +974,7 @@ let detect_data_clump (m : t) =
       | a :: rest ->
         List.iter (fun b ->
           let key = a ^ "," ^ b in
-          let current = try Hashtbl.find pair_counts key with Not_found -> 0 in
+          let current = try Hashtbl.find pair_counts key with Stdlib.Not_found -> 0 in
           Hashtbl.replace pair_counts key (current + 1)
         ) rest;
         count_pairs rest
@@ -989,14 +1007,14 @@ let detect_feature_envy (m : t) =
         (match String.index_opt call_name '.' with
          | Some idx ->
              let receiver = String.sub call_name 0 idx in
-             let current = try Hashtbl.find receiver_counts receiver with Not_found -> 0 in
+             let current = try Hashtbl.find receiver_counts receiver with Stdlib.Not_found -> 0 in
              Hashtbl.replace receiver_counts receiver (current + 1)
          | None -> ());
       ) calls;
       let total_calls = List.length calls in
       if total_calls >= min_calls then
         Hashtbl.iter (fun receiver count ->
-          let ratio = float_of_int count /. float_of_int total_calls in
+          let ratio = Float.of_int count /. Float.of_int total_calls in
           if ratio >= envy_threshold then
             collected := (Printf.sprintf
               "Function '%s' makes %d/%d calls on '%s' (%.0f%%) — consider moving to %s module"
@@ -1184,12 +1202,12 @@ let detect_repeated_regex (m : t) =
       | IFunction (name, _, _, body) ->
         let rx_list = collect_regexes body in
         let new_by_func = List.fold_left (fun acc rx ->
-          let funcs = try StringMap.find rx acc with Not_found -> [] in
+          let funcs = try StringMap.find rx acc with Stdlib.Not_found -> [] in
           StringMap.add rx (name :: funcs) acc
         ) by_func rx_list in
         let new_locs = List.fold_left (fun acc rx ->
           let line = item.item_location.start.line in
-          let existing = try StringMap.find rx acc with Not_found -> [] in
+          let existing = try StringMap.find rx acc with Stdlib.Not_found -> [] in
           StringMap.add rx ((name, line) :: existing) acc
         ) locs rx_list in
         (new_by_func, new_locs)
@@ -1426,7 +1444,7 @@ let detect_hardcoded_port (m : t) =
   let rec find_port_literals (e : expr) : (int * int) list =
     match e.expr_value with
     | ELiteral (LInt i) ->
-      let port_val = int_of_string_opt i in
+      let port_val = Stdlib.int_of_string_opt i in
       (match port_val with
        | Some v when List.mem v common_ports -> [(v, e.expr_location.start.line)]
        | _ -> [])

@@ -6,7 +6,17 @@
    2. Security antipatterns (eval, prototype pollution, incomplete sanitization)
    3. Best practice violations (debugger, alert, leftover debugging)
    4. Code quality (loose equality, promise chain hell, deprecated APIs)
-*)
+ *)
+
+open Base
+module List = Stdlib.List
+module String = Stdlib.String
+module Hashtbl = Stdlib.Hashtbl
+module Printf = Stdlib.Printf
+
+(* String comparison operators *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Catseye_ast.Types
 
@@ -733,7 +743,7 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
 
   (* Hallucinated methods *)
   let hallucination_findings = List.filter_map (fun (name, line) ->
-    let last = try let i = String.rindex name '.' in String.sub name (i+1) (String.length name - i - 1) with Not_found -> name in
+    let last = try let i = String.rindex name '.' in String.sub name (i+1) (String.length name - i - 1) with Stdlib.Not_found -> name in
     match (Hashtbl.find_opt hallucinated_method_map name, Hashtbl.find_opt hallucinated_method_map last) with
     | Some entry, _ | _, Some entry ->
       Some { T.file = path; line; rule_id = "hallucinated-method";
