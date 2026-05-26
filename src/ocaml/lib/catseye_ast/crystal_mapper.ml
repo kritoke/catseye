@@ -4,10 +4,15 @@
    Reconstructs expression trees from the flat node list produced by
    the Crystal extractor. Function bodies are populated with EBlock
    containing EApp nodes for calls, ELet for assignments, etc.
-*)
+ *)
 
+module PE = Error
+
+open Base
 open Types
-open Error
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 type security_node = {
   node_type : string;
@@ -44,13 +49,13 @@ let parse_arg json = match assoc_of_json json with fields ->
 let parse_security_node json = match assoc_of_json json with fields ->
   { node_type = string_of_json (find_field fields "type");
     name = string_of_json (find_field fields "name");
-    args = List.map parse_arg (list_of_json (find_field fields "args"));
+    args = List.map ~f:parse_arg (list_of_json (find_field fields "args"));
     line = int_of_json (find_field fields "line");
     column = int_of_json (find_field fields "column");
     call = (match find_field fields "call" with `String s when s <> "" -> Some s | _ -> None);
     field = (match find_field fields "field" with `String s when s <> "" -> Some s | _ -> None);
     taint = (match find_field fields "taint" with `String s when s <> "" -> Some s | _ -> None);
-    sinks = List.map string_of_json (list_of_json (find_field fields "sinks")); }
+    sinks = List.map ~f:string_of_json (list_of_json (find_field fields "sinks")); }
 
 (* ── Location helpers ──────────────────────────────────────────────── *)
 
@@ -66,11 +71,11 @@ let make_loc line = make_range line 0 0
 (** "context.request.headers.[]" becomes
     EFieldAccess(EFieldAccess(EFieldAccess(EVar "context", "request"), "headers"), "[]") *)
 let rec dotted_to_expr ?(loc={ start = { line = 0; column = 0; byte_offset = 0 }; end_ = { line = 0; column = 0; byte_offset = 0 }}) (name : string) : expr =
-  match String.index_opt name '.' with
+  match Stdlib.String.index_opt name '.' with
   | None -> { expr_value = EVar name; expr_location = loc }
   | Some idx ->
-      let prefix = String.sub name 0 idx in
-      let suffix = String.sub name (idx + 1) (String.length name - idx - 1) in
+      let prefix = Stdlib.String.sub name 0 idx in
+      let suffix = Stdlib.String.sub name (idx + 1) (String.length name - idx - 1) in
       let receiver = dotted_to_expr ~loc prefix in
       { expr_value = EFieldAccess (receiver, suffix); expr_location = loc }
 
@@ -82,11 +87,11 @@ let arg_to_expr (arg : arg_node) (loc : range) =
   | "literal" ->
       (* Try to parse as int/float, fallback to string *)
       (try
-        let _ = int_of_string arg.value in
+        let _ = Stdlib.int_of_string arg.value in
         { expr_value = ELiteral (LInt arg.value); expr_location = loc }
       with _ ->
       try
-        let _ = float_of_string arg.value in
+        let _ = Stdlib.float_of_string arg.value in
         { expr_value = ELiteral (LFloat arg.value); expr_location = loc }
       with _ ->
         { expr_value = ELiteral (LString arg.value); expr_location = loc })
@@ -106,25 +111,26 @@ let arg_to_expr (arg : arg_node) (loc : range) =
 let call_to_expr (node : security_node) : expr =
   let loc = make_range node.line node.column (String.length node.name) in
   let fn_expr = dotted_to_expr ~loc node.name in
-  let args = List.map (fun a -> arg_to_expr a loc) node.args in
+  let args = List.map ~f:(fun a -> arg_to_expr a loc) node.args in
   { expr_value = EApp (fn_expr, args); expr_location = loc }
 
 (** Convert an assign node to an ELet expression.
     Uses the call_arg_map to find the actual args of the RHS call. *)
-let assign_to_expr (call_arg_map : (int * string, arg_node list) Hashtbl.t) (node : security_node) : expr =
+let assign_to_expr (call_arg_map : (int * string, arg_node list) Stdlib.Hashtbl.t) (node : security_node) : expr =
   let loc = make_range node.line node.column (String.length node.name) in
   let target = PVar node.name in
   let value_expr = match node.args with
     | [{ arg_type = "call"; value = call_name; field = _ }] ->
       (* RHS is a function call — look up the actual args from the call node *)
-      let call_args = match Hashtbl.find_opt call_arg_map (node.line, call_name) with
-        | Some args when args <> [] -> List.map (fun a -> arg_to_expr a loc) args
+      let call_args = 
+        match Stdlib.Hashtbl.find_opt call_arg_map (node.line, call_name) with
+        | Some args when args <> [] -> List.map ~f:(fun a -> arg_to_expr a loc) args
         | _ -> []
       in
       let fn_expr = dotted_to_expr ~loc call_name in
       { expr_value = EApp (fn_expr, call_args); expr_location = loc }
     | [a] -> arg_to_expr a loc
-    | _ -> { expr_value = EBlock (List.map (fun a -> arg_to_expr a loc) node.args); expr_location = loc }
+    | _ -> { expr_value = EBlock (List.map ~f:(fun a -> arg_to_expr a loc) node.args); expr_location = loc }
   in
   { expr_value = ELet (target, value_expr, { expr_value = EUnit; expr_location = loc }); expr_location = loc }
 
@@ -139,7 +145,7 @@ let terminator_to_expr (node : security_node) : expr =
   { expr_value = EUnknown ("terminator:" ^ node.name); expr_location = loc }
 
 (** Convert any statement node to an expression *)
-let stmt_to_expr (call_arg_map : (int * string, arg_node list) Hashtbl.t) (node : security_node) : expr option =
+let stmt_to_expr (call_arg_map : (int * string, arg_node list) Stdlib.Hashtbl.t) (node : security_node) : expr option =
   match node.node_type with
   | "call" -> Some (call_to_expr node)
   | "assign" -> Some (assign_to_expr call_arg_map node)
@@ -153,24 +159,24 @@ let stmt_to_expr (call_arg_map : (int * string, arg_node list) Hashtbl.t) (node 
     This is the line of the next def/class/module/import at the same or lesser indentation,
     or the end of the file. *)
 let find_scope_end (nodes : security_node list) (def_idx : int) : int =
-  let def_node = List.nth nodes def_idx in
-  let def_line = def_node.line in
+  let maybe_def = List.nth nodes def_idx in
+  let def_line = match maybe_def with Some dn -> dn.line | None -> Int.max_value in
   let rec scan idx =
-    if idx >= List.length nodes then max_int
+    if idx >= List.length nodes then Int.max_value
     else
-      let node = List.nth nodes idx in
-      if idx > def_idx && node.line > def_line then
-        match node.node_type with
-        | "def" | "class" | "module" -> node.line
-        | _ -> scan (idx + 1)
-      else scan (idx + 1)
+      match List.nth nodes idx with
+      | Some node when idx > def_idx && node.line > def_line ->
+        (match node.node_type with
+         | "def" | "class" | "module" -> node.line
+         | _ -> scan (idx + 1))
+      | _ -> scan (idx + 1)
   in
   scan (def_idx + 1)
 
 (** Collect body expressions for a function, given its line range *)
-let collect_body (call_arg_map : (int * string, arg_node list) Hashtbl.t)
+let collect_body (call_arg_map : (int * string, arg_node list) Stdlib.Hashtbl.t)
     (nodes : security_node list) (start_line : int) (end_line : int) : expr list =
-  List.filter_map (fun node ->
+  List.filter_map ~f:(fun node ->
     if node.line > start_line && node.line < end_line then
       stmt_to_expr call_arg_map node
     else None
@@ -184,7 +190,7 @@ let route_handler_names = ["get"; "post"; "put"; "patch"; "delete"; "head"; "opt
 (** Check if a node is a route handler call (get "/path", post "/path") *)
 let is_route_handler (node : security_node) : bool =
   node.node_type = "call"
-  && List.mem node.name route_handler_names
+  && List.mem route_handler_names ~equal:String.equal node.name
   && node.args <> []
   && (match node.args with [{ arg_type = "literal"; _ }] -> true | _ -> false)
 
@@ -193,11 +199,11 @@ let is_route_handler (node : security_node) : bool =
     `x = File.read(y)`. The assign has the function name but no args;
     the call has the args. We merge them so the AST has the full picture.
     Returns a map from (line, name) to the call node's args. *)
-let build_call_arg_map (nodes : security_node list) : (int * string, arg_node list) Hashtbl.t =
-  let tbl = Hashtbl.create 32 in
-  List.iter (fun node ->
+let build_call_arg_map (nodes : security_node list) : (int * string, arg_node list) Stdlib.Hashtbl.t =
+  let tbl = Stdlib.Hashtbl.create 32 in
+  List.iter ~f:(fun node ->
     if node.node_type = "call" then
-      Hashtbl.replace tbl (node.line, node.name) node.args
+      Stdlib.Hashtbl.add tbl (node.line, node.name) node.args
   ) nodes;
   tbl
 
@@ -217,15 +223,15 @@ let build_items (nodes : security_node list) : item list =
   in
 
   (* For each def or route handler, find its body *)
-  Array.iteri (fun idx node ->
+  Stdlib.Array.iteri (fun idx node ->
     let loc = make_range node.line node.column (String.length node.name) in
     match node.node_type with
     | "def" ->
         (* Find the end of this function scope *)
-        let end_line = ref max_int in
+        let end_line = ref Int.max_value in
         for j = idx + 1 to node_count - 1 do
           let n = nodes_array.(j) in
-          if is_scope_boundary n && !end_line = max_int then
+          if is_scope_boundary n && !end_line = Int.max_value then
             end_line := n.line
         done;
         let body_exprs = collect_body call_arg_map nodes node.line !end_line in
@@ -234,7 +240,7 @@ let build_items (nodes : security_node list) : item list =
           | [e] -> e
           | es -> { expr_value = EBlock es; expr_location = loc }
         in
-        let params = List.map (fun a -> PVar a.value) node.args in
+        let params = List.map ~f:(fun a -> PVar a.value) node.args in
         items := { item_value = IFunction (node.name, params, None, body); item_location = loc } :: !items
 
     | "call" when is_route_handler node ->
@@ -245,10 +251,10 @@ let build_items (nodes : security_node list) : item list =
         in
         let fn_name = node.name ^ " " ^ route_path in
         (* Find end of this route handler scope *)
-        let end_line = ref max_int in
+        let end_line = ref Int.max_value in
         for j = idx + 1 to node_count - 1 do
           let n = nodes_array.(j) in
-          if is_scope_boundary n && !end_line = max_int then
+          if is_scope_boundary n && !end_line = Int.max_value then
             end_line := n.line
         done;
         let body_exprs = collect_body call_arg_map nodes node.line !end_line in
@@ -277,18 +283,18 @@ let build_items (nodes : security_node list) : item list =
 
 (* ── Parse via Crystal extractor ───────────────────────────────────── *)
 
-let parse_file ~(extractor_cmd : string) ~(path : string) : (t, parse_error) result =
-  let cmd = Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
+let parse_file ~(extractor_cmd : string) ~(path : string) : (Types.t, PE.parse_error) Result.t =
+  let cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
   let ic = Unix.open_process_in cmd in
-  let json_str = Buffer.create 8192 in
-  (try while true do Buffer.add_channel json_str ic 4096 done
-   with End_of_file -> ());
+  let json_str = Stdlib.Buffer.create 8192 in
+  (try while true do Stdlib.Buffer.add_channel json_str ic 4096 done
+   with Stdlib.End_of_file -> ());
   let status = Unix.close_process_in ic in
   match status with
   | Unix.WEXITED 0 ->
-      let json = Yojson.Safe.from_string (Buffer.contents json_str) in
-      let nodes = match json with `List items -> List.map parse_security_node items | _ -> [] in
+      let json = Yojson.Safe.from_string (Stdlib.Buffer.contents json_str) in
+      let nodes = match json with `List items -> List.map ~f:parse_security_node items | _ -> [] in
       let items = build_items nodes in
       Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
   | _ ->
-      Error (make_error ~file:path ~message:"Crystal extractor failed")
+      Error (PE.make_error ~file:path ~message:"Crystal extractor failed")
