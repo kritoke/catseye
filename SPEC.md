@@ -51,9 +51,20 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 - Build DAG with nodes for: files, ASTs, findings, smells
 - Implement `stabilize()` cycle for minimal recomputation
 
+**Files created:**
+- `state_manager.ml` — File state tracking, session management, File_map module
+- `incremental_graph.ml` — Analysis node types, File_to_AST/AST_to_Findings modules, incremental_tracker
+- `integration.ml` — Session.create_session, Session.get_changed_files, Ast_cache, Findings_cache, Change_detector
+
 **Work unit:** `feat(incremental): add Incremental DAG for diff scanning`
 
 **Status:** ✅ Implemented (in feat/core-jane-street-integration)
+
+**Wiring:** The integration module provides the interface between the incremental DAG and the catseye_engine pipeline:
+- `Session.create_session(sources)` — Creates an incremental session from discovered source files
+- `Session.get_changed_files(session, paths)` — Returns (changed, added) file lists
+- `Change_detector.create()` — Creates a change tracker for incremental re-analysis
+- `Ast_cache` / `Findings_cache` — In-memory caches for AST JSON and findings
 
 Note: The Jane Street Incremental library has a non-standard API that required creating wrapper modules. The Incremental.Var.create expects 'a Incremental.State.t as initial value, not a polymorphic 'a SM.t. The implementation provides the full API contract (Engine, File_map, session management, change detection) that can be wired into real Incremental.Var once the exact state initialization pattern is determined.
 
@@ -99,10 +110,13 @@ Note: The Jane Street Incremental library has a non-standard API that required c
 
 ```
 lib/
-├── catseye_incremental/      # Incremental DAG (stub implementation)
+├── catseye_incremental/      # Incremental DAG
 │   ├── dune
 │   ├── analysis_graph.ml     # Graph node types and operations
-│   ├── diff_engine.ml         # File change detection
+│   ├── diff_engine.ml        # File change detection
+│   ├── state_manager.ml      # File state tracking, session management
+│   ├── incremental_graph.ml   # Analysis DAG, File_to_AST, AST_to_Findings
+│   ├── integration.ml         # Engine wiring layer
 │   └── version.ml
 ├── catseye_pipeline/         # Streaming pipeline (stub implementation)
 │   ├── dune
