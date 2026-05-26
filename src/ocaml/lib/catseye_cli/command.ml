@@ -2,10 +2,19 @@
 (* CLI command definition using Core.Command for type-safe argument parsing *)
 
 open Core
-open Catseye_types
-open Config
 
 (* ── Custom type conversions ─────────────────────────────────────────── *)
+
+type output_format =
+  | Terminal
+  | Json
+  | Sarif
+  | Markdown
+  | Dot
+
+type lang_filter =
+  | All
+  | Only of string list
 
 let output_format_of_string s =
   match String.lowercase s with
@@ -14,7 +23,7 @@ let output_format_of_string s =
   | "markdown" | "md" -> Ok Markdown
   | "dot" | "graphviz" -> Ok Dot
   | "terminal" | "text" -> Ok Terminal
-  | _ -> Or_error.error_sprintf "Invalid format: %s (expected: terminal, json, sarif, markdown, dot)" s
+  | _ -> Or_error.error_sprintf "Invalid format: %s" s
 
 let lang_filter_of_string s =
   match String.lowercase s with
@@ -25,154 +34,131 @@ let lang_filter_of_string s =
 
 (* ── Command flags ───────────────────────────────────────────────────── *)
 
-let format_flag =
+let output_format_flag =
   let open Command.Spec in
   flag "--format" ~doc:"FMT Output format: terminal (default), json, sarif, markdown, dot"
     (optional_with_default "terminal" string)
-    |> as_flag_in_command
 
 let lang_flag =
   let open Command.Spec in
-  flag "--lang" ~doc:"LANGS Language filter: all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml,rust"
+  flag "--lang" ~doc:"LANGS Language filter: all (default), or comma-separated"
     (optional_with_default "all" string)
-    |> as_flag_in_command
 
 let rules_flag =
   let open Command.Spec in
   flag "--rules" ~doc:"PATH Rules directory (default: rules/)"
     (optional string)
-    |> as_flag_in_command
 
 let output_flag =
   let open Command.Spec in
   flag "-o" ~doc:"PATH Write results to file" "--output"
     (optional string)
-    |> as_flag_in_command
 
 let config_flag =
   let open Command.Spec in
   flag "--config" ~doc:"PATH Config file path"
     (optional string)
-    |> as_flag_in_command
 
 let cache_dir_flag =
   let open Command.Spec in
   flag "--cache-dir" ~doc:"PATH Cache directory (default: .catseye)"
     (optional string)
-    |> as_flag_in_command
 
 let suppress_flag =
   let open Command.Spec in
   flag "--suppress" ~doc:"TAGS Comma-separated rule IDs to suppress"
     (optional string)
-    |> as_flag_in_command
 
 let parallelism_flag =
   let open Command.Spec in
   flag "-p" ~doc:"N Parallel workers (0 = auto)" "--parallel"
     (optional_with_default "0" int)
-    |> as_flag_in_command
 
 let analysis_timeout_flag =
   let open Command.Spec in
   flag "--analysis-timeout" ~doc:"MS Analysis timeout in milliseconds (0 = disabled)"
     (optional_with_default "0" int)
-    |> as_flag_in_command
 
 let cfg_max_blocks_flag =
   let open Command.Spec in
   flag "--cfg-max-blocks" ~doc:"N Max blocks per function CFG (default: 500)"
     (optional_with_default 500 int)
-    |> as_flag_in_command
 
 let cfg_timeout_flag =
   let open Command.Spec in
   flag "--cfg-timeout" ~doc:"MS CFG build timeout (default: 5000)"
     (optional_with_default 5000 int)
-    |> as_flag_in_command
 
 (* Boolean flags *)
 let no_color_flag =
   let open Command.Spec in
   flag "--no-color" ~doc:"Disable colored output"
     no_arg
-    |> as_flag_in_command
 
 let no_cache_flag =
   let open Command.Spec in
   flag "--no-cache" ~doc:"Disable extraction cache"
     no_arg
-    |> as_flag_in_command
 
 let clear_cache_flag =
   let open Command.Spec in
   flag "--clear-cache" ~doc:"Clear cache before running"
     no_arg
-    |> as_flag_in_command
 
 let no_recurse_flag =
   let open Command.Spec in
   flag "--no-recurse" ~doc:"Don't recurse into subdirectories"
     no_arg
-    |> as_flag_in_command
 
 let no_cfg_flag =
   let open Command.Spec in
   flag "--no-cfg" ~doc:"Skip CFG-based analysis (use flat taint engine)"
     no_arg
-    |> as_flag_in_command
 
 let predator_vision_flag =
   let open Command.Spec in
   flag "--predator-vision" ~doc:"Enable reachability analysis (live/dormant/safe)"
     no_arg
-    |> as_flag_in_command
 
 let crows_nest_flag =
   let open Command.Spec in
   flag "--crows-nest" ~doc:"Enable supply chain audit (Crystal shards, Gleam packages)"
     no_arg
-    |> as_flag_in_command
 
 let claws_flag =
   let open Command.Spec in
   flag "--claws" ~doc:"Enable code smell detection"
     no_arg
-    |> as_flag_in_command
 
 let ai_lint_flag =
   let open Command.Spec in
   flag "--ai-lint" ~doc:"Enable AI antipattern detection"
     no_arg
-    |> as_flag_in_command
 
 let ast_bridge_flag =
   let open Command.Spec in
   flag "--ast-bridge" ~doc:"Force AST bridge for JS/TS/Svelte/OCaml"
     no_arg
-    |> as_flag_in_command
 
 let include_deps_flag =
   let open Command.Spec in
   flag "--include-deps" ~doc:"Include shard dependencies in scan (Crystal only)"
     no_arg
-    |> as_flag_in_command
 
 (* ── Positional argument ─────────────────────────────────────────────── *)
 
 let path_arg =
   let open Command.Spec in
   anon ("PATH" %: string)
-  |> with_default_arg ~default:"."
 
 (* ── Build the main command ───────────────────────────────────────────── *)
 
-let catseye_command (run_impl : t -> int) =
+let catseye_command ~run_impl =
   Command.basic
     ~summary:"Catseye - Security analysis tool for Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust"
     Command.Spec.(
       empty
-      |> format_flag
+      |> output_format_flag
       |> lang_flag
       |> rules_flag
       |> output_flag
@@ -196,7 +182,7 @@ let catseye_command (run_impl : t -> int) =
       |> include_deps_flag
       |> path_arg
     )
-    (fun fmt lang rules output config_path_arg cache_dir suppress parallelism
+    (fun fmt lang rules output config_path cache_dir suppress parallelism
          analysis_timeout cfg_max_blocks cfg_timeout
          no_color no_cache clear_cache no_recurse no_cfg
          predator_vision crows_nest claws ai_lint ast_bridge include_deps
@@ -218,14 +204,16 @@ let catseye_command (run_impl : t -> int) =
         | Error e -> failwith (Error.to_string_hum e)
       in
       
-      let default_config = Config.default in
+      (* Import config after defining local types *)
+      let open Catseye_cli.Config in
+      let default_config = default in
       let cfg = {
         default_config with
         target_dir = path;
         format = parse_format fmt;
         lang_filter = parse_lang lang;
         output_path = Option.value output ~default:default_config.output_path;
-        config_path = config_path_arg;
+        config_path;
         rules_dir = Option.value rules ~default:default_config.rules_dir;
         cache_dir = Option.value cache_dir ~default:default_config.cache_dir;
         color = not no_color;
@@ -246,10 +234,10 @@ let catseye_command (run_impl : t -> int) =
         suppress = Option.map suppress ~f:(fun s -> String.split s ~on:',') 
                    |> Option.value ~default:[];
       } in
-      let cfg = Config.load cfg in
+      let cfg = Catseye_cli.Config.load cfg in
       exit (run_impl cfg)
     )
 
 (* Expose for backward compatibility with existing orchestrator *)
-let run_with_args run_impl =
-  catseye_command run_impl |> Command.run
+let run_with_args ~run_impl =
+  Command.run (catseye_command ~run_impl)
