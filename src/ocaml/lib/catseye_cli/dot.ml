@@ -32,12 +32,12 @@ type node_class =
 (** Classify all functions in the call graph. *)
 let classify_nodes (adj : call_adjacency)
     (entries : entry_point list)
-    (reachable : StringSet.t)
+    (reachable : string Set.Poly.t)
     (findings : Finding.t list)
     (scopes : scope_info list)
     : (string * string * node_class) list =
-  let entry_names = List.fold_left ~init:StringSet.empty ~f:(fun acc e ->
-    StringSet.add e.function_name acc
+  let entry_names = List.fold_left ~init:Set.Poly.empty ~f:(fun acc e ->
+    Set.Poly.add acc e.function_name
   ) entries in
   let sink_map = Stdlib.Hashtbl.create 16 in
   List.iter ~f:(fun f ->
@@ -47,15 +47,15 @@ let classify_nodes (adj : call_adjacency)
       Stdlib.Hashtbl.replace sink_map s.func_name (f.Finding.rule :: existing)
     | None -> ()
   ) findings;
-  let all_funcs = ref StringSet.empty in
-  StringMap.iter (fun caller edges ->
-    all_funcs := StringSet.add caller !all_funcs;
+  let all_funcs = ref Set.Poly.empty in
+  Map.Poly.fold adj ~init:() ~f:(fun ~key:caller ~data:edges () ->
+    all_funcs := Set.Poly.add !all_funcs caller;
     List.iter ~f:(fun (called, _, _) ->
-      all_funcs := StringSet.add called !all_funcs
+      all_funcs := Set.Poly.add !all_funcs called
     ) edges
-  ) adj;
+  );
   List.iter ~f:(fun e ->
-    all_funcs := StringSet.add e.function_name !all_funcs
+    all_funcs := Set.Poly.add !all_funcs e.function_name
   ) entries;
   let func_file = Stdlib.Hashtbl.create 32 in
   List.iter ~f:(fun s ->
@@ -66,15 +66,15 @@ let classify_nodes (adj : call_adjacency)
     if not (Stdlib.Hashtbl.mem func_file e.function_name) then
       Stdlib.Hashtbl.replace func_file e.function_name e.file
   ) entries;
-  StringSet.elements !all_funcs
+  Set.Poly.to_list !all_funcs
   |> List.filter_map ~f:(fun name ->
     let file = try Stdlib.Hashtbl.find func_file name with Stdlib.Not_found -> "?" in
     let cls =
       if Stdlib.Hashtbl.mem sink_map name then
         Sink (String.concat ~sep:", " (Stdlib.Hashtbl.find sink_map name))
-      else if StringSet.mem name entry_names then
+      else if Set.Poly.mem entry_names name then
         Entry
-      else if StringSet.mem name reachable then
+      else if Set.Poly.mem reachable name then
         Reachable
       else
         Dormant
@@ -94,12 +94,12 @@ let build_call_graph (adj : call_adjacency)
   let g = CallGraph.create ~size:64 () in
   let cls_map = Stdlib.Hashtbl.create 64 in
   (* Add edges from adjacency *)
-  StringMap.iter (fun caller edges ->
+  Map.Poly.fold adj ~init:() ~f:(fun ~key:caller ~data:edges () ->
     CallGraph.add_vertex g caller;
     List.iter ~f:(fun (called, _file, _line) ->
       CallGraph.add_edge g caller called
     ) edges
-  ) adj;
+  );
   (* Add entry point vertices that may not be in adjacency *)
   List.iter ~f:(fun e ->
     CallGraph.add_vertex g e.function_name

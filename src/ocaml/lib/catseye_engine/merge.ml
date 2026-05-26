@@ -9,8 +9,8 @@ let ( <> ) = Stdlib.( <> )
 
 (* Merge two TaintDBs: union of records per file *)
 let merge_db (a : Db.t) (b : Db.t) : Db.t =
-  Db.StringMap.fold (fun file records_b acc ->
-    let records_a = match Db.StringMap.find_opt file acc with
+  Map.Poly.fold b ~init:a ~f:(fun ~key:file ~data:records_b acc ->
+    let records_a = match Map.Poly.find acc file with
       | Some rs -> rs
       | None -> []
     in
@@ -18,5 +18,5 @@ let merge_db (a : Db.t) (b : Db.t) : Db.t =
     let new_records = Stdlib.List.filter (fun rb ->
       not (Stdlib.List.exists (fun ra -> ra.var_name = rb.var_name) records_a)
     ) records_b in
-    Db.StringMap.add file (new_records @ records_a) acc
-  ) b a
+    Map.Poly.set acc ~key:file ~data:(new_records @ records_a)
+  )

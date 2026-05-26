@@ -6,17 +6,15 @@ open Base
 open Catseye_types
 open Db
 
-module StringMap = Stdlib.Map.Make(String)
-
 (** Group nodes by file, sorted by line within each group. *)
 let group_by_file (nodes : Security_node.t list)
     : (string * Security_node.t list) list =
   let map = Stdlib.List.fold_left (fun m n ->
     let key = n.Security_node.file in
-    let existing = match StringMap.find_opt key m with Some l -> l | None -> [] in
-    StringMap.add key (n :: existing) m
-  ) StringMap.empty nodes in
-  StringMap.bindings map
+    let existing = match Map.Poly.find m key with Some l -> l | None -> [] in
+    Map.Poly.set m ~key ~data:(n :: existing)
+  ) Map.Poly.empty nodes in
+  Map.Poly.to_alist map
   |> List.map ~f:(fun (file, ns) -> (file, List.sort ~compare:(fun a b -> Int.compare a.Security_node.line b.Security_node.line) ns))
 
 (* Find the next def line in the same file after a given line.
@@ -36,7 +34,7 @@ let next_def_line (sorted_nodes : Security_node.t list) (line : int) : int optio
 let track_return_taint (nodes : Security_node.t list) (db : Db.t) : Db.t =
   (* Precompute: group nodes by file, sorted by line *)
   let file_groups = group_by_file nodes in
-  let file_map = Stdlib.List.fold_left (fun m (f, ns) -> StringMap.add f ns m) StringMap.empty file_groups in
+  let file_map = Stdlib.List.fold_left (fun m (f, ns) -> Map.Poly.set m ~key:f ~data:ns) Map.Poly.empty file_groups in
 
   (* Iterate over Def nodes only *)
   let defs =
@@ -44,7 +42,7 @@ let track_return_taint (nodes : Security_node.t list) (db : Db.t) : Db.t =
     |> Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Def)
   in
   Stdlib.List.fold_left (fun acc def ->
-    let sorted_nodes = match StringMap.find_opt def.Security_node.file file_map with
+    let sorted_nodes = match Map.Poly.find file_map def.Security_node.file with
       | Some ns -> ns
       | None -> []
     in

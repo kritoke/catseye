@@ -14,8 +14,6 @@ open Db
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
-module StringMap = Stdlib.Map.Make(String)
-
 let is_sanitizer_call (name : string) : bool =
   Constants.is_sanitizer name
 
@@ -41,13 +39,12 @@ let taint_source_of_call (call : Security_node.t) (db : Db.t) : string =
   |> Option.value ~default:call.Security_node.name
 
 (** Build a (file,line) → Call node map for O(1) lookup. *)
-let build_call_map (nodes : Security_node.t list) : Security_node.t StringMap.t =
+let build_call_map (nodes : Security_node.t list) : (string, Security_node.t) Map.Poly.t =
   Stdlib.List.fold_left (fun m n ->
     if n.Security_node.node_type = Security_node.Call then
-      StringMap.add
-        (n.Security_node.file ^ ":" ^ Int.to_string n.Security_node.line) n m
+      Map.Poly.set m ~key:(n.Security_node.file ^ ":" ^ Int.to_string n.Security_node.line) ~data:n
     else m
-  ) StringMap.empty nodes
+  ) Map.Poly.empty nodes
 
 let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t =
   (* Precompute call lookup map — O(n) instead of O(n²) *)
@@ -68,9 +65,8 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
       | Some a ->
         (* Check if the tainted call is actually a sanitizer — if so, result is clean *)
         let call_node =
-          StringMap.find_opt
+          Map.Poly.find call_map
             (node.Security_node.file ^ ":" ^ Int.to_string node.Security_node.line)
-            call_map
         in
         (match call_node with
          | Some cn when is_sanitizer_call cn.Security_node.name ->
@@ -92,9 +88,8 @@ let propagate_interprocedural (nodes : Security_node.t list) (db : Db.t) : Db.t 
         (* Strategy 2: A call arg is tainted → return is tainted.
            Use precomputed call_map for O(1) lookup instead of scanning all nodes. *)
         let call_node =
-          StringMap.find_opt
+          Map.Poly.find call_map
             (node.Security_node.file ^ ":" ^ Int.to_string node.Security_node.line)
-            call_map
         in
         (match call_node with
          | Some cn when is_sanitizer_call cn.Security_node.name ->

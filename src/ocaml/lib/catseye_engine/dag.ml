@@ -17,9 +17,6 @@ let max_dag_nodes = 1000
 (** Maximum recursion depth for trace to prevent infinite loops *)
 let max_trace_depth = 50
 
-module StringMap = Stdlib.Map.Make(String)
-module StringSet = Stdlib.Set.Make(String)
-
 (** Build a vulnerability DAG from a sink call and the taint DB.
     Walks backwards from the sink through the taint chain to find sources. *)
 let build_dag (sink : Security_node.t) (db : Db.t)
@@ -42,41 +39,46 @@ let build_dag (sink : Security_node.t) (db : Db.t)
   (* Precompute lookup maps for O(1) access *)
   let assign_map = Stdlib.List.fold_left (fun m n ->
     if n.Security_node.node_type = Security_node.Assign then
-      StringMap.add (n.Security_node.file ^ ":" ^ n.Security_node.name) n m
+      Map.Poly.set m ~key:(n.Security_node.file ^ ":" ^ n.Security_node.name) ~data:n
     else m
-  ) StringMap.empty all in
-  let def_params = Stdlib.List.fold_left (fun s n ->
-    if n.Security_node.node_type = Security_node.Def then
-      Stdlib.List.fold_left (fun s' a ->
-        if a.Security_node.arg_type = Security_node.ArgVar then
-          StringSet.add a.Security_node.value s'
-        else s'
-      ) s n.Security_node.args
-    else s
-  ) StringSet.empty all in
+  ) Map.Poly.empty all in
+  (* Build the set of function parameters using Base.Set *)
+  let def_params base_s = 
+    Stdlib.List.fold_left (fun s n ->
+      if n.Security_node.node_type = Security_node.Def then
+        Stdlib.List.fold_left (fun s' a ->
+          if a.Security_node.arg_type = Security_node.ArgVar then
+            Set.Poly.add s' a.Security_node.value
+          else s'
+        ) s n.Security_node.args
+      else s
+    ) base_s all
+  in
+  let def_params = def_params Set.Poly.empty in
 
   (* Find assignment that defines a variable *)
   let find_assign var =
-    StringMap.find_opt (sink.file ^ ":" ^ var) assign_map
+    Map.Poly.find assign_map (sink.file ^ ":" ^ var)
   in
 
   (* Check if var is a function parameter *)
-  let is_param var = StringSet.mem var def_params in
+  let is_param var = Set.Poly.mem def_params var in
 
   (* Trace a single var backwards; returns (nodes, edges, entry_point_ids) *)
   let counter = ref 0 in
   let fresh () = Int.incr counter; Stdlib.Printf.sprintf "n%d" !counter in
+  let empty_set = Set.Poly.empty in
 
   let rec trace var =
-    trace_with_depth var 0 StringSet.empty
+    trace_with_depth var 0 empty_set
 
   (* Internal trace with depth tracking and cycle prevention *)
   and trace_with_depth var depth seen =
     (* Check depth limit and cycle detection *)
-    if depth > max_trace_depth || StringSet.mem var seen then
+    if depth > max_trace_depth || Set.Poly.mem seen var then
       ([], [], [])
     else
-      let seen' = StringSet.add var seen in
+      let seen' = Set.Poly.add seen var in
       match find_assign var with
       | None when is_param var ->
         let id = fresh () in

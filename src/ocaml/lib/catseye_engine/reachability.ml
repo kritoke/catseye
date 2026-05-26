@@ -17,10 +17,6 @@ let ( <> ) = Stdlib.( <> )
 let ( < ) = Stdlib.( < )
 let ( > ) = Stdlib.( > )
 
-module StringMap = Stdlib.Map.Make(String)
-module StringSet = Stdlib.Set.Make(String)
-module StringMap2 = Stdlib.Map.Make(String)
-
 (* ── Types ──────────────────────────────────────────────────────────── *)
 
 type entry_point_kind =
@@ -37,7 +33,7 @@ type entry_point = {
 }
 
 (** Call adjacency: function_name → [(called_name, file, line)] *)
-type call_adjacency = (string * string * int) list StringMap.t
+type call_adjacency = (string, (string * string * int) list) Map.Poly.t
 
 (** Function scope: maps a function name to its file and line *)
 type func_scope = {
@@ -90,20 +86,20 @@ type scope_info = {
 
 (** Build scope list per file, then map each node to its enclosing scope. *)
 let build_scopes (nodes : t list) : scope_info list =
-  let file_defs : scope_info list StringMap2.t ref = ref StringMap2.empty in
+  let file_defs : (string, scope_info list) Map.Poly.t ref = ref Map.Poly.empty in
   (* Collect Def nodes grouped by file *)
   Stdlib.List.iter (fun n ->
     if n.node_type = Def then begin
       let file = n.file in
       let new_scope = { func_name = n.name; file; start_line = n.line; end_line = Stdlib.max_int } in
-      file_defs := StringMap2.update file
-        (function None -> Some [new_scope] | Some defs -> Some (new_scope :: defs))
-        !file_defs
+      let existing = match Map.Poly.find !file_defs file with Some l -> l | None -> [] in
+      file_defs := Map.Poly.set !file_defs ~key:file ~data:(new_scope :: existing)
     end
   ) nodes;
   (* Sort each file's defs by line, set end_line to next def's start_line *)
   let all_scopes = ref [] in
-  StringMap2.iter (fun _file defs ->
+  let file_defs_list = Map.Poly.to_alist !file_defs in
+  Stdlib.List.iter (fun (_file, defs) ->
     let sorted = Stdlib.List.sort (fun a b -> Int.compare a.start_line b.start_line) defs in
     let rec set_ends = function
       | [] -> ()
@@ -114,7 +110,7 @@ let build_scopes (nodes : t list) : scope_info list =
         set_ends rest
     in
     set_ends sorted
-  ) !file_defs;
+  ) file_defs_list;
   !all_scopes
 
 (** Find which function scope contains a given file:line *)
@@ -130,17 +126,17 @@ let find_scope (scopes : scope_info list) (file : string) (line : int)
     enclosing function to the called function. *)
 let build_call_adjacency (nodes : Security_node.t list)
     (scopes : scope_info list) : call_adjacency =
-  let call_graph = ref StringMap.empty in
+  let call_graph = ref Map.Poly.empty in
   Stdlib.List.iter (fun n ->
     if n.Security_node.node_type = Security_node.Call then begin
       match find_scope scopes n.Security_node.file n.Security_node.line with
       | Some scope ->
         let key = scope.func_name in
-        let edges = try StringMap.find key !call_graph with Stdlib.Not_found -> [] in
+        let edges = match Map.Poly.find !call_graph key with Some l -> l | None -> [] in
         let edge = (n.Security_node.name, n.Security_node.file, n.Security_node.line) in
         (* Avoid duplicate edges *)
         if not (Stdlib.List.exists (fun (name, _, _) -> name = n.Security_node.name) edges) then
-          call_graph := StringMap.add key (edge :: edges) !call_graph
+          call_graph := Map.Poly.set !call_graph ~key ~data:(edge :: edges)
       | None -> ()
     end
   ) nodes;
@@ -209,22 +205,22 @@ let detect_entry_points (nodes : Security_node.t list)
 (** BFS from entry points through call adjacency.
     Returns set of reachable function names. *)
 let reachable_from (entries : entry_point list) (call_graph : call_adjacency)
-    : StringSet.t =
-  let visited = ref StringSet.empty in
+    : string Set.Poly.t =
+  let visited = ref Set.Poly.empty in
   let queue = Stdlib.Queue.create () in
   Stdlib.List.iter (fun e ->
-    if not (StringSet.mem e.function_name !visited) then begin
-      StringSet.add e.function_name !visited |> (:=) visited;
+    if not (Set.mem !visited e.function_name) then begin
+      visited := Set.add !visited e.function_name;
       Stdlib.Queue.push e.function_name queue
     end
   ) entries;
   while not (Stdlib.Queue.is_empty queue) do
     let current = Stdlib.Queue.pop queue in
-    (match StringMap.find_opt current call_graph with
+    (match Map.Poly.find call_graph current with
      | Some edges ->
        Stdlib.List.iter (fun (called, _, _) ->
-         if not (StringSet.mem called !visited) then begin
-           StringSet.add called !visited |> (:=) visited;
+         if not (Set.mem !visited called) then begin
+           visited := Set.add !visited called;
            Stdlib.Queue.push called queue
          end
        ) edges
@@ -234,21 +230,18 @@ let reachable_from (entries : entry_point list) (call_graph : call_adjacency)
 
 (* ── Path tracing ───────────────────────────────────────────────────── *)
 
-(* BFS path tracing using Map instead of Hashtbl *)
-module StringOptionMap = Stdlib.Map.Make(String)
-
 (** Trace the shortest call path from an entry point to a target function.
     Returns the path as [(file, line), ...] or [] if unreachable. *)
 let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     (target : string) : (entry_point * (string * int) list) option =
   (* BFS with parent tracking using Map *)
-  let parent : (string * string) option StringOptionMap.t ref = ref StringOptionMap.empty in
-  let visited : StringSet.t ref = ref StringSet.empty in
+  let parent : (string, (string * string) option) Map.Poly.t ref = ref Map.Poly.empty in
+  let visited : string Set.Poly.t ref = ref Set.Poly.empty in
   let queue : string Stdlib.Queue.t = Stdlib.Queue.create () in
   Stdlib.List.iter (fun e ->
-    if not (StringSet.mem e.function_name !visited) then begin
-      visited := StringSet.add e.function_name !visited;
-      parent := StringOptionMap.add e.function_name None !parent;
+    if not (Set.mem !visited e.function_name) then begin
+      visited := Set.add !visited e.function_name;
+      parent := Map.Poly.set !parent ~key:e.function_name ~data:None;
       Stdlib.Queue.push e.function_name queue
     end
   ) entries;
@@ -258,12 +251,12 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     if current = target then
       found := Some current
     else
-      (match StringMap.find_opt current call_graph with
+      (match Map.Poly.find call_graph current with
        | Some edges ->
          Stdlib.List.iter (fun (called, _f, _l) ->
-           if not (StringSet.mem called !visited) then begin
-             visited := StringSet.add called !visited;
-             parent := StringOptionMap.add called (Some (current, called)) !parent;
+           if not (Set.mem !visited called) then begin
+             visited := Set.add !visited called;
+             parent := Map.Poly.set !parent ~key:called ~data:(Some (current, called));
              Stdlib.Queue.push called queue
            end
          ) edges
@@ -275,12 +268,12 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     (* Reconstruct path *)
     let path = ref [] in
     let rec walk name =
-      match StringOptionMap.find_opt name !parent with
+      match Map.Poly.find !parent name with
       | None -> () (* entry point reached *)
       | Some None -> ()
       | Some (Some (parent_name, _child)) ->
         (* Find the edge for file/line info *)
-        (match StringMap.find_opt parent_name call_graph with
+        (match Map.Poly.find call_graph parent_name with
          | Some edges ->
            (match Stdlib.List.find_opt (fun (n, _, _) -> n = name) edges with
             | Some (_, f, l) -> path := (f, l) :: !path
@@ -291,7 +284,7 @@ let trace_path (entries : entry_point list) (call_graph : call_adjacency)
     walk target;
     (* Find which entry point we started from *)
     let rec find_entry name =
-      match StringOptionMap.find_opt name !parent with
+      match Map.Poly.find !parent name with
       | None | Some None ->
         Stdlib.List.find (fun e -> e.function_name = name) entries
       | Some (Some (parent_name, _)) ->
@@ -330,7 +323,7 @@ let analyze (nodes : Security_node.t list)
         { status = `Dormant; entry_point = None;
           entry_function = None; path_length = 0; path = [] }
       | Some s ->
-        if StringSet.mem s.func_name reachable then begin
+        if Set.mem reachable s.func_name then begin
           match trace_path entries call_graph s.func_name with
           | Some (entry, path) ->
             { status = `Live;

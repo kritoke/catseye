@@ -99,12 +99,12 @@ let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
 
 (** Build a lookup map from (file, line) to Call node for O(1) sink lookup *)
 let build_sink_lookup_map (nodes : Security_node.t list) 
-    : Security_node.t StringMap.t =
+    : (string, Security_node.t) Map.Poly.t =
   Stdlib.List.fold_left (fun m n ->
     if n.Security_node.node_type = Security_node.Call then
-      StringMap.add (n.Security_node.file ^ ":" ^ Int.to_string n.Security_node.line) n m
+      Map.Poly.set m ~key:(n.Security_node.file ^ ":" ^ Int.to_string n.Security_node.line) ~data:n
     else m
-  ) StringMap.empty nodes
+  ) Map.Poly.empty nodes
 
 (** Convert a vulnerability DAG to flow steps for a finding.
     Traces paths from entry points toward the sink node using DFS with
@@ -170,7 +170,7 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
     if suppressed then () (* Skip this finding *)
     else begin
       let key = f.Finding.file ^ ":" ^ Int.to_string f.Finding.line in
-      match StringMap.find_opt key sink_map with
+      match Map.Poly.find sink_map key with
       | None -> results := f :: !results
       | Some sink ->
         (match build_dag sink db nodes with
