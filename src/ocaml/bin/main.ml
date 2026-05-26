@@ -8,5 +8,9 @@ let () =
   let (_ : Sys.signal_behavior) =
     Sys.signal Sys.sigpipe Sys.Signal_ignore
   in
-  (* Use Core.Command-based argument parsing *)
-  Catseye_cli.Command.run_with_args ~run_impl:Catseye_cli.Orchestrator.run
+  (* Parse arguments and run the analysis.
+     Config.load is called INSIDE Orchestrator.run to ensure toolchain
+     detection happens after SIGPIPE is set. *)
+  let config = Catseye_cli.Args.parse_args () in
+  let exit_code = Catseye_cli.Orchestrator.run config in
+  Stdlib.exit exit_code
