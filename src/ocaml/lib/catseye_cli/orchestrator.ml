@@ -682,7 +682,9 @@ let run (config : t) : int =
       Stdio.printf "\n  → AI antipattern detection:\n\n";
     let ai_lint_findings = List.concat_map ~f:(fun src ->
       (try
-        match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
+        (* Skip Crystal files - they were already extracted in Step 2 *)
+        if src.lang = "crystal" then []
+        else match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with
         | Error err -> [Catseye_types.Finding.{ rule = "parse-error"; severity = "error"; file = err.file;
             line = Option.value err.line ~default:0; message = err.message;
             flow = []; language = ""; dependency = None; reachability = None; suggestion = None; }]
@@ -690,8 +692,6 @@ let run (config : t) : int =
           (match mod_.mod_lang with
            | Gleam ->
             List.map ~f:(convert_ai_finding ~lang:"gleam") (Ai_linter.Gleam_rules.analyze_module mod_)
-           | Crystal ->
-            List.map ~f:(convert_ai_finding ~lang:"crystal") (Ai_linter.Crystal_rules.analyze_module mod_)
            | JavaScript | TypeScript ->
             List.map ~f:(convert_ai_finding ~lang:"javascript") (Ai_linter.Javascript_rules.analyze_module mod_)
            | Svelte ->

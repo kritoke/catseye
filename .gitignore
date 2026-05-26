@@ -74,3 +74,5 @@ bin/catseye-hierarchical-extractor
 2850827PREFIX/
 .pi-lens/
 src/extractor/extractor
+# Local Pi runtime state
+.atl/

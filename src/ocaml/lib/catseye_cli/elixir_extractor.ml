@@ -169,23 +169,39 @@ let run_cmd (cmd : string) : (process_status * string list) =
   let status = Unix.close_process_in ch in
   (status, lines)
 
-(* Find the catseye root by looking for scripts/elixir-extractor/mix.exs *)
+(* Find the catseye root - first try binary location, then search upward from CWD *)
 let find_catseye_root (start_dir : string) : string option =
-  let rec search dir depth =
-    if depth > 10 then None
-    else
-      let mix_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/mix.exs" in
-      if Stdlib.Sys.file_exists mix_path then Some dir
-      else
-        let parent = Stdlib.Filename.concat dir ".." in
-        if parent = dir then None
-        else search parent (depth + 1)
+  (* Try binary's location first *)
+  let exe_dir = Stdlib.Filename.dirname Stdlib.Sys.executable_name in
+  let try_dir dir =
+    let mix_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/mix.exs" in
+    Stdlib.Sys.file_exists mix_path
   in
-  search start_dir 0
+  (* Check binary's directory and parent *)
+  if try_dir exe_dir then Some exe_dir
+  else
+    let parent_exe = Stdlib.Filename.concat exe_dir ".." in
+    if try_dir parent_exe then Some parent_exe
+    else
+      (* Search upward from current directory *)
+      let rec search dir depth =
+        if depth > 20 then None
+        else
+          let mix_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/mix.exs" in
+          if Stdlib.Sys.file_exists mix_path then Some dir
+          else
+            let parent = Stdlib.Filename.concat dir ".." in
+            if parent = dir then None
+            else search parent (depth + 1)
+      in
+      search start_dir 0
 
 (* Convert relative path to absolute using shell realpath *)
 let realpath (path : string) : string =
-  let cmd = Stdlib.Printf.sprintf "realpath %s" (Stdlib.Filename.quote path) in
+  let cmd = Stdlib.Printf.sprintf "realpath %s 2>/dev/null || echo %s"
+    (Stdlib.Filename.quote path)
+    (Stdlib.Filename.quote path)
+  in
   let ch = Unix.open_process_in cmd in
   let rec read_all acc =
     try read_all (Stdlib.input_line ch :: acc) with Stdlib.End_of_file -> List.rev acc
