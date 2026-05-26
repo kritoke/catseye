@@ -1,6 +1,7 @@
 (* lib/catseye_ast/ocaml_plugin.ml
    OCaml language plugin descriptor.
-*)
+ *)
+
 
 let plugin : Language_plugin.t = {
   name = "ocaml";

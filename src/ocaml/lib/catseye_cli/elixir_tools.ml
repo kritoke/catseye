@@ -5,7 +5,6 @@ open Unix
 open Yojson.Safe
 open Base
 let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
 
 (** Tool status for discovery *)
 type tool_status =

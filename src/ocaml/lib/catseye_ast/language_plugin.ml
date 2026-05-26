@@ -5,7 +5,13 @@
    of functions and metadata that the core system calls into. The core never
    pattern-matches on language names; it looks up a plugin by file extension
    and calls its interface.
-*)
+ *)
+
+module PE = Error
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (** Extractor specification for languages with external extractors. *)
 type extractor_spec = {
@@ -22,7 +28,7 @@ type t = {
   extensions : string list;         (* [".cr"], [".gleam"], [".svelte"], [".ts"; ".tsx"] *)
 
   (* Parsing — produces CatseyeAST.t from a source file *)
-  parse_file : path:string -> (Types.t, Error.parse_error) result;
+  parse_file : path:string -> (Types.t, PE.parse_error) Result.t;
 
   (* Extraction — optional, for languages with external extractors.
      Produces Security_node.t list from a source file. *)

@@ -1,6 +1,7 @@
 (* lib/catseye_ast/typescript_plugin.ml
    TypeScript language plugin descriptor.
-*)
+ *)
+
 
 let plugin : Language_plugin.t = {
   name = "typescript";

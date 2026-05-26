@@ -1,14 +1,18 @@
 (* lib/catseye_ast/to_security_node.ml
    Bridge: derive Security_node.t list from CatseyeAST.t.
-
+ 
    This allows the taint engine and Claws to consume CatseyeAST.t
    without rewriting their 529+ Security_node.t references.
-
+ 
    Pipeline: extractor → CatseyeAST.t → to_security_node → Security_node.t → engine
-
+ 
    Used when the orchestrator wants a single-parse pipeline instead of
    running extractors and mappers separately.
-*)
+ *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Catseye_types
 open Types
@@ -52,7 +56,7 @@ let rec pattern_to_arg (pat : pattern) : Security_node.arg =
       | LString s -> s
       | LInt i -> i
       | LFloat f -> f
-      | LBool b -> string_of_bool b
+      | LBool b -> Stdlib.string_of_bool b
       | LUnit -> "()"
       | LNull -> "nil"
       | LChar c -> String.make 1 c
@@ -65,7 +69,7 @@ let rec pattern_to_arg (pat : pattern) : Security_node.arg =
   | PType (_, p) -> pattern_to_arg p
 
 let patterns_to_args (pats : pattern list) : Security_node.arg list =
-  List.map pattern_to_arg pats
+  List.map ~f:pattern_to_arg pats
 
 (* ── Expression name extraction ─────────────────────────────────────── *)
 
@@ -94,15 +98,15 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
       ~line:e.expr_location.start.line ~file ~language:lang in
     walk_expr recv file lang @ [call_node]
   | ETuple es | EList es ->
-    List.concat_map (fun e -> walk_expr e file lang) es
+    List.concat_map ~f:(fun e -> walk_expr e file lang) es
   | ERecord fields ->
-    List.concat_map (fun (_, e) -> walk_expr e file lang) fields
+    List.concat_map ~f:(fun (_, e) -> walk_expr e file lang) fields
   | ERecordUpdate (e, fields) ->
     walk_expr e file lang @
-    List.concat_map (fun (_, e) -> walk_expr e file lang) fields
+    List.concat_map ~f:(fun (_, e) -> walk_expr e file lang) fields
   | EApp (fn, args) ->
     let fn_name = expr_full_name fn in
-    let fn_args = List.map (fun a ->
+    let fn_args = List.map ~f:(fun a ->
       match a.expr_value with
       | EVar v -> make_arg ~arg_type:Security_node.ArgVar ~value:v
       | ELiteral lit ->
@@ -110,7 +114,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
           | LString s -> s
           | LInt i -> i
           | LFloat f -> f
-          | LBool b -> string_of_bool b
+          | LBool b -> Stdlib.string_of_bool b
           | LUnit -> "()"
           | LNull -> "nil"
           | LChar c -> String.make 1 c
@@ -126,7 +130,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     let call_node = make_node
       ~node_type:Security_node.Call ~name:fn_name ~args:fn_args
       ~line:e.expr_location.start.line ~file ~language:lang in
-    walk_expr fn file lang @ List.concat_map (fun a -> walk_expr a file lang) args @ [call_node]
+    walk_expr fn file lang @ List.concat_map ~f:(fun a -> walk_expr a file lang) args @ [call_node]
   | EFn (_, body) ->
     walk_expr body file lang
   | EIf (_cond, then_, else_) ->
@@ -141,7 +145,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     let control_node = make_node
       ~node_type:Security_node.Control ~name:"case" ~args:[]
       ~line:e.expr_location.start.line ~file ~language:lang in
-    List.concat_map (fun (_pat, body) -> walk_expr body file lang) branches @
+    List.concat_map ~f:(fun (_pat, body) -> walk_expr body file lang) branches @
     [control_node]
   | ELet (pat, e1, e2) | ELetAssert (pat, e1, e2) ->
     let var_name = match pat with
@@ -155,7 +159,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
           | LString s -> s
           | LInt i -> i
           | LFloat f -> f
-          | LBool b -> string_of_bool b
+          | LBool b -> Stdlib.string_of_bool b
           | LUnit -> "()"
           | LNull -> "nil"
           | LChar c -> String.make 1 c
@@ -182,7 +186,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
   | EUnOp (_op, e1) ->
     walk_expr e1 file lang
   | EBlock es ->
-    List.concat_map (fun e -> walk_expr e file lang) es
+    List.concat_map ~f:(fun e -> walk_expr e file lang) es
   | EError msg ->
     let term_node = make_node
       ~node_type:Security_node.Terminator ~name:"raise" ~args:[make_arg ~arg_type:Security_node.ArgLiteral ~value:msg]
@@ -190,7 +194,7 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     [term_node]
   | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body } ->
     let try_nodes = walk_expr try_body file lang in
-    let rescue_nodes = List.concat_map (fun c -> walk_expr c.rescue_body file lang) rescue_clauses in
+    let rescue_nodes = List.concat_map ~f:(fun c -> walk_expr c.rescue_body file lang) rescue_clauses in
     let ensure_nodes = match ensure_body with Some e -> walk_expr e file lang | None -> [] in
     let else_nodes = match else_body with Some e -> walk_expr e file lang | None -> [] in
     try_nodes @ rescue_nodes @ ensure_nodes @ else_nodes
@@ -230,12 +234,12 @@ let rec walk_item (item : item) (file : string) (lang : string)
     let class_node = make_node
       ~node_type:Security_node.Class ~name ~args:[]
       ~line ~file ~language:lang in
-    class_node :: List.concat_map (fun i -> walk_item i file lang) items
+    class_node :: List.concat_map ~f:(fun i -> walk_item i file lang) items
   | IModule (name, items) ->
     let module_node = make_node
       ~node_type:Security_node.Module ~name ~args:[]
       ~line ~file ~language:lang in
-    module_node :: List.concat_map (fun i -> walk_item i file lang) items
+    module_node :: List.concat_map ~f:(fun i -> walk_item i file lang) items
   | ITypeDef (name, _vars, _variants) ->
     [make_node ~node_type:Security_node.Enum ~name ~args:[] ~line ~file ~language:lang]
   | IConstant (pat, _, expr) ->
@@ -258,4 +262,4 @@ let rec walk_item (item : item) (file : string) (lang : string)
 let derive (mod_ : t) : Security_node.t list =
   let lang = lang_to_string mod_.mod_lang in
   let file = mod_.mod_path in
-  List.concat_map (fun item -> walk_item item file lang) mod_.mod_items
+  List.concat_map ~f:(fun item -> walk_item item file lang) mod_.mod_items

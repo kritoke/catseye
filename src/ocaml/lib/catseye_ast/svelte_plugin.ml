@@ -1,6 +1,7 @@
 (* lib/catseye_ast/svelte_plugin.ml
    Svelte language plugin descriptor.
-*)
+ *)
+
 
 let plugin : Language_plugin.t = {
   name = "svelte";

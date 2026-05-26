@@ -1,6 +1,10 @@
 (* lib/catseye_ast/plugins/gleam_plugin.ml
    Gleam language plugin descriptor.
-*)
+ *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 let plugin : Language_plugin.t = {
   name = "gleam";

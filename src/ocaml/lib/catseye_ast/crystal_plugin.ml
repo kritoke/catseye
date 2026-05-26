@@ -1,6 +1,10 @@
 (* lib/catseye_ast/plugins/crystal_plugin.ml
    Crystal language plugin descriptor.
-*)
+ *)
+
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 let plugin ~(extractor_registry : Catseye_engine.Extractor_registry.t) : Language_plugin.t = {
   name = "crystal";
@@ -15,16 +19,16 @@ let plugin ~(extractor_registry : Catseye_engine.Extractor_registry.t) : Languag
     | Error _ -> Crystal_mapper.parse_file ~extractor_cmd:flat_cmd ~path
   );
 
-  extract_file = Some (fun path ->
+extract_file = Some (fun path ->
     let cmd = Catseye_engine.Extractor_registry.flat_cmd extractor_registry in
-    let full_cmd = Printf.sprintf "%s '%s' 2>/dev/null" (Filename.quote cmd) (Filename.quote path) in
+    let full_cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" (Stdlib.Filename.quote cmd) (Stdlib.Filename.quote path) in
     try
       let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full full_cmd (Unix.environment ()) in
-      let output = Buffer.create 4096 in
-      (try while true do Buffer.add_channel output stdout_ch 4096 done
-       with End_of_file -> ());
+      let output = Stdlib.Buffer.create 4096 in
+      (try while true do Stdlib.Buffer.add_channel output stdout_ch 4096 done
+       with Stdlib.End_of_file -> ());
       let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
-      let json_str = Buffer.contents output in
+      let json_str = Stdlib.Buffer.contents output in
       if json_str <> "" then
         try Some (Catseye_types.Security_node.decode_many (Yojson.Safe.from_string json_str))
         with _ -> None

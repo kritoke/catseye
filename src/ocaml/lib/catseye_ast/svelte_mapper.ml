@@ -6,15 +6,12 @@
    2. Extract <script> blocks → parse content with JS or TS grammar
    3. Map template {@html} directives from Svelte CST
    4. Merge into single CatseyeAST.t
- *)
-
-module PE = Error
-
-open Base
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
+*)
 
 open Types
+open Error
+
+(* Import shared tree-sitter XML types *)
 module Tsx = Tree_sitter_xml
 
 type xml = Tsx.xml = {
@@ -32,7 +29,7 @@ let parse_xml = Tsx.parse_xml
 (* ── Position helpers ─────────────────────────────────────────────── *)
 
 let position_of_xml (n : xml) ~field =
-  let row = try Int.of_string (attr n field) + 1 with _ -> 0 in
+  let row = try int_of_string (attr n field) + 1 with _ -> 0 in
   Position.make ~line:row ~column:0 ~byte_offset:0
 
 let range_of_xml (n : xml) =
@@ -40,10 +37,10 @@ let range_of_xml (n : xml) =
     end_ = position_of_xml n ~field:"erow" }
 
 let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter ~f:(fun c -> attr c "field" = field) n.children
+  List.filter (fun c -> attr c "field" = field) n.children
 
 let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter ~f:(fun c -> c.tag = tag) n.children
+  List.filter (fun c -> c.tag = tag) n.children
 
 (* ── Svelte grammar resolution ──────────────────────────────────────── *)
 
@@ -53,17 +50,17 @@ let resolve_svelte_grammar () : string option =
 (* ── Run tree-sitter on a source string via temp file ───────────────── *)
 
 let run_tree_sitter_on_string ~grammar ~lang ~source : xml option =
-  let tmp = Stdlib.Filename.temp_file "catseye_svelte" ".src" in
+  let tmp = Filename.temp_file "catseye_svelte" ".src" in
   let cleanup () = try Stdlib.Sys.remove tmp with _ -> () in
   try
-    let oc = Stdlib.open_out tmp in
-    Stdlib.output_string oc source;
-    Stdlib.close_out oc;
+    let oc = open_out tmp in
+    output_string oc source;
+    close_out oc;
     let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name %s -x '%s' 2>/dev/null"
       grammar lang tmp in
     let ic = Unix.open_process_in cmd in
     let buf = Buffer.create 4096 in
-    (try while true do Stdlib.Buffer.add_channel buf ic 4096 done with Stdlib.End_of_file -> ());
+    (try while true do Buffer.add_channel buf ic 4096 done with End_of_file -> ());
     let _ = Unix.close_process_in ic in
     let xml_str = Buffer.contents buf in
     cleanup ();
@@ -79,8 +76,8 @@ let extract_script_block (doc : xml) : (string * string) option =
   match scripts with
   | s :: _ ->
     (* Extract only raw_text children which contain the actual script content *)
-    let raw_text = List.filter ~f:(fun c -> c.tag = "raw_text") s.children in
-    let content = String.concat ~sep:"" (List.map ~f:(fun c -> c.text) raw_text) in
+    let raw_text = List.filter (fun c -> c.tag = "raw_text") s.children in
+    let content = String.concat "" (List.map (fun c -> c.text) raw_text) in
     (* Unescape HTML entities from tree-sitter XML output: &lt; &gt; &amp; *)
     let unescape s =
       let len = String.length s in
@@ -88,14 +85,14 @@ let extract_script_block (doc : xml) : (string * string) option =
       let i = ref 0 in
       while !i < len do
         let remaining = len - !i in
-        if remaining >= 4 && String.sub s ~pos:!i ~len:4 = "&lt;" then (
+        if remaining >= 4 && String.sub s !i 4 = "&lt;" then (
           Buffer.add_char buf '<'; i := !i + 4)
-        else if remaining >= 4 && String.sub s ~pos:!i ~len:4 = "&gt;" then (
+        else if remaining >= 4 && String.sub s !i 4 = "&gt;" then (
           Buffer.add_char buf '>'; i := !i + 4)
-        else if remaining >= 5 && String.sub s ~pos:!i ~len:5 = "&amp;" then (
+        else if remaining >= 5 && String.sub s !i 5 = "&amp;" then (
           Buffer.add_char buf '&'; i := !i + 5)
         else (
-          Buffer.add_char buf s.[!i]; Int.incr i)
+          Buffer.add_char buf s.[!i]; incr i)
       done;
       Buffer.contents buf
     in
@@ -106,8 +103,8 @@ let extract_script_block (doc : xml) : (string * string) option =
     let alt = find doc ~tag:"script" in
     (match alt with
      | s :: _ ->
-       let text_children = List.filter ~f:(fun c -> c.text <> "") s.children in
-       let content = String.concat ~sep:"" (List.map ~f:(fun c -> c.text) text_children) in
+       let text_children = List.filter (fun c -> c.text <> "") s.children in
+       let content = String.concat "" (List.map (fun c -> c.text) text_children) in
        let lang_attr = attr s "lang" in
        Some (content, lang_attr)
      | [] -> None)
@@ -120,9 +117,9 @@ let rec extract_template_items (n : xml) (file : string) : item list =
   let loc = range_of_xml n in
   match n.tag with
   | "html_expr" ->
-    let inner_exprs = List.filter ~f:(fun c -> c.tag <> "") n.children in
+    let inner_exprs = List.filter (fun c -> c.tag <> "") n.children in
     let expr = match inner_exprs with
-      | [e] -> { expr_value = EVar (String.strip e.text); expr_location = range_of_xml e }
+      | [e] -> { expr_value = EVar (String.trim e.text); expr_location = range_of_xml e }
       | _ -> { expr_value = EVar "__html_content"; expr_location = loc }
     in
     [{ item_value = IFunction ("__svelte_html", [], None,
@@ -130,22 +127,22 @@ let rec extract_template_items (n : xml) (file : string) : item list =
           expr_location = loc });
        item_location = loc }]
   | "if_statement" | "each_statement" | "await_statement" | "if_else_statement" ->
-    List.concat_map ~f:(fun c -> extract_template_items c file) n.children
+    List.concat_map (fun c -> extract_template_items c file) n.children
   | _ ->
-    List.concat_map ~f:(fun c -> extract_template_items c file) n.children
+    List.concat_map (fun c -> extract_template_items c file) n.children
 
 (* ── Parse Svelte file ──────────────────────────────────────────────── *)
 
-let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
+let parse_file ~(path : string) : (t, parse_error) result =
   match resolve_svelte_grammar () with
   | None ->
-    Error (PE.make_error ~file:path ~message:"Svelte tree-sitter grammar not found. Set TREE_SITTER_SVELTE_GRAMMAR or install tree-sitter-svelte.")
+    Error (make_error ~file:path ~message:"Svelte tree-sitter grammar not found. Set TREE_SITTER_SVELTE_GRAMMAR or install tree-sitter-svelte.")
   | Some grammar ->
     let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name svelte -x '%s' 2>/dev/null" grammar path in
     try
       let ic = Unix.open_process_in cmd in
       let xml_str = Buffer.create 4096 in
-      (try while true do Stdlib.Buffer.add_channel xml_str ic 4096 done with Stdlib.End_of_file -> ());
+      (try while true do Buffer.add_channel xml_str ic 4096 done with End_of_file -> ());
       let status = Unix.close_process_in ic in
       match status with
       | Unix.WEXITED 0 | Unix.WEXITED 1 ->
@@ -170,7 +167,7 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
                    | [p] -> p
                    | _ -> script_doc
                  in
-                 List.concat_map ~f:(fun c ->
+                 List.concat_map (fun c ->
                    Javascript_mapper.walk_statement c path
                  ) program.children)
         in
@@ -179,6 +176,6 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
         let all_items = script_items @ template_items in
         Ok { mod_lang = Svelte; mod_path = path; mod_items = all_items; parse_errors = [] }
       | _ ->
-        Error (PE.make_error ~file:path ~message:"Svelte tree-sitter parse failed")
+        Error (make_error ~file:path ~message:"Svelte tree-sitter parse failed")
     with Sys_error msg ->
-      Error (PE.make_error ~file:path ~message:("tree-sitter error: " ^ msg))
+      Error (make_error ~file:path ~message:("tree-sitter error: " ^ msg))

@@ -1,6 +1,7 @@
 (* lib/catseye_ast/javascript_plugin.ml
    JavaScript language plugin descriptor.
-*)
+ *)
+
 
 let plugin : Language_plugin.t = {
   name = "javascript";

@@ -1,19 +1,23 @@
 (* src/ocaml/lib/catseye_ast/parse.ml
    Unified parsing interface - dispatches through plugin registry.
-*)
+ *)
 
+module PE = Error
+
+open Base
 open Types
-open Error
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (** Language from file extension — legacy API, prefer plugin_registry. *)
 let lang_of_extension path =
-  if Filename.check_suffix path ".gleam" then Some Gleam
-  else if Filename.check_suffix path ".cr" then Some Crystal
-  else if Filename.check_suffix path ".ts" || Filename.check_suffix path ".tsx" then Some TypeScript
-  else if Filename.check_suffix path ".js" || Filename.check_suffix path ".jsx" || Filename.check_suffix path ".mjs" || Filename.check_suffix path ".cjs" then Some JavaScript
-  else if Filename.check_suffix path ".svelte" then Some Svelte
-  else if Filename.check_suffix path ".rs" then Some Rust
-  else if Filename.check_suffix path ".ml" || Filename.check_suffix path ".mli" then Some (Other "ocaml")
+  if Stdlib.Filename.check_suffix path ".gleam" then Some Gleam
+  else if Stdlib.Filename.check_suffix path ".cr" then Some Crystal
+  else if Stdlib.Filename.check_suffix path ".ts" || Stdlib.Filename.check_suffix path ".tsx" then Some TypeScript
+  else if Stdlib.Filename.check_suffix path ".js" || Stdlib.Filename.check_suffix path ".jsx" || Stdlib.Filename.check_suffix path ".mjs" || Stdlib.Filename.check_suffix path ".cjs" then Some JavaScript
+  else if Stdlib.Filename.check_suffix path ".svelte" then Some Svelte
+  else if Stdlib.Filename.check_suffix path ".rs" then Some Rust
+  else if Stdlib.Filename.check_suffix path ".ml" || Stdlib.Filename.check_suffix path ".mli" then Some (Other "ocaml")
   else None
 
 (** Parse a Gleam file using tree-sitter *)
@@ -28,16 +32,16 @@ let parse_crystal_flat = Crystal_mapper.parse_file
 (** Parse a file using the plugin registry.
     Looks up the plugin by file extension and calls its parse_file function. *)
 let parse_via_registry ~(registry : Plugin_registry.registry) ~(path : string)
-    : (t, parse_error) result =
+    : (t, PE.parse_error) Result.t =
   (* Find the extension — check all registered extensions *)
   let exts = Plugin_registry.all_extensions registry in
-  let matching_plugin = List.find_map (fun ext ->
-    if Filename.check_suffix path ext then
+  let matching_plugin = Stdlib.List.find_map (fun ext ->
+    if Stdlib.Filename.check_suffix path ext then
       Plugin_registry.for_extension registry ext
     else None
   ) exts in
   match matching_plugin with
-  | None -> Error (make_error ~file:path ~message:"No plugin for file type")
+  | None -> Result.Error (PE.make_error ~file:path ~message:"No plugin for file type")
   | Some plugin -> plugin.Language_plugin.parse_file ~path
 
 (** Parse a file, inferring language from extension.
@@ -45,9 +49,9 @@ let parse_via_registry ~(registry : Plugin_registry.registry) ~(path : string)
     Falls back to legacy dispatch if no plugin registry is provided. *)
 let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option)
     ~(path : string)
-    : (t, parse_error) result =
+    : (t, PE.parse_error) Result.t =
   match lang_of_extension path with
-  | None -> Error (make_error ~file:path ~message:"Unknown file type")
+  | None -> Result.Error (PE.make_error ~file:path ~message:"Unknown file type")
   | Some lang ->
       match lang with
       | Gleam -> parse_gleam ~path
@@ -70,4 +74,4 @@ let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option
       | Rust -> Rust_mapper.parse_file ~path
       | Other "ocaml" -> Ocaml_mapper.parse_file ~path
       | Other _ ->
-        Error (make_error ~file:path ~message:"Unsupported language")
+        Result.Error (PE.make_error ~file:path ~message:"Unsupported language")

@@ -1,5 +1,5 @@
 (* src/ocaml/lib/catseye_ast/crystal_hierarchical_mapper.ml
-   Hierarchical Crystal JSON → CatseyeAST.t 
+   Hierarchical Crystal JSON → CatseyeAST.t
 
    Parses the nested JSON produced by hierarchical_extractor.cr directly
    into CatseyeAST.t expressions. No heuristic reconstruction needed —
@@ -7,15 +7,10 @@
 
    This is the target path for Crystal AST construction. The old flat-node
    path (crystal_mapper.ml) is kept for backward compatibility.
- *)
+*)
 
-module PE = Error
-
-open Base
 open Types
-
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
+open Error
 
 (* ── JSON helpers ──────────────────────────────────────────────────── *)
 
@@ -99,15 +94,15 @@ and parse_call json loc =
     | Some obj ->
       let recv = expr_of_json obj in
       (* Extract method name after the last dot *)
-      let method_name = match Stdlib.String.rindex_opt name '.' with
-        | Some idx -> Stdlib.String.sub name (idx + 1) (String.length name - idx - 1)
+      let method_name = match String.rindex_opt name '.' with
+        | Some idx -> String.sub name (idx + 1) (String.length name - idx - 1)
         | None -> name
       in
       { expr_value = EFieldAccess (recv, method_name); expr_location = loc }
     | None ->
       { expr_value = EVar name; expr_location = loc }
   in
-  let args = List.map ~f:arg_of_json (get_list json "args") in
+  let args = List.map arg_of_json (get_list json "args") in
   EApp (fn_expr, args)
 
 and arg_of_json json : expr =
@@ -165,7 +160,7 @@ and parse_case json loc =
     | Some s -> expr_of_json s
     | None -> { expr_value = EUnit; expr_location = loc }
   in
-  let branches = List.filter_map ~f:(fun when_json ->
+  let branches = List.filter_map (fun when_json ->
     let patterns = get_list when_json "patterns" in
     let pat = match patterns with
       | [p] -> pattern_of_json p
@@ -215,10 +210,10 @@ and parse_expressions json _loc =
   match children with
   | [] -> EUnit
   | [e] -> (expr_of_json e).expr_value
-  | es -> EBlock (List.map ~f:expr_of_json es)
+  | es -> EBlock (List.map expr_of_json es)
 
 and parse_array json _loc =
-  let elems = List.map ~f:expr_of_json (get_list json "elements") in
+  let elems = List.map expr_of_json (get_list json "elements") in
   EList elems
 
 and parse_try json _loc =
@@ -226,7 +221,7 @@ and parse_try json _loc =
     | Some b -> expr_of_json b
     | None -> { expr_value = EUnit; expr_location = zero_loc }
   in
-  let rescue_clauses = List.map ~f:parse_rescue_clause (get_list json "rescues") in
+  let rescue_clauses = List.map parse_rescue_clause (get_list json "rescues") in
   let ensure_body = match get_opt_obj json "ensure" with
     | Some e -> Some (expr_of_json e)
     | None -> None
@@ -242,7 +237,7 @@ and parse_rescue_clause json : rescue_clause =
     | Some n -> Some (get_str n "value")
     | None -> None
   in
-  let matched_types = List.map ~f:(fun t -> get_str t "name") (get_list json "types") in
+  let matched_types = List.map (fun t -> get_str t "name") (get_list json "types") in
   let rescue_body = match get_opt_obj json "body" with
     | Some b -> expr_of_json b
     | None -> { expr_value = EUnit; expr_location = zero_loc }
@@ -310,7 +305,7 @@ and parse_top_level_exprs (exprs : Yojson.Safe.t list) : item_value =
 
 and parse_def json loc =
   let name = get_str json "name" in
-  let params = List.map ~f:(fun arg ->
+  let params = List.map (fun arg ->
     PVar (get_str arg "value")
   ) (get_list json "args") in
   let body = match get_opt_obj json "body" with
@@ -339,15 +334,15 @@ and parse_class_body (exprs : Yojson.Safe.t list) : item list =
       (* Finalize any pending body *)
       if current_body = [] then List.rev acc
       else 
-        let body_expr = { expr_value = EBlock (List.map ~f:expr_of_json (List.rev current_body)); expr_location = zero_loc } in
+        let body_expr = { expr_value = EBlock (List.map expr_of_json (List.rev current_body)); expr_location = zero_loc } in
         let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
         List.rev ({ item_value = synth_fn; item_location = zero_loc } :: acc)
     | expr :: rest ->
       let typ = get_type expr in
       if typ = "def" || typ = "class" || typ = "module" then
-(* First finalize any pending body *)
+        (* First finalize any pending body *)
         let new_acc = if current_body = [] then acc else
-          let body_expr = { expr_value = EBlock (List.map ~f:expr_of_json (List.rev current_body)); expr_location = zero_loc } in
+          let body_expr = { expr_value = EBlock (List.map expr_of_json (List.rev current_body)); expr_location = zero_loc } in
           let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
           { item_value = synth_fn; item_location = zero_loc } :: acc
         in
@@ -394,31 +389,31 @@ let parse_items (json : Yojson.Safe.t) : item list =
   match json with
   | `Assoc _ ->
     (match get_type json with
-| "Expressions" ->
-        get_list json "children" |> List.map ~f:item_of_json
-      | _ -> [item_of_json json])
+     | "Expressions" ->
+       get_list json "children" |> List.map item_of_json
+     | _ -> [item_of_json json])
   | `List items ->
-    List.filter_map ~f:(fun item ->
+    List.filter_map (fun item ->
       match get_type item with
       | "ParseError" -> None
       | _ -> Some (item_of_json item)
     ) items
   | _ -> []
 
-let parse_file ~(extractor_cmd : string) ~(path : string) : (Types.t, PE.parse_error) Result.t =
-  let cmd = Stdlib.Printf.sprintf "%s '%s'" extractor_cmd path in
-  Stdio.eprintf "DEBUG: Running: %s\n" cmd;
+let parse_file ~(extractor_cmd : string) ~(path : string) : (t, parse_error) result =
+  let cmd = Printf.sprintf "%s '%s'" extractor_cmd path in
+  Printf.eprintf "DEBUG: Running: %s\n" cmd;
   let ic = Unix.open_process_in cmd in
   let json_str = Buffer.create 8192 in
-  (try while true do Stdlib.Buffer.add_channel json_str ic 4096 done
+  (try while true do Buffer.add_channel json_str ic 4096 done
    with End_of_file -> ());
   let status = Unix.close_process_in ic in
   let output = Buffer.contents json_str in
-  Stdio.eprintf "DEBUG: Output length=%d, starts with: %s\n" (String.length output) (Stdlib.String.sub output 0 (min 200 (String.length output)));
+  Printf.eprintf "DEBUG: Output length=%d, starts with: %s\n" (String.length output) (String.sub output 0 (min 200 (String.length output)));
   match status with
   | Unix.WEXITED 0 ->
     let json = Yojson.Safe.from_string output in
     let items = parse_items json in
     Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
   | _ ->
-    Error (PE.make_error ~file:path ~message:"Crystal extractor failed")
+    Error (make_error ~file:path ~message:"Crystal extractor failed")
