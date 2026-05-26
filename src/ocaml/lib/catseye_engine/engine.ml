@@ -1,5 +1,7 @@
 (* lib/catseye_engine/engine.ml *)
 
+open Base
+
 open Catseye_types
 open Db
 open Seed
@@ -7,6 +9,10 @@ open Propagate
 open Returns
 open Interproc
 open Dag
+
+(* Shadow string equality operators for strings *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 let version = Catseye_types.Version.version
 
@@ -31,30 +37,29 @@ let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
   (* Now propagate: for each assign where RHS is a call,
      check if the called function is defined in an imported file
      and returns tainted data there. *)
-  List.fold_left (fun acc node ->
+  Stdlib.List.fold_left (fun acc node ->
     if node.Security_node.node_type <> Security_node.Assign then acc
     else if Db.has_record acc node.Security_node.name then acc
     else begin
       let file = node.Security_node.file in
       (* Get files imported by this file *)
-      let imported_files = try Hashtbl.find import_map file with Not_found -> [] in
+      let imported_files = try Stdlib.Hashtbl.find import_map file with Stdlib.Not_found -> [] in
       (* Check each call arg *)
       let tainted_call =
-        node.Security_node.args
-        |> List.find_opt (fun a ->
+        Stdlib.List.find_opt (fun a ->
           if a.Security_node.arg_type <> Security_node.ArgCall then false
           else begin
             let fn_name = a.Security_node.value in
             (* Look up where this function is defined *)
             let defs = Symbol_table.lookup sym_tbl fn_name in
-            List.exists (fun sym ->
+            Stdlib.List.exists (fun sym ->
               (* Is this function defined in an imported file? *)
-              List.mem sym.Symbol_table.file imported_files &&
+              Stdlib.List.mem sym.Symbol_table.file imported_files &&
               (* Does it return tainted data in its defining file? *)
               Db.has_record_in_file acc fn_name sym.Symbol_table.file
             ) defs
           end
-        )
+        ) node.Security_node.args
       in
       match tainted_call with
       | Some a ->
@@ -87,17 +92,17 @@ let build_taint_db ?(extra_sources = []) (nodes : Security_node.t list) : Db.t =
   (* Third pass propagation after cross-file *)
   let with_prop3 = propagate nodes with_cross_file in
   (* Apply guards: remove taint from vars validated by guard nodes *)
-  List.filter (fun n -> n.Security_node.node_type = Security_node.Guard) nodes
-  |> List.fold_left (fun db guard ->
+  let guards = Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Guard) nodes in
+  Stdlib.List.fold_left (fun db guard ->
     Db.apply_guard db guard.Security_node.name guard.Security_node.file guard.Security_node.line
-  ) with_prop3
+  ) with_prop3 guards
 
 (** Build a lookup map from (file, line) to Call node for O(1) sink lookup *)
 let build_sink_lookup_map (nodes : Security_node.t list) 
     : Security_node.t StringMap.t =
-  List.fold_left (fun m n ->
+  Stdlib.List.fold_left (fun m n ->
     if n.Security_node.node_type = Security_node.Call then
-      StringMap.add (n.Security_node.file ^ ":" ^ string_of_int n.Security_node.line) n m
+      StringMap.add (n.Security_node.file ^ ":" ^ Int.to_string n.Security_node.line) n m
     else m
   ) StringMap.empty nodes
 
@@ -108,18 +113,18 @@ let build_sink_lookup_map (nodes : Security_node.t list)
 let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
     (_all : Security_node.t list) : Finding.flow_step list =
   let open Catseye_types.Dag_types in
-  let node_of_id id = List.find_opt (fun n -> n.id = id) dag.nodes in
+  let node_of_id id = Stdlib.List.find_opt (fun n -> n.id = id) dag.nodes in
   let succs src =
-    List.filter_map (fun e ->
+    Stdlib.List.filter_map (fun e ->
       if e.src = src then Some e.dst else None
     ) dag.edges
-    |> List.sort String.compare
+    |> Stdlib.List.sort Stdlib.String.compare
   in
-  let visited = Hashtbl.create dag_visited_size in
+  let visited = Stdlib.Hashtbl.create dag_visited_size in
   let rec dfs acc node_id =
-    if Hashtbl.mem visited node_id then acc
+    if Stdlib.Hashtbl.mem visited node_id then acc
     else begin
-      Hashtbl.replace visited node_id true;
+      Stdlib.Hashtbl.replace visited node_id true;
       match node_of_id node_id with
       | None -> acc
       | Some n ->
@@ -127,10 +132,11 @@ let dag_to_flow_steps (dag : Catseye_types.Dag_types.vulnerability_dag)
           { Finding.file = n.file; line = n.line; message = n.label } :: acc
         else
           let acc' = { Finding.file = n.file; line = n.line; message = n.label } :: acc in
-          List.fold_right (fun dst a -> dfs a dst) (succs node_id) acc'
+          let succs_list = succs node_id in
+          Stdlib.List.fold_right (fun dst a -> dfs a dst) succs_list acc'
     end
   in
-  let steps = List.fold_right (fun entry acc -> dfs acc entry) dag.entry_points [] in
+  let steps = Stdlib.List.fold_right (fun entry acc -> dfs acc entry) dag.entry_points [] in
   List.rev steps
 
 (** Run the full analysis pipeline and return findings with populated flow.
@@ -143,11 +149,11 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
   let tainted = get_tainted_vars db in
   (* Build file-scoped taint map to prevent cross-file taint bleed *)
   let files =
-    List.fold_left (fun acc n ->
+    Stdlib.List.fold_left (fun acc n ->
       let f = n.Security_node.file in
-      if List.mem f acc then acc else f :: acc
+      if Stdlib.List.mem f acc then acc else f :: acc
     ) [] nodes in
-  let by_file = List.map (fun f -> (f, get_tainted_vars_in_file db f)) files in
+  let by_file = Stdlib.List.map (fun f -> (f, get_tainted_vars_in_file db f)) files in
   let ctx = Catseye_rules.Interpreter.make_taint_context
     ~global:tainted ~by_file
     ~import_map:(Symbol_table.build_import_map nodes)
@@ -158,12 +164,12 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
   (* Precompute sink lookup map for O(1) access per finding *)
   let sink_map = build_sink_lookup_map nodes in
   let results = ref [] in
-  List.iter (fun f ->
+  Stdlib.List.iter (fun f ->
     (* Check if this finding should be suppressed due to path sensitivity *)
     let suppressed = Path_sensitivity.should_suppress f validation_scopes in
     if suppressed then () (* Skip this finding *)
     else begin
-      let key = f.Finding.file ^ ":" ^ string_of_int f.Finding.line in
+      let key = f.Finding.file ^ ":" ^ Int.to_string f.Finding.line in
       match StringMap.find_opt key sink_map with
       | None -> results := f :: !results
       | Some sink ->
@@ -174,4 +180,4 @@ let analyze ?(extra_sources = []) (rules : Catseye_rules.Types.rule_def list)
            results := { f with Finding.flow = flow } :: !results)
     end
   ) raw_findings;
-  List.rev !results
+  Stdlib.List.rev !results

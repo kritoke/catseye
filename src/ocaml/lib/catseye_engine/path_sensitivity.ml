@@ -5,7 +5,15 @@
     This reduces false positives when variables have been validated before use.
 *)
 
+open Base
 open Catseye_types
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+let ( <= ) = Stdlib.( <= )
+let ( >= ) = Stdlib.( >= )
 
 (* ── Validation types ──────────────────────────────────────────────── *)
 
@@ -31,7 +39,7 @@ type validation = {
 let ends_with (name : string) (suffix : string) : bool =
   let nlen = String.length name in
   let slen = String.length suffix in
-  nlen >= slen && String.sub name (nlen - slen) slen = suffix
+  nlen >= slen && Stdlib.String.sub name (nlen - slen) slen = suffix
 
 let starts_with_lowercase (name : string) : bool =
   String.length name > 0 &&
@@ -44,7 +52,7 @@ let contains_substring (name : string) (sub : string) : bool =
   else
     let rec check i =
       if i + slen > nlen then false
-      else if String.sub name i slen = sub then true
+      else if Stdlib.String.sub name i slen = sub then true
       else check (i + 1)
     in
     check 0
@@ -71,9 +79,9 @@ let rec detect_validation (call_name : string) : (validation_kind * string optio
 
 and extract_receiver (call_name : string) : string option =
   try
-    let dot_pos = String.rindex call_name '.' in
-    Some (String.sub call_name 0 dot_pos)
-  with Not_found -> None
+    let dot_pos = Stdlib.String.rindex call_name '.' in
+    Some (Stdlib.String.sub call_name 0 dot_pos)
+  with Stdlib.Not_found -> None
 
 (* ── Scope building ─────────────────────────────────────────────────── *)
 
@@ -81,24 +89,24 @@ let build_validation_scopes (nodes : Security_node.t list) : validation list =
   let scopes = ref [] in
   
   (* Group by file *)
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun n ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  let by_file = Stdlib.Hashtbl.create 16 in
+  List.iter ~f:(fun n ->
+    let existing = try Stdlib.Hashtbl.find by_file n.Security_node.file with Stdlib.Not_found -> [] in
+    Stdlib.Hashtbl.replace by_file n.Security_node.file (n :: existing)
   ) nodes;
   
-  Hashtbl.iter (fun _file file_nodes ->
-    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-    let defs = List.filter (fun n -> n.Security_node.node_type = Security_node.Def) sorted in
+  Stdlib.Hashtbl.iter (fun _file file_nodes ->
+    let sorted = List.sort ~compare:(fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
+    let defs = List.filter ~f:(fun n -> n.Security_node.node_type = Security_node.Def) sorted in
     
-    List.iter (fun node ->
+    List.iter ~f:(fun node ->
       if node.Security_node.node_type = Security_node.Call then
         (match detect_validation node.Security_node.name with
          | Some (kind, receiver_opt) ->
              (* Use receiver if available (e.g., 'path' from 'path.starts_with?') *)
              (match receiver_opt with
               | Some receiver ->
-                  let enclosing = List.find_opt (fun d -> d.Security_node.line < node.Security_node.line) (List.rev defs) in
+                  let enclosing = List.find ~f:(fun d -> d.Security_node.line < node.Security_node.line) (List.rev defs) in
                   (match enclosing with
                    | Some _def ->
                        let end_line = node.Security_node.line + 50 in
@@ -120,7 +128,7 @@ let should_suppress (finding : Finding.t) (scopes : validation list) : bool =
   (* Only suppress SSRF and path traversal findings *)
   if not (rule = "ssrf" || rule = "path_traversal" || rule = "PathTraversal") then false
   else
-    List.exists (fun scope ->
+    List.exists ~f:(fun scope ->
       scope.file = finding.Finding.file &&
       scope.start_line <= finding.Finding.line &&
       finding.Finding.line < scope.end_line &&

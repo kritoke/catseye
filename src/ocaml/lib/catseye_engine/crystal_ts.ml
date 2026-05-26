@@ -1,8 +1,14 @@
 (* lib/catseye_engine/crystal_ts.ml
    Crystal extractor — tree-sitter CLI → XML → Security Nodes *)
 
+open Base
+
 open Catseye_types
 open Security_node
+
+(* Shadow string equality operators (Base makes these return bool, but OCaml comparisons return int) *)
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (* ── Constants ──────────────────────────────────────────────────────── *)
 
@@ -40,7 +46,7 @@ let skip_calls_list =
   ; "Slice.new"; "Bytes.new"
   ]
 
-module String_set = Set.Make(String)
+module String_set = Stdlib.Set.Make(String)
 
 let skip_set = String_set.of_list skip_calls_list
 
@@ -52,7 +58,7 @@ let contains ~sub s =
   sublen > 0 &&
   let rec loop i =
     i + sublen <= slen &&
-    (String.sub s i sublen = sub || loop (i + 1))
+    (Stdlib.String.sub s i sublen = sub || loop (i + 1))
   in
   loop 0
 
@@ -64,13 +70,18 @@ type xml =
   ; children : xml list
   ; text : string }
 
+let assoc' k alist =
+  match List.find alist ~f:(fun (k',_) -> k' = k) with
+  | Some (_, v) -> v
+  | None -> raise Stdlib.Not_found
+
 let attr (n : xml) (k : string) : string =
-  try List.assoc k n.attrs with Not_found -> ""
+  try assoc' k n.attrs with Stdlib.Not_found -> ""
 
 let line_of (n : xml) : int =
   match attr n "srow" with
   | "" -> 0
-  | s -> (try int_of_string s + 1 with _ -> 0)
+  | s -> (try Int.of_string s + 1 with _ -> 0)
 
 let is_method_call (n : xml) : bool =
   n.tag = "call" || n.tag = "index_call" || n.tag = "field_call"
@@ -87,29 +98,29 @@ let is_macro (n : xml) : bool =
 let rec find (n : xml) ~tag : xml list =
   if is_macro n then []
   else if n.tag = tag then [n]
-  else List.concat_map (find ~tag) n.children
+  else List.concat_map ~f:(find ~tag) n.children
 
 (** Find method calls *)
 let rec find_calls (n : xml) : xml list =
   if is_macro n then []
   else if is_method_call n then
-    n :: List.concat_map find_calls n.children
-  else List.concat_map find_calls n.children
+    n :: List.concat_map ~f:find_calls n.children
+  else List.concat_map ~f:find_calls n.children
 
 (** Find top-level definitions *)
 let rec find_defs (n : xml) : xml list =
   if is_macro n then []
   else if is_method_def n then
-    n :: List.concat_map find_defs n.children
-  else List.concat_map find_defs n.children
+    n :: List.concat_map ~f:find_defs n.children
+  else List.concat_map ~f:find_defs n.children
 
 (** Collect direct children *)
 let children_where (n : xml) ~f : xml list =
-  List.filter f n.children
+  List.filter n.children ~f:f
 
 (** Get named child tag *)
 let get_child (n : xml) ~(tag : string) : xml option =
-  List.find_opt (fun c -> c.tag = tag) n.children
+  List.find_map n.children ~f:(fun c -> if c.tag = tag then Some c else None)
 
 (** Get direct text content of a node (not recursively) *)
 let direct_text (n : xml) : string = n.text
@@ -118,12 +129,12 @@ let direct_text (n : xml) : string = n.text
 let strip_xml_attrs (text : string) : string =
   (* Remove any content that looks like XML attributes at start of text *)
   let remove_attrs s =
-    match String.index_opt s '>' with
-    | Some idx -> String.sub s (idx + 1) (String.length s - idx - 1)
+    match Stdlib.String.index_opt s '>' with
+    | Some idx -> Stdlib.String.sub s (idx + 1) (Stdlib.String.length s - idx - 1)
     | None -> s
   in
   let text = remove_attrs text in
-  let text = String.trim text in
+  let text = Stdlib.String.trim text in
   (* Remove any leading XML-like content *)
   let text = if String.length text > 0 && text.[0] = '<' then "" else text in
   text
@@ -136,10 +147,10 @@ let get_text (n : xml) : string =
     let acc = ref [] in
     let rec gather x =
       (if x.text <> "" then acc := x.text :: !acc);
-      List.iter gather x.children
+      List.iter x.children ~f:gather
     in
     gather n;
-    String.concat "" (List.rev !acc)
+    Stdlib.String.concat "" (List.rev !acc)
   end
 
 (** Extract method name from call node *)
@@ -186,7 +197,7 @@ let skip_until s pos pred =
   let len = String.length s in
   let rec go i = if i < len && not (pred s.[i]) then go (i + 1) else i in
   let stop = go pos in
-  (String.sub s pos (stop - pos), stop)
+  (Stdlib.String.sub s pos (stop - pos), stop)
 
 let parse_attrs s =
   let rec go i acc =
@@ -217,7 +228,7 @@ let tokenize s =
     if pos >= len then List.rev acc  (* Reverse to get document order *)
     else if s.[pos] <> '<' then begin
       let (txt, next) = skip_until s pos (fun c -> c = '<') in
-      let trimmed = String.trim txt in
+      let trimmed = Stdlib.String.trim txt in
       if trimmed = "" then go next acc
       else go next (Text trimmed :: acc)
     end else if pos + 1 < len && s.[pos + 1] = '?' then begin
@@ -225,7 +236,7 @@ let tokenize s =
       go (next + 1) acc
     end else if pos + 1 < len && s.[pos + 1] = '/' then begin
       let (name, next) = skip_until s (pos + 2) (fun c -> c = '>') in
-      go (next + 1) (Close (String.trim name) :: acc)
+      go (next + 1) (Close (Stdlib.String.trim name) :: acc)
     end else if pos + 3 < len && s.[pos + 1] = '!' && s.[pos + 2] = '-' && s.[pos + 3] = '-' then begin
       let (_, next) = skip_until s (pos + 4) (fun c -> c = '>') in
       go (next + 1) acc
@@ -235,9 +246,9 @@ let tokenize s =
         let (r, _) = skip_until s next (fun c -> c = '>') in r in
       let attrs = parse_attrs rest in
       (* Check for self-closing tag *)
-      let tag_name = String.trim name_rest in
+      let tag_name = Stdlib.String.trim name_rest in
       let is_self_closing = tag_name <> "" && tag_name.[String.length tag_name - 1] = '/' in
-      let tag_name = if is_self_closing then String.sub tag_name 0 (String.length tag_name - 1) else tag_name in
+      let tag_name = if is_self_closing then Stdlib.String.sub tag_name 0 (Stdlib.String.length tag_name - 1) else tag_name in
       go (next + 1) (Open (tag_name, attrs) :: acc)
     end
   in
@@ -251,7 +262,7 @@ let of_tokens (tokens : tok list) : xml =
       (match stack with
        | [] -> { tag = ""; attrs = []; children = []; text = "" }
        | [x] -> x
-       | _ -> failwith ("Unclosed tags: " ^ String.concat "," (List.map (fun n -> n.tag) stack)))
+       | _ -> failwith ("Unclosed tags: " ^ Stdlib.String.concat "," (List.map ~f:(fun n -> n.tag) stack)))
     | Text txt :: rest ->
       (match stack with
        | [] -> build [] rest  (* Text outside root - skip *)
@@ -302,7 +313,7 @@ let of_tokens (tokens : tok list) : xml =
     let root = build [] tokens in
     (* Handle tree-sitter wrapper: if root is "sources", return its first child *)
     if root.tag = "sources" && root.children <> [] then
-      List.hd root.children
+      Stdlib.List.hd root.children
     else if root.tag = "" then
       failwith "Empty XML"
     else
@@ -336,33 +347,34 @@ let extract_arg (a : xml) : arg =
 let extract_args (call : xml) : arg list =
   match get_child call ~tag:"argument_list" with
   | Some args ->
-    List.map extract_arg (children_where args ~f:(fun c ->
-      c.tag <> "empty_list" && c.tag <> "(" && c.tag <> ")" && c.tag <> ","))
+    let kids = children_where args ~f:(fun c ->
+      c.tag <> "empty_list" && c.tag <> "(" && c.tag <> ")" && c.tag <> ",") in
+    List.map kids ~f:extract_arg
   | None -> []
 
 (* ── Security detection ──────────────────────────────────────────────── *)
 
 let extract_calls_in_def (def : xml) : t list =
   let calls = find_calls def in
-  List.filter_map (fun call ->
+  List.filter_map calls ~f:(fun call ->
     let name = full_call_name call in
     let line = line_of call in
     if name = "" || String_set.mem name skip_set then None
-    else if List.exists (fun c -> name = c || name = "File." ^ c) chmod_calls then
+    else if List.exists chmod_calls ~f:(fun c -> name = c || name = "File." ^ c) then
       Some { node_type = IgnoredReturn; name; args = extract_args call;
              line; taint = false; file = ""; language = "crystal"; metadata = [] }
-    else if List.exists (fun c -> name = c || name = "File." ^ c || name = "Dir." ^ c || name = "IO." ^ c) non_atomic_calls then
+    else if List.exists non_atomic_calls ~f:(fun c -> name = c || name = "File." ^ c || name = "Dir." ^ c || name = "IO." ^ c) then
       Some { node_type = NonAtomicFileOp; name; args = extract_args call;
              line; taint = false; file = ""; language = "crystal"; metadata = [] }
-    else if List.exists (fun c -> name = c || name = "File." ^ c || name = "IO." ^ c) unbounded_reads then
+    else if List.exists unbounded_reads ~f:(fun c -> name = c || name = "File." ^ c || name = "IO." ^ c) then
       Some { node_type = UnboundedRead; name; args = extract_args call;
              line; taint = false; file = ""; language = "crystal"; metadata = [] }
     else None
-  ) calls
+  )
 
 let extract_defs (root : xml) : t list =
   let defs = find_defs root in
-  List.concat_map extract_calls_in_def defs
+  List.concat_map defs ~f:extract_calls_in_def
 
 (** TOCTOU: exists? -> read/write pattern *)
 let detect_toctou (root : xml) : t list =
@@ -373,19 +385,23 @@ let detect_toctou (root : xml) : t list =
     | call :: rest ->
       (match call_name call with
        | Some "exists?" | Some "exists" | Some "file?" | Some "directory?" ->
-         let path_arg = if extract_args call = [] then {arg_type=ArgUnknown; value=""; field=""} else List.hd (extract_args call) in
-         let later_calls = List.filter (fun c ->
-           let cl = line_of c in
-           cl > (line_of call) && cl < (line_of call) + 10 &&
-           List.exists (fun m -> contains ~sub:m (full_call_name c))
-             ["read"; "open"; "write"; "delete"; "remove"]
-         ) calls in
+         let path_arg = 
+    let args = extract_args call in
+    if args = [] then {arg_type=ArgUnknown; value=""; field=""}
+    else Stdlib.List.hd args
+  in
+let later_calls = List.filter calls ~f:(fun c ->
+            let cl = line_of c in
+            cl > (line_of call) && cl < (line_of call) + 10 &&
+            List.exists ["read"; "open"; "write"; "delete"; "remove"] ~f:(fun m -> contains ~sub:m (full_call_name c))
+          ) in
          if later_calls <> [] && path_arg.value <> "" then
            { node_type = TOCTOU;
-             name = "exists -> " ^ (full_call_name (List.hd later_calls));
-             args = [{arg_type = ArgVar; value = path_arg.value; field = ""}];
-             line = line_of call; taint = false; file = ""; language = "crystal"; metadata = [] }
-           :: find_exists_path rest
+name = "exists -> " ^ 
+               (match later_calls with first :: _ -> full_call_name first | [] -> "");
+              args = [{arg_type = ArgVar; value = path_arg.value; field = ""}];
+              line = line_of call; taint = false; file = ""; language = "crystal"; metadata = [] }
+            :: find_exists_path rest
          else find_exists_path rest
        | _ -> find_exists_path rest)
   in
@@ -394,26 +410,26 @@ let detect_toctou (root : xml) : t list =
 (* ── Grammar discovery ──────────────────────────────────────────────── *)
 
 let grammar_path () =
-  let env_result = try Some (Sys.getenv "TREE_SITTER_CRYSTAL_GRAMMAR") with Not_found -> None in
+  let env_result = try Some (Stdlib.Sys.getenv "TREE_SITTER_CRYSTAL_GRAMMAR") with Stdlib.Not_found -> None in
   match env_result with
   | Some path -> Ok path
   | None ->
     (* Check user tree-sitter directory first *)
-    let home = try Sys.getenv "HOME" with Not_found -> "" in
-    let user_path = Filename.concat home ".tree-sitter/crystal/parser.so" in
-    if Sys.file_exists user_path then Ok user_path
+    let home = try Stdlib.Sys.getenv "HOME" with Stdlib.Not_found -> "" in
+    let user_path = Stdlib.Filename.concat home ".tree-sitter/crystal/parser.so" in
+    if Stdlib.Sys.file_exists user_path then Ok user_path
     else
       (* Check nix store *)
       let discovered = try
         let cmd = "find /nix/store -maxdepth 4 -name 'parser.so' 2>/dev/null | grep 'tree-sitter-crystal' | head -1" in
         let ic = Unix.open_process_in cmd in
-        let line = try Some (input_line ic) with End_of_file -> None in
+        let line = try Some (Stdlib.input_line ic) with Stdlib.End_of_file -> None in
         (try ignore (Unix.close_process_in ic) with _ -> ());
         line
       with _ -> None
       in
       match discovered with
-      | Some path when Sys.file_exists path -> Ok path
+      | Some path when Stdlib.Sys.file_exists path -> Ok path
       | _ -> Error (`Msg "Crystal tree-sitter grammar not found. Set TREE_SITTER_CRYSTAL_GRAMMAR or install tree-sitter-crystal.")
 
 let parse_xml_file (path : string) : xml =
@@ -421,21 +437,21 @@ let parse_xml_file (path : string) : xml =
     | Ok p -> p
     | Error (`Msg e) -> failwith ("Grammar error: " ^ e)
   in
-  let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name crystal -x '%s'" lib_path path in
+  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name crystal -x '%s'" lib_path path in
   let ic = Unix.open_process_in cmd in
-  let buf = Buffer.create 32768 in
-  (try while true do Buffer.add_channel buf ic 4096 done with End_of_file -> ());
+  let buf = Stdlib.Buffer.create 32768 in
+  (try while true do Stdlib.Buffer.add_channel buf ic 4096 done with Stdlib.End_of_file -> ());
   let status = Unix.close_process_in ic in
   match status with
   | Unix.WEXITED 0 | Unix.WEXITED 1 ->
-    let xml_str = Buffer.contents buf in
+    let xml_str = Stdlib.Buffer.contents buf in
     if String.length xml_str = 0 then
       failwith ("Empty XML output from tree-sitter for " ^ path)
     else
       (try parse_xml xml_str with e ->
-        failwith ("Failed to parse XML: " ^ Printexc.to_string e))
+        failwith ("Failed to parse XML: " ^ Stdlib.Printexc.to_string e))
   | _ ->
-    let err = Buffer.contents buf in
+    let err = Stdlib.Buffer.contents buf in
     failwith ("tree-sitter parse failed for " ^ path ^ ": " ^ err)
 
 (* ── Public interface ──────────────────────────────────────────────── *)
@@ -444,4 +460,4 @@ let extract ~(path : string) : t list =
   let root = parse_xml_file path in
   let defs = extract_defs root in
   let toctou_finds = detect_toctou root in
-  List.sort (fun a b -> compare a.line b.line) (defs @ toctou_finds)
+  List.sort (defs @ toctou_finds) ~compare:(fun a b -> Int.compare a.line b.line)
