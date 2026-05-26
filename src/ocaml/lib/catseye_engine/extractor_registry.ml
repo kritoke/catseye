@@ -17,14 +17,20 @@ open Base
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
-(** Search upward from [dir] for bin/<name>. *)
+(** Search upward from [dir] for <name> directly (e.g. bin/catseye-crystal-extractor).
+    Also checks [dir]/bin/<name> for backward compatibility. *)
 let rec search_upward (dir : string) (name : string) : string option =
-  let candidate = dir ^ "/bin/" ^ name in
-  if Stdlib.Sys.file_exists candidate then Some candidate
+  (* Check direct path first (e.g., /workspaces/catseye/bin/<name>) *)
+  let direct = dir ^ "/" ^ name in
+  if Stdlib.Sys.file_exists direct then Some direct
   else
-    let parent = Stdlib.Filename.dirname dir in
-    if parent = dir then None
-    else search_upward parent name
+    (* Check bin/ subdirectory (legacy path) *)
+    let in_bin = dir ^ "/bin/" ^ name in
+    if Stdlib.Sys.file_exists in_bin then Some in_bin
+    else
+      let parent = Stdlib.Filename.dirname dir in
+      if parent = dir then None
+      else search_upward parent name
 
 (** Search for a source file relative to the executable directory. *)
 let search_exe_relative (source_relative : string list) : string option =
@@ -59,10 +65,14 @@ let resolve_one
     let next_to_exe = exe_dir ^ "/" ^ exe_name in
     if Stdlib.Sys.file_exists next_to_exe then next_to_exe
     else
-    (* 3. Search upward from CWD *)
-    match search_upward (Stdlib.Sys.getcwd ()) exe_name with
-    | Some p -> p
-    | None ->
+    (* 3. Search upward from CWD AND from executable directory *)
+    let from_cwd = search_upward (Stdlib.Sys.getcwd ()) exe_name in
+    let exe_dir = Stdlib.Filename.dirname (Stdlib.Sys.executable_name) in
+    let from_exe = search_upward exe_dir exe_name in
+    match from_cwd, from_exe with
+    | Some p, _ -> p
+    | None, Some p -> p
+    | None, None ->
       (* 4. Global install layout *)
       let global = exe_dir ^ "/../lib/catseye/extractor/" ^ exe_name in
       if Stdlib.Sys.file_exists global then global
