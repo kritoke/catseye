@@ -1,6 +1,5 @@
-(* lib/catseye_incremental/dune *)
 (library
  (name catseye_incremental)
  (public_name catseye.incremental)
  (modules analysis_graph diff_engine version)
- (libraries base stdio incremental catseye.types catseye.ast))
+ (libraries base stdio incremental catseye.types))

@@ -66,9 +66,7 @@
   base
   stdio
   yojson
-  incremental
-  catseye.types
-  catseye.engine))
+  incremental))
 
 (package
  (name catseye-ai-linter)

@@ -1,14 +1,9 @@
 (* lib/catseye_pipeline/stream_reader.ml
    Async byte stream reader for incremental JSON parsing.
 
-   This module provides streaming JSON parsing for Crystal's NDJSON output.
+   This module provides streaming JSON parsing for Crystal NDJSON output.
    It allows CFG construction on-the-fly as bytes stream from subprocess,
    before the full file is read.
-
-   The reader operates in three modes:
-   1. LINE mode: Reading until newline (for NDJSON)
-   2. BUFFER mode: Accumulating partial JSON objects
-   3. STREAM mode: Continuous byte processing
 *)
 
 open Base
@@ -16,15 +11,15 @@ open Base
 (* ── Stream State Machine ────────────────────────────────────────────── *)
 
 type stream_state =
-  | Awaiting_frame    (* Waiting for frame start '[' or object '{' *)
-  | In_frame         (* Inside a frame, counting brackets *)
-  | Newline_found     (* Found '\n', ready to emit *)
-  | EOF_reached       (* Stream closed *)
+  | Awaiting_frame
+  | In_frame
+  | Newline_found
+  | EOF_reached
 
 type t = {
   buffer : Buffer.t;
-  state : stream_state;
-  depth : int;              (* Bracket nesting depth *)
+  mutable state : stream_state;
+  mutable depth : int;
   mutable lines_emitted : int;
   bytes_read : int;
 }
@@ -48,8 +43,8 @@ let reset (s : t) : unit =
 
 (* ── Byte Processing ─────────────────────────────────────────────────── *)
 
-(** Process a chunk of bytes into the stream.
-    Returns list of complete JSON objects found. *)
+(* Process a chunk of bytes into the stream.
+   Returns list of complete JSON objects found. *)
 let rec process_bytes (s : t) (chunk : bytes) (len : int) : string list =
   s.bytes_read <- s.bytes_read + len;
   let rec process_chars i results =
@@ -75,13 +70,10 @@ and process_char (s : t) (c : char) (state : stream_state) (depth : int)
        Buffer.add_char s.buffer start;
        ([], In_frame, depth + 1)
      | ' ' | '\t' | '\r' ->
-       (* Skip whitespace before frame *)
        ([], Awaiting_frame, depth)
      | '\n' ->
-       (* Empty line - skip *)
        ([], Awaiting_frame, depth)
      | _ ->
-       (* Other char - start of frame anyway *)
        Buffer.add_char s.buffer c;
        ([], In_frame, depth + 1))
   | In_frame ->
@@ -93,39 +85,33 @@ and process_char (s : t) (c : char) (state : stream_state) (depth : int)
        Buffer.add_char s.buffer end_char;
        let new_depth = depth - 1 in
        if new_depth = 0 then
-         (* Frame complete *)
          ([], Newline_found, 0)
        else
          ([], In_frame, new_depth)
      | '\n' when depth = 0 ->
-       (* Newline at top level signals end of JSON object *)
        ([], Newline_found, 0)
      | _ ->
        Buffer.add_char s.buffer c;
        ([], In_frame, depth))
   | Newline_found ->
-    (* Emit the completed frame and look for more *)
     let content = Buffer.contents s.buffer in
     Buffer.clear s.buffer;
     s.lines_emitted <- s.lines_emitted + 1;
     if c = '{' || c = '[' then
-      (* Next frame starts immediately *)
-      Buffer.add_char s.buffer c;
-      ([content], In_frame, 1)
+      (Buffer.add_char s.buffer c;
+       ([content], In_frame, 1))
     else if c = '\n' || c = ' ' || c = '\t' then
       ([content], Awaiting_frame, 0)
     else
       ([content], Awaiting_frame, 0)
   | EOF_reached ->
-    (* No more processing *)
     ([], EOF_reached, 0)
 
 (* ── Line-based Reading ──────────────────────────────────────────────── *)
 
-(** Read all complete lines from a file descriptor.
-    Uses Unix.select for non-blocking reads. *)
-let read_lines_from_fd (fd : Unix.file_descr) ~(timeout_sec : float = 5.0) 
-    : string list =
+(* Read all complete lines from a file descriptor.
+   Uses Unix.select for non-blocking reads. *)
+let read_lines_from_fd (fd : Unix.file_descr) ~(timeout_sec : float) : string list =
   let buf = Bytes.create 8192 in
   let buffer = Buffer.create 8192 in
   let results = ref [] in
@@ -133,7 +119,6 @@ let read_lines_from_fd (fd : Unix.file_descr) ~(timeout_sec : float = 5.0)
   let rec read_loop () =
     let ready, _, _ = Unix.select [fd] [] [] timeout_sec in
     if List.is_empty ready then begin
-      (* Timeout - return partial buffer if valid JSON *)
       let content = Buffer.contents buffer in
       if String.is_empty content then !results
       else if is_valid_json content then content :: !results
@@ -141,7 +126,6 @@ let read_lines_from_fd (fd : Unix.file_descr) ~(timeout_sec : float = 5.0)
     end else begin
       let n = Unix.read fd buf 0 (Bytes.length buf) in
       if n = 0 then begin
-        (* EOF - emit any remaining content *)
         let content = Buffer.contents buffer in
         if not (String.is_empty content) && is_valid_json content then
           List.rev (content :: !results)
@@ -149,7 +133,6 @@ let read_lines_from_fd (fd : Unix.file_descr) ~(timeout_sec : float = 5.0)
           List.rev !results
       end else begin
         Buffer.add_subbytes buffer buf 0 n;
-        (* Extract complete lines *)
         let content = Buffer.contents buffer in
         let (complete, remaining) = split_lines content in
         results := List.rev complete @ !results;
@@ -172,7 +155,6 @@ and split_lines (content : string) : (string list * string) =
 and is_valid_json (s : string) : bool =
   let trimmed = String.strip s in
   (String.is_prefix trimmed ~prefix:"{") ||
-  (String.is_prefix trimmed ~prefix:"[") ||
   (String.is_prefix trimmed ~prefix:"[")
 
 (* ── Streaming Parser ────────────────────────────────────────────────── *)
@@ -188,7 +170,7 @@ type json_token =
   | Bool of bool
   | Null
 
-(** Tokenize a JSON string for streaming analysis. *)
+(* Tokenize a JSON string for streaming analysis. *)
 let tokenize_json (json : string) : json_token list =
   let rec tokenize i limit acc =
     if i >= limit then List.rev acc
@@ -264,10 +246,10 @@ let get_stats (s : t) = {
 
 (* ── Incremental CFG Construction ──────────────────────────────────── *)
 
-(** Represents a partial CFG being built from streaming input *)
+(* Represents a partial CFG being built from streaming input *)
 type partial_cfg = {
-  nodes : (string, string) Hashtbl.t;  (* node_id -> node_type *)
-  edges : (string * string) list;      (* (from_id, to_id) *)
+  nodes : (string, string) Hashtbl.t;
+  edges : (string * string) list;
   current_function : string option;
   current_block : string option;
 }
@@ -279,8 +261,8 @@ let create_partial_cfg () : partial_cfg = {
   current_block = None;
 }
 
-(** Process a security node JSON object into the CFG.
-    Returns updated CFG. *)
+(* Process a security node JSON object into the CFG.
+   Returns updated CFG. *)
 let process_security_node (cfg : partial_cfg) (json : string) : partial_cfg =
   try
     let obj = Yojson.Safe.from_string json in
