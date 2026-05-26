@@ -21,10 +21,10 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 |------------|--------|----------|
 | Base/Stdlib | ✅ Migrated | All files use `open Base` |
 | Domain parallelism | ✅ Partial | `lib/catseye_engine/parallel.ml` |
-| Core.Command | ❌ Not used | `cmdliner` in deps |
-| Incremental | ❌ Not used | Config field only |
-| Core_unix streaming | ❌ Not used | Basic `Unix.pipe` in orchestrator |
-| Result monad pipelines | ❌ Not used | Deep nested matches in rules |
+| Core.Command | ✅ Added | `lib/catseye_cli/command.ml` |
+| Incremental | ✅ Added | `lib/catseye_incremental/` |
+| Core_unix streaming | ✅ Added | `lib/catseye_pipeline/` |
+| Result monad pipelines | ✅ Added | `lib/catseye_rules/pipeline.ml` |
 
 ## 3. Migration Phases
 
@@ -53,6 +53,8 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 
 **Work unit:** `feat(incremental): add Incremental DAG for diff scanning`
 
+**Status:** ✅ Complete (in feat/core-jane-street-integration)
+
 ### Phase 3: Streaming Pipeline (Core_unix + Domains)
 
 **Goal:** Non-blocking Crystal process pool with on-the-fly CFG
@@ -65,6 +67,8 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 
 **Work unit:** `feat(pipeline): streaming Crystal extractor via Core_unix`
 
+**Status:** ✅ Complete (in feat/core-jane-street-integration)
+
 ### Phase 4: Monadic Rule Pipelines
 
 **Goal:** Railway-oriented security rules using Result monad
@@ -76,6 +80,8 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 - Refactor `hierarchy_smells.ml` as demonstration
 
 **Work unit:** `feat(rules): monadic Result pipelines for semantic analysis`
+
+**Status:** ✅ Complete (in feat/core-jane-street-integration)
 
 ## 4. Dependencies to Add
 
@@ -129,12 +135,22 @@ lib/
 | Breaking existing CLI | Medium | Keep `--output` format during transition; test with existing workflows |
 | nix build updates | Low | Update flake.nix deps alongside dune-project changes |
 
-## 8. Delivery Strategy
+## 8. Delivery Status
 
-**Option B (Chained PRs) — RECOMMENDED:** 
-- PR1: Phase 1 (Core.Command + incremental dep)
-- PR2: Phase 2 (Incremental DAG)
-- PR3: Phase 3 (Pipeline + streaming)
-- PR4: Phase 4 (Monadic rules)
+| Phase | Status | PR |
+|-------|--------|-----|
+| Phase 1: Core CLI (Core.Command) | ✅ Complete | PR #2 |
+| Phase 2: Incremental DAG | ✅ Complete | PR #2 |
+| Phase 3: Streaming Pipeline | ✅ Complete | PR #2 |
+| Phase 4: Monadic Rule Pipelines | ✅ Complete | PR #2 |
 
-Each PR builds on the previous, with work-unit commits per phase.
+**All 4 phases implemented in single PR:** `feat/core-jane-street-integration`
+
+### Remaining: Integration into Orchestrator
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Wire `catseye_pipeline` into `Orchestrator.run` | TODO | Replace direct Unix.pipe calls |
+| Wire `catseye_incremental` DAG into analysis | TODO | Enable diff scanning |
+| Test with `just build` | TODO | Verify compilation |
+| Update `parallel.ml` with streaming | TODO | Enhance existing code |
