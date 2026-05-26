@@ -3,7 +3,12 @@
 
    Walks the AST items/expressions and produces IL nodes that preserve
    branch structure, field-sensitive lvalues, and arg positions.
-*)
+ *)
+
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Catseye_ast.Types
 open Il_types
@@ -23,9 +28,9 @@ let rec pattern_names (pat : pattern) : string list =
   | PVar v -> [v]
   | PDiscard -> []
   | PLiteral _ -> []
-  | PTuple pats -> List.concat_map pattern_names pats
-  | PList pats -> List.concat_map pattern_names pats
-  | PRecord fields -> List.concat_map (fun (_, p) -> pattern_names p) fields
+  | PTuple pats -> List.concat_map ~f:pattern_names pats
+  | PList pats -> List.concat_map ~f:pattern_names pats
+  | PRecord fields -> List.concat_map ~f:(fun (_, p) -> pattern_names p) fields
   | PAlias (p, _) -> pattern_names p
   | PType (_, p) -> pattern_names p
 
@@ -50,27 +55,27 @@ let rec translate_expr (e : expr) : il_expr =
      | LString s -> IELiteral ("\"" ^ s ^ "\"")
      | LInt i -> IELiteral i
      | LFloat f -> IELiteral f
-     | LBool b -> IELiteral (string_of_bool b)
+     | LBool b -> IELiteral (Stdlib.string_of_bool b)
      | LUnit -> IELiteral "()"
      | LNull -> IELiteral "nil"
-     | LChar c -> IELiteral (String.make 1 c))
+     | LChar c -> IELiteral (Stdlib.String.make 1 c))
   | EVar v -> IEVar v
   | EFieldAccess (recv, field) ->
     IEField (translate_expr recv, field, pos_of_expr e)
   | EApp (fn, args) ->
     let fn_name = expr_full_name fn in
-    IECall (fn_name, List.map translate_expr args, pos_of_expr e)
+    IECall (fn_name, List.map ~f:translate_expr args, pos_of_expr e)
   | EBinOp (e1, op, e2) ->
     (* Treat binary ops as calls to the operator *)
     IECall (op, [translate_expr e1; translate_expr e2], pos_of_expr e)
   | EUnOp (op, e1) ->
     IECall (op, [translate_expr e1], pos_of_expr e)
   | ETuple es ->
-    IECall ("<tuple>", List.map translate_expr es, pos_of_expr e)
+    IECall ("<tuple>", List.map ~f:translate_expr es, pos_of_expr e)
   | EList es ->
-    IECall ("<list>", List.map translate_expr es, pos_of_expr e)
+    IECall ("<list>", List.map ~f:translate_expr es, pos_of_expr e)
   | ERecord fields ->
-    let all = List.concat_map (fun (k, e) ->
+    let all = List.concat_map ~f:(fun (k, e) ->
       [IELiteral k; translate_expr e]
     ) fields in
     IECall ("<record>", all, pos_of_expr e)
@@ -105,7 +110,7 @@ and expr_full_name (e : expr) : string =
 
 and translate_block_expr (e : expr) : il_block =
   match e.expr_value with
-  | EBlock es -> List.concat_map translate_stmt_expr es
+  | EBlock es -> List.concat_map ~f:translate_stmt_expr es
   | _ -> translate_stmt_expr e
 
 and translate_stmt_expr (e : expr) : il_block =
@@ -121,9 +126,9 @@ and translate_stmt_expr (e : expr) : il_block =
     let assign_nodes = match e1.expr_value with
       | EApp (fn, args) ->
         let fn_name = expr_full_name fn in
-        let translated_args = List.map translate_expr args in
+        let translated_args = List.map ~f:translate_expr args in
         (* Walk nested args for sub-calls *)
-        let nested = List.concat_map (fun a ->
+        let nested = List.concat_map ~f:(fun a ->
           match a.expr_value with EApp _ -> extract_calls a | _ -> []
         ) args in
         nested @ [ILCall (Some lv, fn_name, translated_args, pos_of_expr e1)]
@@ -149,7 +154,7 @@ and translate_stmt_expr (e : expr) : il_block =
     let pos = pos_of_expr e in
     let cond_expr = translate_expr cond in
     let then_block = translate_block_expr then_ in
-    let else_block = Option.map translate_block_expr else_ in
+    let else_block = Option.map ~f:translate_block_expr else_ in
     [ILBranch (cond_expr, then_block, else_block, pos)]
 
   | ECase (target, branches) ->
@@ -162,15 +167,15 @@ and translate_stmt_expr (e : expr) : il_block =
     let pos = pos_of_expr e in
     let fn_name = expr_full_name fn in
     (* Walk args for nested calls first *)
-    let arg_calls = List.concat_map (fun a ->
+    let arg_calls = List.concat_map ~f:(fun a ->
       match a.expr_value with
       | EApp _ -> extract_calls a
       | _ -> []
     ) args in
-    arg_calls @ [ILCall (None, fn_name, List.map translate_expr args, pos)]
+    arg_calls @ [ILCall (None, fn_name, List.map ~f:translate_expr args, pos)]
 
   | EBlock es ->
-    List.concat_map translate_stmt_expr es
+    List.concat_map ~f:translate_stmt_expr es
 
   | EBinOp (e1, _op, e2) ->
     (* Walk for nested calls *)
@@ -195,13 +200,13 @@ and extract_calls (e : expr) : il_block =
   | EApp (fn, args) ->
     let pos = pos_of_expr e in
     let fn_name = expr_full_name fn in
-    let nested = List.concat_map extract_calls args in
-    nested @ [ILCall (None, fn_name, List.map translate_expr args, pos)]
+    let nested = List.concat_map ~f:extract_calls args in
+    nested @ [ILCall (None, fn_name, List.map ~f:translate_expr args, pos)]
   | EBlock es ->
-    List.concat_map (fun e' -> translate_stmt_expr e' @ extract_calls e') es
+    List.concat_map ~f:(fun e' -> translate_stmt_expr e' @ extract_calls e') es
   | EFieldAccess (recv, _) -> extract_calls recv
-  | ETuple es | EList es -> List.concat_map extract_calls es
-  | ERecord fields -> List.concat_map (fun (_, e') -> extract_calls e') fields
+  | ETuple es | EList es -> List.concat_map ~f:extract_calls es
+  | ERecord fields -> List.concat_map ~f:(fun (_, e') -> extract_calls e') fields
   | EBinOp (e1, _, e2) -> extract_calls e1 @ extract_calls e2
   | EUnOp (_, e1) -> extract_calls e1
   | EIf (cond, then_, else_) ->
@@ -231,13 +236,13 @@ and translate_case (branches : (pattern * expr) list) (target : il_expr) (pos : 
 let rec walk_item (item : item) : il_function list =
   match item.item_value with
   | IFunction (name, params, _ret, body) ->
-    let param_names = List.concat_map pattern_names params in
+    let param_names = List.concat_map ~f:pattern_names params in
     let fn_body = translate_block_expr body in
     [{ fn_name = name; fn_params = param_names; fn_body; fn_pos = pos_of_item item }]
   | IClass (_, items) ->
-    List.concat_map walk_item items
+    List.concat_map ~f:walk_item items
   | IModule (_, items) ->
-    List.concat_map walk_item items
+    List.concat_map ~f:walk_item items
   | IImport _ | ITypeAlias _ | ITypeDef _ | IConstant _
   | IExternal _ | IUnknown _ -> []
 
@@ -253,5 +258,5 @@ let translate (mod_ : Catseye_ast.Types.t) : il_unit =
     | Rust -> "rust"
     | Other s -> s
   in
-  let fns = List.concat_map walk_item mod_.mod_items in
+  let fns = List.concat_map ~f:walk_item mod_.mod_items in
   { il_file = mod_.mod_path; il_lang = lang; il_functions = fns }

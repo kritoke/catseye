@@ -14,7 +14,12 @@
    Thread-safe: dominator context is passed explicitly through the
    transfer function chain rather than via module-level mutable refs.
    This allows safe concurrent analysis with OCaml 5 Domains.
-*)
+ *)
+
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Il_types
 open Catseye_rules.Types
@@ -37,9 +42,9 @@ let rec lval_name (lv : lval) : string =
 
 (* ── Taint state ───────────────────────────────────────────────────── *)
 
-module LvalSet = Set.Make (struct
+module LvalSet = Stdlib.Set.Make (struct
   type t = lval
-  let compare a b = String.compare (lval_name a) (lval_name b)
+  let compare a b = Stdlib.String.compare (lval_name a) (lval_name b)
 end)
 
 type taint_state = {
@@ -56,9 +61,9 @@ let is_tainted (state : taint_state) (lv : lval) : bool =
     let tn = lval_name t in
     let ln = lval_name lv in
     tn = ln
-    || (String.length ln > String.length tn
-        && String.sub ln 0 (String.length tn) = tn
-        && ln.[String.length tn] = '.')
+    || (Stdlib.String.length ln > Stdlib.String.length tn
+        && Stdlib.String.sub ln 0 (Stdlib.String.length tn) = tn
+        && ln.[Stdlib.String.length tn] = '.')
   ) state.tainted
 
 (* Extract an lval from an il_expr if possible *)
@@ -83,7 +88,7 @@ let rec is_expr_tainted (state : taint_state) (e : il_expr) : bool =
   | IECall (fn, _args, _) when fn = "<interpolation>" ->
     (* Interpolation passes through taint from any var in scope *)
     not (LvalSet.is_empty state.tainted)
-  | IECall (_, args, _) -> List.exists (is_expr_tainted state) args
+  | IECall (_, args, _) -> List.exists ~f:(is_expr_tainted state) args
   | IELiteral _ -> false
   | IEUnknown _ -> false
 
@@ -110,15 +115,15 @@ let union_state (a : taint_state) (b : taint_state) : taint_state =
 
 let matches_source (lv : lval) (sources : source_def list) : bool =
   let name = lval_name lv in
-  List.exists (fun src ->
+  List.exists ~f:(fun src ->
     name = src.name
     || (match src.field with
         | Some field -> name = src.name ^ "." ^ field
         | None ->
           name = src.name
-          || (String.length name > String.length src.name
-              && String.sub name 0 (String.length src.name) = src.name
-              && name.[String.length src.name] = '.'))
+          || (Stdlib.String.length name > Stdlib.String.length src.name
+              && Stdlib.String.sub name 0 (Stdlib.String.length src.name) = src.name
+              && name.[Stdlib.String.length src.name] = '.'))
   ) sources
 
 (* ── Transfer function ────────────────────────────────────────────── *)
@@ -136,26 +141,26 @@ let rec transfer_node (taint_state : taint_state) (node : il_node)
       (match expr with
        | IECall (fn_name, args, _) ->
          (* Function call that returns a source — e.g., params = get_params() *)
-         let src_names = List.map (fun (s : source_def) -> s.name) sources in
-         if List.mem fn_name src_names then taint_lval taint_state lv
+         let src_names = List.map ~f:(fun (s : source_def) -> s.name) sources in
+         if List.mem src_names ~equal:Stdlib.String.equal fn_name then taint_lval taint_state lv
          else
-           (* Check if receiver is a source: params.[]() means params[key] *)
-           let receiver_tainted =
-             (* For x.[](arg), if x is a source OR x is already tainted, result is tainted *)
-             String.length fn_name > 3 &&
-             String.sub fn_name (String.length fn_name - 3) 3 = ".[]" &&
-             let receiver = String.sub fn_name 0 (String.length fn_name - 3) in
-             is_tainted taint_state (LVVar receiver)
-             || List.exists (fun (s : source_def) -> receiver = s.name) sources
+(* Check if receiver is a source: params.[]() means params[key] *)
+            let receiver_tainted =
+              (* For x.[](arg), if x is a source OR x is already tainted, result is tainted *)
+              Stdlib.String.length fn_name > 3 &&
+              Stdlib.String.sub fn_name (Stdlib.String.length fn_name - 3) 3 = ".[]" &&
+              let receiver = Stdlib.String.sub fn_name 0 (Stdlib.String.length fn_name - 3) in
+              is_tainted taint_state (LVVar receiver)
+              || List.exists ~f:(fun (s : source_def) -> receiver = s.name) sources
            in
            if receiver_tainted then taint_lval taint_state lv
            else
-             (* If any arg is a source, taint the result *)
-             let tainted_arg = List.exists (fun a ->
-               match lval_of_expr a with
-               | Some a_lv -> matches_source a_lv sources
-               | None -> false
-             ) args in
+(* If any arg is a source, taint the result *)
+              let tainted_arg = List.exists ~f:(fun a ->
+                match lval_of_expr a with
+                | Some a_lv -> matches_source a_lv sources
+                | None -> false
+              ) args in
              if tainted_arg then taint_lval taint_state lv else taint_state
        | _ ->
          match lval_of_expr expr with
@@ -167,14 +172,14 @@ let rec transfer_node (taint_state : taint_state) (node : il_node)
     (* Check if this call matches a sink with tainted args *)
     let new_findings = check_call_sinks fn_name args pos file lang rules taint_state dom_ctx in
     (* Propagate taint through call if result is assigned *)
-    let any_tainted = List.exists (is_expr_tainted taint_state) args in
-    let receiver_tainted =
-      match String.index_opt fn_name '.' with
-      | Some idx ->
-        let receiver = String.sub fn_name 0 idx in
-        is_tainted taint_state (LVVar receiver)
-        || List.exists (fun (s : source_def) -> receiver = s.name) sources
-      | None -> false
+let any_tainted = List.exists ~f:(is_expr_tainted taint_state) args in
+  let receiver_tainted =
+    match Stdlib.String.index_opt fn_name '.' with
+    | Some idx ->
+      let receiver = Stdlib.String.sub fn_name 0 idx in
+      is_tainted taint_state (LVVar receiver)
+      || List.exists ~f:(fun (s : source_def) -> receiver = s.name) sources
+    | None -> false
     in
     let interpolation_tainted =
       fn_name = "<interpolation>" && not (LvalSet.is_empty taint_state.tainted)
@@ -208,25 +213,25 @@ let rec transfer_node (taint_state : taint_state) (node : il_node)
 and transfer_block (taint_state : taint_state) (block : il_block)
     (sources : source_def list) (rules : rule_def list)
     (file : string) (lang : string) (dom_ctx : dom_ctx) : taint_state =
-  List.fold_left (fun st node ->
+  List.fold_left ~f:(fun st node ->
     transfer_node st node sources rules file lang dom_ctx
-  ) taint_state block
+  ) ~init:taint_state block
 
 (* Check a call against all sink rules *)
 and check_call_sinks (fn_name : string) (args : il_expr list)
     (pos : pos) (file : string) (lang : string)
     (rules : rule_def list) (state : taint_state) (dom_ctx : dom_ctx)
     : Catseye_types.Finding.t list =
-  List.concat_map (fun (rule : rule_def) ->
-    List.concat_map (fun (sink : sink_def) ->
+  Stdlib.List.concat_map (fun (rule : rule_def) ->
+    Stdlib.List.concat_map (fun (sink : sink_def) ->
       (* Guard clauses — flat, not nested *)
       (* 1. Does the function name match the sink pattern? *)
       if not (Catseye_rules.Interpreter.matches_sink
                ~pattern:sink.pattern ~name:fn_name) then []
       (* 2. Check for sanitized args *)
-      else if List.exists (fun a ->
-        Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers (expr_name a)
-      ) args then []
+else if List.exists ~f:(fun a ->
+          Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers (expr_name a)
+        ) args then []
       (* 3. Dominator-based suppression: sanitizer dominates this block *)
       else if (match dom_ctx.dom with
         | None -> false
@@ -237,21 +242,20 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
           let tainted_args = match sink.arg_pos with
             | Some n ->
               (* Only check the arg at position n *)
-              if n < List.length args then
-                let arg = List.nth args n in
-                if is_expr_tainted state arg then [arg] else []
-              else []
+              (match List.nth args n with
+               | Some arg when is_expr_tainted state arg -> [arg]
+               | _ -> [])
             | None ->
               (* Any tainted arg triggers *)
-              List.filter (is_expr_tainted state) args
+              List.filter ~f:(is_expr_tainted state) args
           in
           if tainted_args = [] && rule.conditions.requires_tainted_args then []
           else begin
-            let vars = String.concat ", " (List.map expr_name tainted_args) in
+            let vars = Stdlib.String.concat ", " (List.map ~f:expr_name tainted_args) in
             let msg = Catseye_rules.Interpreter.substitute_template
               rule.message_template ~sink:fn_name ~vars in
             (* Build fake Security_node.arg list for autofix instantiation *)
-            let fake_args = List.map (fun e ->
+            let fake_args = List.map ~f:(fun e ->
               Catseye_types.Security_node.{ arg_type = ArgVar; value = expr_name e; field = "" }
             ) args in
             let suggestion = match sink.fix_template with
@@ -309,26 +313,26 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
   in
 
   (* State per block *)
-  let states = Hashtbl.create 32 in
+  let states = Stdlib.Hashtbl.create 32 in
 
   let get_state id =
-    try Hashtbl.find states id
-    with Not_found -> { empty_state with findings = [] }
+    try Stdlib.Hashtbl.find states id
+    with Stdlib.Not_found -> { empty_state with findings = [] }
   in
 
   (* Worklist algorithm using a Queue for O(1) push/pop *)
-  let worklist = Queue.create () in
-  Queue.add cfg.Cfg_graph.entry worklist;
+  let worklist = Stdlib.Queue.create () in
+  Stdlib.Queue.add cfg.Cfg_graph.entry worklist;
 
   let max_visits_per_block = 3 in
-  let visit_count = Hashtbl.create 32 in
+  let visit_count = Stdlib.Hashtbl.create 32 in
 
-  while not (Queue.is_empty worklist) do
-    let block_id = Queue.take worklist in
+  while not (Stdlib.Queue.is_empty worklist) do
+    let block_id = Stdlib.Queue.take worklist in
 
-    let visits = try Hashtbl.find visit_count block_id with Not_found -> 0 in
+    let visits = try Stdlib.Hashtbl.find visit_count block_id with Stdlib.Not_found -> 0 in
     if visits < max_visits_per_block then begin
-      Hashtbl.replace visit_count block_id (visits + 1);
+      Stdlib.Hashtbl.replace visit_count block_id (visits + 1);
 
       let nodes = Cfg_graph.block_nodes cfg block_id in
       if nodes <> [] then begin
@@ -336,31 +340,31 @@ let analyze_cfg (cfg : Cfg_graph.t) (sources : source_def list)
         let dom_ctx = { dom; block_id } in
         (* Input state = union of predecessor outputs *)
         let pred_ids = Cfg_graph.G.pred cfg.Cfg_graph.graph block_id in
-        let input_state = List.fold_left (fun acc pid ->
+        let input_state = List.fold_left ~f:(fun acc pid ->
           union_state acc (get_state pid)
-        ) { empty_state with findings = [] } pred_ids in
+        ) ~init:{ empty_state with findings = [] } pred_ids in
 
         (* Seed function params as potential sources *)
-        let seeded_state = List.fold_left (fun st param ->
+        let seeded_state = List.fold_left ~f:(fun st param ->
           let lv = LVVar param in
           if matches_source lv sources then taint_lval st lv
           else st
-        ) input_state cfg.Cfg_graph.fn_params in
+        ) ~init:input_state cfg.Cfg_graph.fn_params in
 
         (* Transfer through this block's nodes *)
         let output = transfer_block seeded_state nodes sources rules file lang dom_ctx in
 
-        Hashtbl.replace states block_id output;
+        Stdlib.Hashtbl.replace states block_id output;
 
         (* Add successors to worklist *)
         Cfg_graph.iter_succ cfg (fun succ ->
-          Queue.add succ worklist
+          Stdlib.Queue.add succ worklist
         ) block_id
       end
     end
   done;
 
-  let all_findings = Hashtbl.fold (fun _id state acc ->
+  let all_findings = Stdlib.Hashtbl.fold (fun _id state acc ->
     state.findings @ acc
   ) states [] in
   all_findings
@@ -386,9 +390,9 @@ type analyze_result = {
 let analyze_unit ?(opts : analyze_opts = default_opts) (unit : il_unit)
     (sources : source_def list)
     (rules : rule_def list) : analyze_result =
-  let raw = ref [] in
-  let skipped = ref [] in
-  List.iter (fun (fn : il_function) ->
+  let raw = Stdlib.ref [] in
+  let skipped = Stdlib.ref [] in
+  List.iter ~f:(fun (fn : il_function) ->
     let cfg_result = Cfg_builder.build_cfg
       ~max_blocks:opts.cfg_max_blocks
       ~timeout_ms:opts.cfg_timeout_ms
@@ -397,20 +401,20 @@ let analyze_unit ?(opts : analyze_opts = default_opts) (unit : il_unit)
     | Ok cfg ->
       raw := analyze_cfg cfg sources rules unit.il_file unit.il_lang @ !raw
     | Error (TooManyBlocks { actual; limit }) ->
-      Printf.eprintf "  [warn] CFG: %s in %s hit block limit (%d > %d), skipping\n"
+      Stdlib.Printf.eprintf "  [warn] CFG: %s in %s hit block limit (%d > %d), skipping\n"
         fn.fn_name unit.il_file actual limit;
       skipped := fn.fn_name :: !skipped
     | Error (Timeout { elapsed_ms; partial_blocks }) ->
-      Printf.eprintf "  [warn] CFG: %s in %s timed out after %dms (%d partial blocks), skipping\n"
+      Stdlib.Printf.eprintf "  [warn] CFG: %s in %s timed out after %dms (%d partial blocks), skipping\n"
         fn.fn_name unit.il_file elapsed_ms partial_blocks;
       skipped := fn.fn_name :: !skipped
   ) unit.il_functions;
   (* Deduplicate by rule:file:line *)
-  let seen = Hashtbl.create 64 in
-  let deduped = List.filter (fun (f : Catseye_types.Finding.t) ->
+  let seen = Stdlib.Hashtbl.create 64 in
+  let deduped = List.filter ~f:(fun (f : Catseye_types.Finding.t) ->
     let key = f.Catseye_types.Finding.rule ^ ":" ^ f.Catseye_types.Finding.file
-              ^ ":" ^ Int.to_string f.Catseye_types.Finding.line in
-    if Hashtbl.mem seen key then false
-    else (Hashtbl.replace seen key true; true)
+              ^ ":" ^ Stdlib.string_of_int f.Catseye_types.Finding.line in
+    if Stdlib.Hashtbl.mem seen key then false
+    else (Stdlib.Hashtbl.replace seen key true; true)
   ) !raw in
   { findings = deduped; skipped_functions = !skipped }

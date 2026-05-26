@@ -9,7 +9,12 @@
    This replaces the hand-rolled basic_block/cfg types in il_types.ml,
    giving us O(1) edge operations, standard graph traversal, and
    algorithm reuse (Fixpoint, Dominator, Components, etc.).
-*)
+ *)
+
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Il_types
 
@@ -19,8 +24,8 @@ open Il_types
     Vertices are block IDs (int). Edges represent control flow. *)
 module G = Graph.Imperative.Digraph.Concrete (struct
   type t = int
-  let compare = compare
-  let hash = Hashtbl.hash
+  let compare = Int.compare
+  let hash = Stdlib.Hashtbl.hash
   let equal = ( = )
 end)
 
@@ -30,30 +35,30 @@ end)
 type t = {
   graph : G.t;
   mutable entry : G.V.t;                          (* entry block ID *)
-  blocks : (int, il_node list) Hashtbl.t;  (* block_id -> nodes *)
+  blocks : (int, il_node list) Stdlib.Hashtbl.t;  (* block_id -> nodes *)
   fn_name : string;
   fn_params : string list;
   fn_pos : pos;
-  block_count : int ref;                   (* for bounds checking *)
+  block_count : int Stdlib.ref;                   (* for bounds checking *)
 }
 
 (** Create an empty augmented CFG. *)
 let create (fn : il_function) : t = {
   graph = G.create ~size:16 ();
   entry = 0;
-  blocks = Hashtbl.create 16;
+  blocks = Stdlib.Hashtbl.create 16;
   fn_name = fn.fn_name;
   fn_params = fn.fn_params;
   fn_pos = fn.fn_pos;
-  block_count = ref 0;
+  block_count = Stdlib.ref 0;
 }
 
 (** Add a basic block (vertex) to the graph with a given ID.
     Returns the block ID. *)
 let add_block (cfg : t) (id : int) (nodes : il_node list) : int =
-  incr cfg.block_count;
+  Stdlib.incr cfg.block_count;
   G.add_vertex cfg.graph id;
-  Hashtbl.add cfg.blocks id nodes;
+  Stdlib.Hashtbl.add cfg.blocks id nodes;
   id
 
 (** Add a control flow edge between two blocks. *)
@@ -66,7 +71,7 @@ let set_entry (cfg : t) (id : int) : unit =
 
 (** Get the IL nodes for a block. *)
 let block_nodes (cfg : t) (id : int) : il_node list =
-  match Hashtbl.find_opt cfg.blocks id with
+  match Stdlib.Hashtbl.find_opt cfg.blocks id with
   | Some nodes -> nodes
   | None -> []
 
@@ -76,7 +81,7 @@ let iter_succ (cfg : t) (f : int -> unit) (id : int) : unit =
 
 (** Get all successors as a list. *)
 let succ_list (cfg : t) (id : int) : int list =
-  let succs = ref [] in
+  let succs = Stdlib.ref [] in
   G.iter_succ (fun v -> succs := v :: !succs) cfg.graph id;
   List.rev !succs
 
@@ -112,7 +117,7 @@ module CfgDot = Graph.Graphviz.Dot (struct
     ; `Fontsize 10
     ]
 
-  let vertex_name v = Printf.sprintf "b%d" v
+  let vertex_name v = Stdlib.Printf.sprintf "b%d" v
 
   let vertex_attributes _v =
     [ `Color 0x2196F3
@@ -131,8 +136,8 @@ end)
 
 (** Render the CFG as a DOT string. *)
 let to_dot (cfg : t) : string =
-  let buf = Buffer.create 4096 in
-  let fmt = Format.formatter_of_buffer buf in
+  let buf = Stdlib.Buffer.create 4096 in
+  let fmt = Stdlib.Format.formatter_of_buffer buf in
   CfgDot.fprint_graph fmt cfg.graph;
-  Format.pp_print_flush fmt ();
-  Buffer.contents buf
+  Stdlib.Format.pp_print_flush fmt ();
+  Stdlib.Buffer.contents buf

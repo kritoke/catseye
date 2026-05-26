@@ -5,7 +5,12 @@
    - Block dominance queries (does block A dominate block B?)
    - Guard block detection (blocks containing sanitizer calls)
    - Finding suppression when a sanitizer guard dominates a sink
-*)
+ *)
+
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Il_types
 
@@ -36,18 +41,18 @@ let known_sanitizers =
 
 (** Check if a function name matches a known sanitizer pattern. *)
 let is_sanitizer_call (fn_name : string) : bool =
-  let lower = String.lowercase_ascii fn_name in
-  List.exists (fun pat ->
-    let lpat = String.lowercase_ascii pat in
-    String.length lower >= String.length lpat &&
-    let prefix = String.sub lower 0 (String.length lpat) in
+  let lower = Stdlib.String.lowercase_ascii fn_name in
+  List.exists ~f:(fun pat ->
+    let lpat = Stdlib.String.lowercase_ascii pat in
+    Stdlib.String.length lower >= Stdlib.String.length lpat &&
+    let prefix = Stdlib.String.sub lower 0 (Stdlib.String.length lpat) in
     prefix = lpat
   ) known_sanitizers
 
 (** Check if any node in a block is a sanitizer call. *)
 let block_has_sanitizer (cfg : Cfg_graph.t) (block_id : int) : bool =
   let nodes = Cfg_graph.block_nodes cfg block_id in
-  List.exists (fun node ->
+  List.exists ~f:(fun node ->
     match node with
     | ILCall (_, fn_name, _, _) -> is_sanitizer_call fn_name
     | ILAssign (_, IECall (fn_name, _, _), _) -> is_sanitizer_call fn_name
@@ -59,10 +64,10 @@ let block_has_sanitizer (cfg : Cfg_graph.t) (block_id : int) : bool =
 let block_has_rule_sanitizer (cfg : Cfg_graph.t) (block_id : int)
     (sanitizers : string list) : bool =
   let nodes = Cfg_graph.block_nodes cfg block_id in
-  List.exists (fun node ->
+  List.exists ~f:(fun node ->
     match node with
     | ILCall (_, fn_name, _, _) ->
-      List.exists (fun _pat ->
+      List.exists ~f:(fun _pat ->
         Catseye_rules.Interpreter.matches_sanitizer sanitizers fn_name
       ) sanitizers
       (* Also check known built-in sanitizers *)
@@ -81,7 +86,7 @@ let compute (cfg : Cfg_graph.t) : t =
   let dom_tree = Dom.idom_to_dom_tree cfg.Cfg_graph.graph idom in
   (* Identify blocks that contain sanitizer calls *)
   let guard_blocks =
-    let all_guards = ref [] in
+    let all_guards = Stdlib.ref [] in
     Cfg_graph.iter_vertices cfg (fun vid ->
       if block_has_sanitizer cfg vid then
         all_guards := vid :: !all_guards
@@ -94,7 +99,7 @@ let compute (cfg : Cfg_graph.t) : t =
     Returns true if there exists a sanitizer guard that must execute
     before reaching this block on every path from entry. *)
 let is_guarded (dom_data : t) (block_id : int) : bool =
-  List.exists (fun guard ->
+  List.exists ~f:(fun guard ->
     dom_data.dom guard block_id
   ) dom_data.guard_blocks
 
@@ -111,11 +116,11 @@ let is_sanitized_by (dom_data : t) (block_id : int)
       let parent = dom_data.idom current in
       (* Check if parent block contains a relevant sanitizer *)
       let parent_nodes = nodes_of parent in
-      let has_matching_sanitizer = List.exists (fun node ->
+      let has_matching_sanitizer = List.exists ~f:(fun node ->
         match node with
         | ILCall (_, fn_name, _, _) ->
           is_sanitizer_call fn_name ||
-          List.exists (fun _s ->
+          List.exists ~f:(fun _s ->
             Catseye_rules.Interpreter.matches_sanitizer sanitizer_names fn_name
           ) sanitizer_names
         | ILAssign (_, IECall (fn_name, _, _), _) ->

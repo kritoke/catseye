@@ -4,7 +4,12 @@
    Each function's il_block is converted to a list of basic_blocks
    with successor edges. Branches create separate blocks that merge
    at the continuation point.
-*)
+ *)
+
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 open Il_types
 
@@ -27,13 +32,13 @@ let take_linear (nodes : il_node list) : il_node list * il_node list =
 (* ── Public API ─────────────────────────────────────────────────────── *)
 
 let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
-    (fn : il_function) : (Cfg_graph.t, cfg_error) result =
+    (fn : il_function) : (Cfg_graph.t, cfg_error) Stdlib.result =
   let cfg = Cfg_graph.create fn in
-  let next_id = ref 0 in
+  let next_id = Stdlib.ref 0 in
   let start_time = Unix.gettimeofday () in
   let alloc_id () =
     let id = !next_id in
-    incr next_id;
+    Stdlib.incr next_id;
     id
   in
   let check_bounds () =
@@ -41,12 +46,12 @@ let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
       Some (TooManyBlocks { actual = !next_id; limit = max_blocks })
     else if timeout_ms > 0 then
       let elapsed = (Unix.gettimeofday () -. start_time) *. 1000.0 in
-      if int_of_float elapsed > timeout_ms then
-        Some (Timeout { elapsed_ms = int_of_float elapsed; partial_blocks = !next_id })
+      if Stdlib.int_of_float elapsed > timeout_ms then
+        Some (Timeout { elapsed_ms = Stdlib.int_of_float elapsed; partial_blocks = !next_id })
       else None
     else None
   in
-  let error = ref None in
+  let error = Stdlib.ref None in
   (* emit: create a block with the given nodes, return its ID *)
   let emit nodes =
     let id = alloc_id () in
@@ -99,7 +104,7 @@ let build_cfg ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
 let build_cfgs ?(max_blocks : int = 500) ?(timeout_ms : int = 5000)
     (unit : il_unit) : Cfg_graph.t list =
   (* Filter out functions that hit bounds, keep successful CFGs *)
-  List.filter_map (fun fn ->
+  List.filter_map ~f:(fun fn ->
     match build_cfg ~max_blocks ~timeout_ms fn with
     | Ok cfg -> Some cfg
     | Error _ -> None
@@ -120,34 +125,34 @@ let rec string_of_expr (e : il_expr) : string =
   | IEField (inner, field, _) -> string_of_expr inner ^ "." ^ field
   | IELiteral s -> s
   | IECall (fn, args, _) ->
-    fn ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
+    fn ^ "(" ^ Stdlib.String.concat ", " (List.map ~f:string_of_expr args) ^ ")"
   | IEUnknown s -> "?(?" ^ s ^ ")"
 
 let string_of_node = function
   | ILAssign (lv, expr, _) ->
     string_of_lval lv ^ " = " ^ string_of_expr expr
   | ILCall (None, fn, args, _) ->
-    fn ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
+    fn ^ "(" ^ Stdlib.String.concat ", " (List.map ~f:string_of_expr args) ^ ")"
   | ILCall (Some lv, fn, args, _) ->
-    string_of_lval lv ^ " = " ^ fn ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
+    string_of_lval lv ^ " = " ^ fn ^ "(" ^ Stdlib.String.concat ", " (List.map ~f:string_of_expr args) ^ ")"
   | ILBranch (_, then_, else_, _) ->
-    "if ... then [" ^ Int.to_string (List.length then_) ^ " nodes]" ^
-    (match else_ with Some b -> " else [" ^ Int.to_string (List.length b) ^ " nodes]" | None -> "")
+    "if ... then [" ^ Stdlib.string_of_int (List.length then_) ^ " nodes]" ^
+    (match else_ with Some b -> " else [" ^ Stdlib.string_of_int (List.length b) ^ " nodes]" | None -> "")
   | ILReturn (expr, _) -> "return " ^ string_of_expr expr
   | ILThrow (expr, _) -> "throw " ^ string_of_expr expr
-  | ILResume (block, _) -> "rescue [" ^ Int.to_string (List.length block) ^ " nodes]"
+  | ILResume (block, _) -> "rescue [" ^ Stdlib.string_of_int (List.length block) ^ " nodes]"
 
 let print_cfg (cfg : Cfg_graph.t) : string =
-  let buf = Buffer.create 256 in
-  let pr fmt = Printf.bprintf buf fmt in
+  let buf = Stdlib.Buffer.create 256 in
+  let pr fmt = Stdlib.Printf.bprintf buf fmt in
   pr "CFG for %s (entry: %d)\n" cfg.Cfg_graph.fn_name cfg.Cfg_graph.entry;
   Cfg_graph.iter_vertices cfg (fun vid ->
     pr "  Block %d:\n" vid;
-    List.iter (fun n ->
+    List.iter ~f:(fun n ->
       pr "    %s\n" (string_of_node n)
     ) (Cfg_graph.block_nodes cfg vid);
     let succs = Cfg_graph.succ_list cfg vid in
     if succs <> [] then
-      pr "    → %s\n" (String.concat ", " (List.map Int.to_string succs))
+      pr "    → %s\n" (Stdlib.String.concat ", " (List.map ~f:Stdlib.string_of_int succs))
   );
-  Buffer.contents buf
+  Stdlib.Buffer.contents buf
