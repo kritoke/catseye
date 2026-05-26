@@ -3,6 +3,9 @@
 
 open Unix
 open Yojson.Safe
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 
 (** Tool status for discovery *)
 type tool_status =
@@ -38,39 +41,39 @@ let default_elixir_config = {
 (** Check if file contains a substring *)
 let file_contains path pattern =
   try
-    let ic = open_in path in
+    let ic = Stdlib.open_in path in
     let content = Stdio.In_channel.input_all ic in
-    close_in ic;
+    Stdlib.close_in ic;
     let plen = String.length pattern in
     let slen = String.length content in
     let rec check i =
-      i + plen <= slen && (String.sub content i plen = pattern || check (i + 1))
+      i + plen <= slen && (Stdlib.String.sub content i plen = pattern || check (i + 1))
     in
     check 0
   with _ -> false
 
 (** Check if a command exists in PATH *)
 let command_exists cmd =
-  let cmd_str = Printf.sprintf "bash -c 'command -v %s >/dev/null 2>&1'" cmd in
+  let cmd_str = Stdlib.Printf.sprintf "bash -c 'command -v %s >/dev/null 2>&1'" cmd in
   if Stdlib.Sys.command cmd_str = 0 then true
   else
-    let cmd_str2 = Printf.sprintf "bash -c 'which %s >/dev/null 2>&1'" cmd in
+    let cmd_str2 = Stdlib.Printf.sprintf "bash -c 'which %s >/dev/null 2>&1'" cmd in
     Stdlib.Sys.command cmd_str2 = 0
 
 (** Run command and collect output *)
 let run_cmd cmd =
-  let ch = open_process_in cmd in
+  let ch = Unix.open_process_in cmd in
   let rec read_all acc =
-    try read_all (input_line ch :: acc) with End_of_file -> List.rev acc
+    try read_all (Stdlib.input_line ch :: acc) with Stdlib.End_of_file -> List.rev acc
   in
   let lines = read_all [] in
-  let status = close_process_in ch in
+  let status = Unix.close_process_in ch in
   (status, lines)
 
 (* ── Project Detection ───────────────────────────────────────────────── *)
 
 let is_mix_project dir =
-  Stdlib.Sys.file_exists (Filename.concat dir "mix.exs")
+  Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "mix.exs")
 
 let has_sobelow_exs () =
   command_exists "sobelow"
@@ -81,7 +84,7 @@ let has_reach_exs () =
 let has_credo_dep dir =
   if not (command_exists "mix") then false
   else
-    let mix_exs = Filename.concat dir "mix.exs" in
+    let mix_exs = Stdlib.Filename.concat dir "mix.exs" in
     if Stdlib.Sys.file_exists mix_exs then
       file_contains mix_exs "credo" || file_contains mix_exs ":credo"
     else false
@@ -122,16 +125,16 @@ let check_tools ?(mix_path = "mix") (dir : string) =
 
 (** Get string value from JSON object *)
 let get_str fields key =
-  match List.assoc_opt key fields with
+  match List.Assoc.find ~equal:String.equal fields key with
   | Some (`String s) -> s
   | _ -> ""
 
 (** Get int value from JSON object *)
 let get_int fields key =
-  match List.assoc_opt key fields with
+  match List.Assoc.find ~equal:String.equal fields key with
   | Some (`Int n) -> n
-  | Some (`Float f) -> int_of_float f
-  | Some (`String s) -> (try int_of_string s with _ -> 0)
+  | Some (`Float f) -> Stdlib.int_of_float f
+  | Some (`String s) -> (try Stdlib.int_of_string s with _ -> 0)
   | _ -> 0
 
 (** Parse Sobelow JSON output into findings.
@@ -143,7 +146,7 @@ let parse_sobelow_json json_str =
     | `Assoc fields ->
       (* Sobelow format: { "findings": { "high_confidence": [], "low_confidence": [], ... } } *)
       (let severity_of_category cat =
-        match String.lowercase_ascii cat with
+        match String.lowercase cat with
         | "high_confidence" -> "Critical"
         | "medium_confidence" -> "High"
         | _ -> "Medium"
@@ -170,11 +173,11 @@ let parse_sobelow_json json_str =
         | _ -> None
       in
       let parse_category findings category =
-        match List.assoc_opt category findings with
-        | Some (`List items) -> List.filter_map (parse_finding category) items
+        match List.Assoc.find ~equal:String.equal findings category with
+        | Some (`List items) -> List.filter_map ~f:(parse_finding category) items
         | _ -> []
       in
-      match List.assoc_opt "findings" fields with
+      match List.Assoc.find ~equal:String.equal fields "findings" with
       | Some (`Assoc findings) ->
         parse_category findings "high_confidence"
         @ parse_category findings "medium_confidence"
@@ -182,7 +185,7 @@ let parse_sobelow_json json_str =
       | _ -> [])
     | `List items ->
       (* Flat list format *)
-      List.filter_map (fun item ->
+      List.filter_map ~f:(fun item ->
         match item with
         | `Assoc fields ->
           (try
@@ -216,16 +219,16 @@ let run_sobelow_cmd ?(threshold = `Low) project_dir =
     if command_exists "sobelow" then "sobelow"
     else "/home/kritoke/.mix/escripts/sobelow"
   in
-  let cmd = Printf.sprintf
+  let cmd = Stdlib.Printf.sprintf
     "cd %s && %s --format json --threshold %s 2>&1"
-    (Filename.quote project_dir)
+    (Stdlib.Filename.quote project_dir)
     sobelow_cmd
     threshold_str
   in
   let (status, lines) = run_cmd cmd in
   match status with
   | WEXITED 0 | WEXITED _ ->
-    let json = String.concat "\n" lines in
+    let json = String.concat ~sep:"\n" lines in
     if json = "" || json = "[]" then [] else parse_sobelow_json json
   | _ -> []
 
@@ -238,16 +241,16 @@ let parse_credo_json json_str =
     match json with
     | `Assoc fields ->
       let issues =
-        match List.assoc_opt "issues" fields with
+        match List.Assoc.find ~equal:String.equal fields "issues" with
         | Some (`List items) -> items
         | _ -> []
       in
-      List.filter_map (fun item ->
+      List.filter_map ~f:(fun item ->
         match item with
         | `Assoc ifields ->
           (try
             let category = get_str ifields "category" in
-            let sev = match String.lowercase_ascii category with
+            let sev = match String.lowercase category with
               | "refactor" | "warning" -> "Warning"
               | _ -> "Info"
             in
@@ -272,15 +275,15 @@ let parse_credo_json json_str =
 (** Run Credo scan *)
 let run_credo_cmd ?(strict = false) project_dir =
   let strict_flag = if strict then " --strict" else "" in
-  let cmd = Printf.sprintf
+  let cmd = Stdlib.Printf.sprintf
     "cd %s && mix credo --format json%s 2>&1"
-    (Filename.quote project_dir)
+    (Stdlib.Filename.quote project_dir)
     strict_flag
   in
   let (status, lines) = run_cmd cmd in
   match status with
   | WEXITED 0 ->
-    let json = String.concat "\n" lines in
+    let json = String.concat ~sep:"\n" lines in
     if json = "" then [] else parse_credo_json json
   | _ -> []
 
@@ -293,11 +296,11 @@ let parse_reach_json json_str =
     match json with
     | `Assoc fields ->
       let findings =
-        match List.assoc_opt "findings" fields with
+        match List.Assoc.find ~equal:String.equal fields "findings" with
         | Some (`List items) -> items
         | _ -> []
       in
-      List.filter_map (fun item ->
+      List.filter_map ~f:(fun item ->
         match item with
         | `Assoc ifields ->
           (try
@@ -321,16 +324,16 @@ let parse_reach_json json_str =
 
 (** Run Reach check *)
 let run_reach_cmd ?(checks = ["arch"; "smells"]) project_dir =
-  let check_args = String.concat " " (List.map (fun c -> "--" ^ c) checks) in
-  let cmd = Printf.sprintf
+  let check_args = String.concat ~sep:" " (List.map ~f:(fun c -> "--" ^ c) checks) in
+  let cmd = Stdlib.Printf.sprintf
     "cd %s && mix reach.check %s --format json 2>&1"
-    (Filename.quote project_dir)
+    (Stdlib.Filename.quote project_dir)
     check_args
   in
   let (status, lines) = run_cmd cmd in
   match status with
   | WEXITED 0 ->
-    let json = String.concat "\n" lines in
+    let json = String.concat ~sep:"\n" lines in
     if json = "" then [] else parse_reach_json json
   | _ -> []
 
@@ -363,7 +366,7 @@ let run_all_tools ?(config = default_elixir_config) ~project_dir () =
 (* ── Reporting ──────────────────────────────────────────────────────── *)
 
 let report_tool_status tools =
-  List.iter (fun ti ->
+  List.iter ~f:(fun ti ->
     let status_str = match ti.status with
       | Available -> "[available]"
       | NotInstalled -> "[not installed]"
@@ -373,5 +376,5 @@ let report_tool_status tools =
       | Some v -> " " ^ v
       | None -> ""
     in
-    Printf.printf "  %s %s%s\n" ti.name status_str ver_str
+    Stdlib.Printf.printf "  %s %s%s\n" ti.name status_str ver_str
   ) tools

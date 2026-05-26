@@ -2,6 +2,9 @@
    SARIF (Static Analysis Results Interchange Format) output.
    Produces SARIF 2.1.0 compatible JSON from findings and DAGs. *)
 
+open Base
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
 open Catseye_types
 
 let severity_to_sarif = function
@@ -23,7 +26,7 @@ let finding_to_result f =
         ]);
       ]);
     ] in
-  let flow_steps = List.map (fun (step : Finding.flow_step) ->
+  let flow_steps = List.map ~f:(fun (step : Finding.flow_step) ->
     `Assoc [
       ("location", `Assoc [
         ("physicalLocation", `Assoc [
@@ -61,11 +64,11 @@ let finding_to_result f =
                 ("region", `Assoc [("startLine", `Int ep_line)]);
               ]);
             ]);
-            ("message", `Assoc [("text", `String (Printf.sprintf "Entry point: %s" ep))]);
+            ("message", `Assoc [("text", `String (Stdlib.Printf.sprintf "Entry point: %s" ep))]);
           ]]
         | None -> []
       in
-      let path_steps = List.map (fun (pf, pl) ->
+      let path_steps = List.map ~f:(fun (pf, pl) ->
         `Assoc [
           ("location", `Assoc [
             ("physicalLocation", `Assoc [
@@ -74,7 +77,7 @@ let finding_to_result f =
             ]);
           ]);
           ("message", `Assoc [("text",
-            `String (Printf.sprintf "Reachable from entry point (%s)"
+            `String (Stdlib.Printf.sprintf "Reachable from entry point (%s)"
               (match r.entry_function with Some fn -> fn | None -> "unknown")))]);
         ]
       ) r.path in
@@ -121,10 +124,10 @@ let finding_to_result f =
   in
   let with_suggestion = match f.Finding.suggestion with
     | Some s ->
-      (match List.assoc_opt "properties" with_reachability with
+      (match List.Assoc.find ~equal:String.equal with_reachability "properties" with
        | Some (`Assoc props) ->
          ("properties", `Assoc (("suggestion", `String s) :: props)) ::
-         (List.filter (fun (k, _) -> k <> "properties") with_reachability)
+         (List.filter ~f:(fun (k, _) -> k <> "properties") with_reachability)
        | _ ->
          ("properties", `Assoc [("suggestion", `String s)]) :: with_reachability)
     | None -> with_reachability
@@ -148,7 +151,7 @@ let sca_result (name : string) (version : string option) (ecosystem : string)
       `Assoc [
         ("physicalLocation", `Assoc [
           ("artifactLocation", `Assoc [
-            ("uri", `String (Printf.sprintf "%s/%s" ecosystem name));
+            ("uri", `String (Stdlib.Printf.sprintf "%s/%s" ecosystem name));
           ]);
         ]);
       ]
@@ -159,7 +162,7 @@ let sca_result (name : string) (version : string option) (ecosystem : string)
         ("version", match version with Some v -> `String v | None -> `Null);
         ("ecosystem", `String ecosystem);
         ("vulnerabilityId", `String cve_id);
-        ("patchedVersions", `List (List.map (fun pv -> `String pv) patched));
+        ("patchedVersions", `List (List.map ~f:(fun pv -> `String pv) patched));
       ]);
     ]);
   ]
@@ -171,7 +174,7 @@ let crows_nest_results (supply_chain : Yojson.Safe.t) : Yojson.Safe.t list =
     | `List l -> l
     | _ -> []
   in
-  List.filter_map (fun dep ->
+  List.filter_map ~f:(fun dep ->
     let name = to_string (member "name" dep) in
     let version = match member "version" dep with `String s -> Some s | _ -> None in
     let ecosystem = to_string (member "ecosystem" dep) in
@@ -187,7 +190,7 @@ let crows_nest_results (supply_chain : Yojson.Safe.t) : Yojson.Safe.t list =
             let summary = to_string (member "summary" v) in
             let severity = match member "severity" v with `String s -> Some s | _ -> None in
             let patched = match member "patched_versions" v with
-              | `List l -> List.filter_map (function `String s -> Some s | _ -> None) l
+              | `List l -> List.filter_map ~f:(function `String s -> Some s | _ -> None) l
               | _ -> []
             in
             Some (sca_result name version ecosystem cve_id summary severity patched)
@@ -198,7 +201,7 @@ let crows_nest_results (supply_chain : Yojson.Safe.t) : Yojson.Safe.t list =
 
 let to_sarif (findings : Finding.t list)
     ?(supply_chain : Yojson.Safe.t option) () : string =
-  let rules = List.map (fun f ->
+  let rules = List.map ~f:(fun f ->
     `Assoc [
       ("id", `String f.Finding.rule);
       ("shortDescription", `Assoc [("text", `String f.Finding.message)]);
@@ -210,7 +213,7 @@ let to_sarif (findings : Finding.t list)
         | `List l -> l
         | _ -> []
       in
-      List.filter_map (fun dep ->
+      List.filter_map ~f:(fun dep ->
         let osv = Yojson.Safe.Util.member "osv" dep in
         match Yojson.Safe.Util.member "status" osv with
         | `String "vulnerable" ->
@@ -226,8 +229,8 @@ let to_sarif (findings : Finding.t list)
     | None -> []
   in
   let unique_rules =
-    List.sort_uniq (fun a b ->
-      let get_id = function `Assoc l -> (match List.assoc_opt "id" l with Some (`String s) -> s | _ -> "") | _ -> "" in
+    Stdlib.List.sort_uniq(fun a b ->
+      let get_id = function `Assoc l -> (match List.Assoc.find ~equal:String.equal l "id" with Some (`String s) -> s | _ -> "") | _ -> "" in
       String.compare (get_id a) (get_id b)
     ) (rules @ sca_rules)
   in
@@ -235,7 +238,7 @@ let to_sarif (findings : Finding.t list)
     | Some sc -> crows_nest_results sc
     | None -> []
   in
-  let all_results = List.map finding_to_result findings @ sca_res in
+  let all_results = List.map ~f:finding_to_result findings @ sca_res in
   let sarif = `Assoc [
     ("$schema", `String "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json");
     ("version", `String "2.1.0");

@@ -4,6 +4,8 @@
    Groups findings by file, computes per-file reachability ratios,
    and renders a visual attack surface heatmap. *)
 
+open Base
+
 open Config
 open Catseye_types
 open Catseye_engine.Reachability
@@ -64,31 +66,31 @@ type file_findings = {
 let group_by_file (findings : Finding.t list) (reach : reachability list)
     : file_findings list =
   (* Pair findings with reachability *)
-  let pairs = List.combine findings reach in
+  let pairs = Stdlib.List.combine findings reach in
   (* Group by file *)
-  let file_map = Hashtbl.create 16 in
-  List.iter (fun (f, r) ->
+  let file_map = Stdlib.Hashtbl.create 16 in
+  List.iter ~f:(fun (f, r) ->
     let file = f.Finding.file in
-    let current = try Hashtbl.find file_map file with Not_found -> [] in
-    Hashtbl.replace file_map file ((f, r) :: current)
+    let current = try Stdlib.Hashtbl.find file_map file with Stdlib.Not_found -> [] in
+    Stdlib.Hashtbl.replace file_map file ((f, r) :: current)
   ) pairs;
   (* Build file_findings records *)
   let results = ref [] in
-  Hashtbl.iter (fun file items ->
-    let live = List.length (List.filter (fun (_, r) -> r.status = `Live) items) in
-    let dormant = List.length (List.filter (fun (_, r) -> r.status = `Dormant) items) in
-    let safe = List.length (List.filter (fun (_, r) -> r.status = `Safe) items) in
+  Stdlib.Hashtbl.iter (fun file items ->
+    let live = List.length (List.filter ~f:(fun (_, r) -> r.status = `Live) items) in
+    let dormant = List.length (List.filter ~f:(fun (_, r) -> r.status = `Dormant) items) in
+    let safe = List.length (List.filter ~f:(fun (_, r) -> r.status = `Safe) items) in
     results := {
       file;
-      items = List.sort (fun (a, _) (b, _) ->
-        compare a.Finding.line b.Finding.line
+      items = List.sort ~compare:(fun (a, _) (b, _) ->
+        Int.compare a.Finding.line b.Finding.line
       ) items;
       live; dormant; safe; total = live + dormant + safe;
     } :: !results
   ) file_map;
   (* Sort files by live count descending, then by name *)
-  List.sort (fun a b ->
-    let cmp_live = compare b.live a.live in
+  List.sort ~compare:(fun a b ->
+    let cmp_live = Int.compare b.live a.live in
     if cmp_live <> 0 then cmp_live
     else String.compare a.file b.file
   ) !results
@@ -104,18 +106,18 @@ let print_heatmap (config : t)
   let total_dormant = ref 0 in
   let total_safe = ref 0 in
 
-  Printf.printf "\n  🔴 PREDATOR VISION — Attack Surface Heatmap\n\n";
+  Stdlib.Printf.printf "\n  🔴 PREDATOR VISION — Attack Surface Heatmap\n\n";
 
-  List.iter (fun g ->
+  List.iter ~f:(fun g ->
     let bar = heatmap_bar config g.live g.total in
-    Printf.printf "  %s\n" (styled (bold) config g.file);
-    Printf.printf "    %s  %d/%d sinks reachable\n"
+    Stdlib.Printf.printf "  %s\n" (styled (bold) config g.file);
+    Stdlib.Printf.printf "    %s  %d/%d sinks reachable\n"
       bar g.live g.total;
 
-    List.iter (fun (f, r) ->
+    List.iter ~f:(fun (f, r) ->
       let icon = status_icon r.status in
       let c = status_color r.status in
-      Printf.printf "    ├── %s%s [%s]  :%d   %s%s\n"
+      Stdlib.Printf.printf "    ├── %s%s [%s]  :%d   %s%s\n"
         (styled c config icon)
         (styled (bold ^ c) config f.Finding.rule)
         f.Finding.rule
@@ -124,28 +126,27 @@ let print_heatmap (config : t)
         reset;
       (* Show reachability path for Live findings *)
       if r.status = `Live && r.path <> [] then begin
-        let path_str = String.concat " → "
-          (List.map (fun (pf, pl) ->
-            Printf.sprintf "%s:%d" (Filename.basename pf) pl
+        let path_str = String.concat ~sep:" → "
+          (List.map ~f:(fun (pf, pl) ->
+            Stdlib.Printf.sprintf "%s:%d" (Stdlib.Filename.basename pf) pl
           ) r.path)
         in
-        Printf.printf "    │    ↑ Reachable via: %s%s%s\n"
+        Stdlib.Printf.printf "    │    ↑ Reachable via: %s%s%s\n"
           (styled dim config "") path_str (styled reset config "")
       end;
       if r.status = `Dormant then
-        Printf.printf "    │    ↑ Sink exists but not reachable from entry points\n"
+        Stdlib.Printf.printf "    │    ↑ Sink exists but not reachable from entry points\n"
     ) g.items;
-
     total_live := !total_live + g.live;
     total_dormant := !total_dormant + g.dormant;
     total_safe := !total_safe + g.safe;
-    Printf.printf "\n"
+    Stdlib.Printf.printf "\n"
   ) groups;
 
-  Printf.printf "  ────────────────────────────────────────\n";
-  Printf.printf "  %d LIVE PREY  •  %d DORMANT  •  %d SAFE\n"
+  Stdlib.Printf.printf "  ────────────────────────────────────────\n";
+  Stdlib.Printf.printf "  %d LIVE PREY  •  %d DORMANT  •  %d SAFE\n"
     !total_live !total_dormant !total_safe;
   let total = !total_live + !total_dormant + !total_safe in
   if total > 0 then
-    Printf.printf "  %d%% of sinks are reachable from entry points\n"
+    Stdlib.Printf.printf "  %d%% of sinks are reachable from entry points\n"
       (!total_live * 100 / total)

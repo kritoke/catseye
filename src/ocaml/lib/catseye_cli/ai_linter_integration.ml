@@ -1,8 +1,10 @@
 (* src/ocaml/lib/catseye_cli/ai_linter_integration.ml
    Integration between CLI and AI Linter
-   
+    
    Bridges CatseyeAST.t parsing with ai_linter rules.
-*)
+ *)
+
+open Base
 
 open Catseye_ast.Types
 open Catseye_ast.Error
@@ -81,24 +83,24 @@ let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t opti
   | Error err -> [error_to_finding err]
   | Ok mod_ ->
       let lang_findings = match mod_.mod_lang with
-        | Gleam -> List.map gleam_finding_to_finding (Gleam_rules.analyze_module mod_)
-        | Crystal -> List.map crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
+        | Gleam -> List.map ~f:gleam_finding_to_finding (Gleam_rules.analyze_module mod_)
+        | Crystal -> List.map ~f:crystal_finding_to_finding (Crystal_rules.analyze_module mod_)
         | JavaScript | TypeScript ->
-          List.map (fun (f : Ai_linter.Types.finding) ->
+          List.map ~f:(fun (f : Ai_linter.Types.finding) ->
             { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
               file = f.file; line = f.line; message = f.message;
               flow = []; language = "javascript"; dependency = None;
               reachability = None; suggestion = f.suggestion }
           ) (Javascript_rules.analyze_module mod_)
         | Svelte ->
-          List.map (fun (f : Ai_linter.Types.finding) ->
+          List.map ~f:(fun (f : Ai_linter.Types.finding) ->
             { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
               file = f.file; line = f.line; message = f.message;
               flow = []; language = "svelte"; dependency = None;
               reachability = None; suggestion = f.suggestion }
           ) (Svelte_rules.analyze_module mod_)
         | Other "ocaml" ->
-          List.map (fun (f : Ai_linter.Types.finding) ->
+          List.map ~f:(fun (f : Ai_linter.Types.finding) ->
             { rule = f.rule_id; severity = Ai_linter.Types.severity_to_string f.severity;
               file = f.file; line = f.line; message = f.message;
               flow = []; language = "ocaml"; dependency = None;
@@ -106,7 +108,7 @@ let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t opti
           ) (Ocaml_rules.analyze_module mod_)
         | _ -> []  (* Future language rules *)
       in
-      let ast_findings = List.map (fun v ->
+      let ast_findings = List.map ~f:(fun v ->
         let base = violation_to_finding v in
         { base with file = path }
       ) (Ast_rules.analyze_module mod_)
@@ -115,4 +117,4 @@ let analyze_file ~(extractor_registry : Catseye_engine.Extractor_registry.t opti
 
 (** Print findings to stdout *)
 let print_finding (f : ai_finding) =
-  Printf.printf "[%s] %s:%d - %s\n" f.rule f.file f.line f.message
+  Stdlib.Printf.printf "[%s] %s:%d - %s\n" f.rule f.file f.line f.message

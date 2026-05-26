@@ -6,6 +6,8 @@
    then rendered with styled nodes based on classification
    (Entry=green, Sink=red, Reachable=blue, Dormant=gray). *)
 
+open Base
+
 open Catseye_types
 open Catseye_engine.Reachability
 
@@ -15,7 +17,7 @@ open Catseye_engine.Reachability
 module CallGraph = Graph.Imperative.Digraph.Concrete (struct
   type t = string
   let compare = String.compare
-  let hash = Hashtbl.hash
+  let hash = Stdlib.Hashtbl.hash
   let equal = String.equal
 end)
 
@@ -34,42 +36,42 @@ let classify_nodes (adj : call_adjacency)
     (findings : Finding.t list)
     (scopes : scope_info list)
     : (string * string * node_class) list =
-  let entry_names = List.fold_left (fun acc e ->
+  let entry_names = List.fold_left ~init:StringSet.empty ~f:(fun acc e ->
     StringSet.add e.function_name acc
-  ) StringSet.empty entries in
-  let sink_map = Hashtbl.create 16 in
-  List.iter (fun f ->
+  ) entries in
+  let sink_map = Stdlib.Hashtbl.create 16 in
+  List.iter ~f:(fun f ->
     match find_scope scopes f.Finding.file f.Finding.line with
     | Some s ->
-      let existing = try Hashtbl.find sink_map s.func_name with Not_found -> [] in
-      Hashtbl.replace sink_map s.func_name (f.Finding.rule :: existing)
+      let existing = try Stdlib.Hashtbl.find sink_map s.func_name with Stdlib.Not_found -> [] in
+      Stdlib.Hashtbl.replace sink_map s.func_name (f.Finding.rule :: existing)
     | None -> ()
   ) findings;
   let all_funcs = ref StringSet.empty in
   StringMap.iter (fun caller edges ->
     all_funcs := StringSet.add caller !all_funcs;
-    List.iter (fun (called, _, _) ->
+    List.iter ~f:(fun (called, _, _) ->
       all_funcs := StringSet.add called !all_funcs
     ) edges
   ) adj;
-  List.iter (fun e ->
+  List.iter ~f:(fun e ->
     all_funcs := StringSet.add e.function_name !all_funcs
   ) entries;
-  let func_file = Hashtbl.create 32 in
-  List.iter (fun s ->
-    if not (Hashtbl.mem func_file s.func_name) then
-      Hashtbl.replace func_file s.func_name s.file
+  let func_file = Stdlib.Hashtbl.create 32 in
+  List.iter ~f:(fun s ->
+    if not (Stdlib.Hashtbl.mem func_file s.func_name) then
+      Stdlib.Hashtbl.replace func_file s.func_name s.file
   ) scopes;
-  List.iter (fun e ->
-    if not (Hashtbl.mem func_file e.function_name) then
-      Hashtbl.replace func_file e.function_name e.file
+  List.iter ~f:(fun e ->
+    if not (Stdlib.Hashtbl.mem func_file e.function_name) then
+      Stdlib.Hashtbl.replace func_file e.function_name e.file
   ) entries;
   StringSet.elements !all_funcs
-  |> List.filter_map (fun name ->
-    let file = try Hashtbl.find func_file name with Not_found -> "?" in
+  |> List.filter_map ~f:(fun name ->
+    let file = try Stdlib.Hashtbl.find func_file name with Stdlib.Not_found -> "?" in
     let cls =
-      if Hashtbl.mem sink_map name then
-        Sink (String.concat ", " (Hashtbl.find sink_map name))
+      if Stdlib.Hashtbl.mem sink_map name then
+        Sink (String.concat ~sep:", " (Stdlib.Hashtbl.find sink_map name))
       else if StringSet.mem name entry_names then
         Entry
       else if StringSet.mem name reachable then
@@ -88,25 +90,25 @@ let build_call_graph (adj : call_adjacency)
     (entries : entry_point list)
     (findings : Finding.t list)
     (scopes : scope_info list)
-    : CallGraph.t * (string, node_class) Hashtbl.t * int =
+    : CallGraph.t * (string, node_class) Stdlib.Hashtbl.t * int =
   let g = CallGraph.create ~size:64 () in
-  let cls_map = Hashtbl.create 64 in
+  let cls_map = Stdlib.Hashtbl.create 64 in
   (* Add edges from adjacency *)
   StringMap.iter (fun caller edges ->
     CallGraph.add_vertex g caller;
-    List.iter (fun (called, _file, _line) ->
+    List.iter ~f:(fun (called, _file, _line) ->
       CallGraph.add_edge g caller called
     ) edges
   ) adj;
   (* Add entry point vertices that may not be in adjacency *)
-  List.iter (fun e ->
+  List.iter ~f:(fun e ->
     CallGraph.add_vertex g e.function_name
   ) entries;
   (* Classify *)
   let classified = classify_nodes adj entries
     (reachable_from entries adj) findings scopes in
-  List.iter (fun (name, _file, cls) ->
-    Hashtbl.add cls_map name cls
+  List.iter ~f:(fun (name, _file, cls) ->
+    Stdlib.Hashtbl.add cls_map name cls
   ) classified;
   (g, cls_map, List.length entries)
 
@@ -120,7 +122,7 @@ let color_gray = 0x9E9E9E    (* dormant *)
 
 (** Build the call graph data and render via ocamlgraph Dot functor.
     We inline the functor instantiation to avoid first-class module complexity. *)
-let render_dot (g : CallGraph.t) (cls_map : (string, node_class) Hashtbl.t)
+let render_dot (g : CallGraph.t) (cls_map : (string, node_class) Stdlib.Hashtbl.t)
     (entry_count : int) (findings_count : int) (func_count : int) : string =
   let module D = Graph.Graphviz.Dot (struct
     include CallGraph
@@ -128,7 +130,7 @@ let render_dot (g : CallGraph.t) (cls_map : (string, node_class) Hashtbl.t)
     let graph_attributes _ =
       [ `Rankdir `LeftToRight
       ; `Fontname "Helvetica"
-      ; `Label (Printf.sprintf "Catseye Call Graph — %d functions, %d entry points, %d findings"
+      ; `Label (Stdlib.Printf.sprintf "Catseye Call Graph — %d functions, %d entry points, %d findings"
           func_count entry_count findings_count)
       ; `Fontsize 14
       ]
@@ -137,21 +139,21 @@ let render_dot (g : CallGraph.t) (cls_map : (string, node_class) Hashtbl.t)
       [ `Fontname "Helvetica"; `Fontsize 10 ]
 
     let vertex_name v =
-      let buf = Bytes.create (String.length v) in
-      String.iteri (fun i c ->
-        Bytes.set buf i (match c with
+      let buf = Stdlib.Bytes.create (String.length v) in
+      Stdlib.String.iteri (fun i c ->
+        Stdlib.Bytes.set buf i (match c with
           | '.' | ':' | '/' | ' ' | '-' -> '_'
           | c -> c)
       ) v;
-      Bytes.to_string buf
+      Stdlib.Bytes.to_string buf
 
     let vertex_attributes v =
-      match Hashtbl.find_opt cls_map v with
+      match Stdlib.Hashtbl.find_opt cls_map v with
       | Some Entry ->
         [ `Shape `Diamond; `Style `Bold; `Color color_green; `Fontcolor 0xFFFFFF ]
       | Some (Sink rules) ->
         [ `Shape `Box; `Style `Bold; `Color color_red; `Fontcolor 0xFFFFFF
-        ; `Label (Printf.sprintf "%s\\n[%s]" v rules) ]
+        ; `Label (Stdlib.Printf.sprintf "%s\\n[%s]" v rules) ]
       | Some Reachable ->
         [ `Shape `Ellipse; `Style `Filled; `Color color_blue; `Fontcolor 0xFFFFFF ]
       | Some Dormant ->
@@ -163,15 +165,15 @@ let render_dot (g : CallGraph.t) (cls_map : (string, node_class) Hashtbl.t)
     let default_edge_attributes _ = []
     let edge_attributes e =
       let target = CallGraph.E.dst e in
-      match Hashtbl.find_opt cls_map target with
+      match Stdlib.Hashtbl.find_opt cls_map target with
       | Some (Sink _) -> [ `Color color_red; `Penwidth 2.0 ]
       | _ -> []
   end) in
-  let buf = Buffer.create 4096 in
-  let fmt = Format.formatter_of_buffer buf in
+  let buf = Stdlib.Buffer.create 4096 in
+  let fmt = Stdlib.Format.formatter_of_buffer buf in
   D.fprint_graph fmt g;
-  Format.pp_print_flush fmt ();
-  Buffer.contents buf
+  Stdlib.Format.pp_print_flush fmt ();
+  Stdlib.Buffer.contents buf
 
 (* ── Export ──────────────────────────────────────────────────────────── *)
 
@@ -195,9 +197,9 @@ let output_dot (nodes : Security_node.t list)
     (output_path : string) : unit =
   let content = to_dot nodes findings ~custom_patterns in
   if output_path <> "" then begin
-    let oc = open_out output_path in
-    output_string oc content;
-    close_out oc;
-    Printf.printf "Call graph written to %s\n" output_path
+    let oc = Stdlib.open_out output_path in
+    Stdlib.output_string oc content;
+    Stdlib.close_out oc;
+    Stdlib.Printf.printf "Call graph written to %s\n" output_path
   end else
-    print_string content
+    Stdlib.print_string content
