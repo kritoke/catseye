@@ -58,7 +58,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
   if use_bridge then begin
     (* Bridge path: parse → CatseyeAST.t → Security_node.t *)
     try
-      match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
+      match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
       | Ok mod_ ->
           let nodes = Catseye_ast.To_security_node.derive mod_ in
           Some nodes
@@ -80,11 +80,9 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
          let extractor = if Catseye_engine.Extractor_registry.flat_is_compiled reg
            then Catseye_engine.Extractor_registry.flat_cmd reg
            else (
-             (* Fallback: search for compiled binary in ../bin relative to executable *)
              let exe_dir = Stdlib.Filename.dirname Stdlib.Sys.executable_name in
-             (* Try: exe_dir/../bin/, exe_dir/../../bin/, etc. *)
              let rec search_upward dir attempts =
-               if attempts > 6 then None  (* Safety limit *)
+               if attempts > 6 then None
                else (
                  let parent = Stdlib.Filename.dirname dir in
                  let candidate = parent ^ "/bin/catseye-crystal-extractor" in
@@ -97,9 +95,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
              | None -> Catseye_engine.Extractor_registry.flat_cmd reg
            )
          in
-         (* Low-level POSIX pipe with Unix.create_process + Unix.select to avoid
-            OCaml 5 fast I/O race conditions where read loop starts before the
-            child process is fully registered in the OS process table. *)
+         (* POSIX pipe + create_process: blocks natively, no select timeout races *)
          let (pipe_read, pipe_write) = Unix.pipe () in
          Unix.set_close_on_exec pipe_read;
          let pid = Unix.create_process
@@ -111,29 +107,18 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
          in
          (* CRITICAL: Close parent's write end immediately so EOF can happen naturally *)
          Unix.close pipe_write;
-         (* Read from pipe using raw Unix.read gated by Unix.select *)
+         (* Native blocking read: Unix.read blocks until Crystal closes the pipe.
+            Returns 0 ONLY when Crystal exits and all data is drained—no timing races. *)
          let buffer = Buffer.create 16384 in
          let chunk = Bytes.create 4096 in
-         let rec drain_pipeline () =
-           let (ready_readers, _, _) = Unix.select [pipe_read] [] [] 5.0 in
-           if List.is_empty ready_readers then begin
-             (* 5 seconds with no data: check if process died prematurely *)
-             match Unix.waitpid [Unix.WNOHANG] pid with
-             | (0, _) -> drain_pipeline ()  (* Still starting, keep waiting *)
-             | (_, _) -> ()  (* Process exited silently *)
-           end else begin
-             (* Data now guaranteed available in OS buffer *)
-             let bytes_read = Unix.read pipe_read chunk 0 4096 in
-             if bytes_read > 0 then begin
-               Buffer.add_subbytes buffer chunk 0 bytes_read;
-               drain_pipeline ()
-             end
-             (* else 0 bytes = clean EOF, exit loop *)
-           end
+         let rec drain_all () =
+           match Unix.read pipe_read chunk 0 4096 with
+           | 0 -> ()  (* True EOF: child exited, safe to proceed *)
+           | n -> Buffer.add_subbytes buffer chunk 0 n; drain_all ()
          in
-         drain_pipeline ();
+         (try drain_all () with _ -> ());
          Unix.close pipe_read;
-         (* Final reap pass to collect exit status *)
+         (* Reap AFTER draining to avoid 64KB pipe buffer deadlock *)
          match Unix.waitpid [] pid with
          | (_, Unix.WEXITED 0) ->
            let json_str = Buffer.contents buffer in
@@ -143,9 +128,16 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
               | Yojson.Safe.Util.Type_error (_, _) -> None
               | Yojson.Json_error _ -> None
               | Failure _ -> None)
-             else None
-         | _ -> None
-       with exn -> None)
+           else None
+         | (_, Unix.WEXITED code) ->
+           Stdio.eprintf "Extractor exited with code %d\n" code;
+           None
+         | _ ->
+           Stdio.eprintf "Extractor terminated by signal\n";
+           None
+       with exn ->
+         Stdio.eprintf "Crystal extraction error: %s\n" (Exn.to_string exn);
+         None)
   | "gleam" ->
     (try
       let nodes = Catseye_engine.Gleam.extract src.path in
@@ -160,7 +152,7 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
   | "javascript" | "typescript" | "svelte" | "ocaml" | "rust" ->
     (* New languages: parse via tree-sitter → CatseyeAST → Security_node *)
     (try
-      match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with
+      match Catseye_ast.Parse.parse_file ~extractor_cmds:None ~path:src.path with
       | Ok mod_ ->
         let nodes = Catseye_ast.To_security_node.derive mod_ in
         Some nodes
@@ -570,7 +562,7 @@ let run (config : t) : int =
         if config.format = Terminal && !analyzed mod 10 = 0 then
           Stdio.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
         try
-          match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
+          match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
           | Error _ -> []
           | Ok mod_ ->
             let unit = Catseye_il.Of_catseye_ast.translate mod_ in
@@ -684,7 +676,7 @@ let run (config : t) : int =
       (try
         (* Skip Crystal files - they were already extracted in Step 2 *)
         if src.lang = "crystal" then []
-        else match Catseye_ast.Parse.parse_file ~extractor_registry:None ~path:src.path with
+        else match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
         | Error err -> [Catseye_types.Finding.{ rule = "parse-error"; severity = "error"; file = err.file;
             line = Option.value err.line ~default:0; message = err.message;
             flow = []; language = ""; dependency = None; reachability = None; suggestion = None; }]
@@ -778,7 +770,7 @@ let run (config : t) : int =
   let all_findings = if config.claws then begin
     (* Parse ASTs for files that support it (Gleam always, Crystal via bridge) *)
     let ast_modules = List.filter_map ~f:(fun src ->
-      try match Catseye_ast.Parse.parse_file ~extractor_registry:config.extractor_registry ~path:src.path with
+      try match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
         | Ok mod_ -> Some mod_
         | Error _ -> None
       with

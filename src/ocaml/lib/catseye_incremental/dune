@@ -1,0 +1,5 @@
+(library
+ (name catseye_incremental)
+ (public_name catseye.incremental)
+ (modules analysis_graph diff_engine state_manager incremental_graph integration version)
+ (libraries base stdio incremental catseye.types catseye.engine unix))

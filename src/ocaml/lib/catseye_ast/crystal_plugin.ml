@@ -1,27 +1,29 @@
-(* lib/catseye_ast/plugins/crystal_plugin.ml
+(* lib/catseye_ast/crystal_plugin.ml
    Crystal language plugin descriptor.
+   
+   This plugin receives extractor commands as parameters from the engine,
+   keeping catseye.ast as a pure leaf library with no engine dependency.
  *)
 
 open Base
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
-let plugin ~(extractor_registry : Catseye_engine.Extractor_registry.t) : Language_plugin.t = {
+let plugin ~(extractor_cmds : Catseye_types.Extractor_cmds.t) : Language_plugin.t = {
   name = "crystal";
   extensions = [".cr"];
 
   parse_file = (fun ~path ->
-    let hier_cmd = Catseye_engine.Extractor_registry.hier_cmd extractor_registry in
-    let flat_cmd = Catseye_engine.Extractor_registry.flat_cmd extractor_registry in
     (* Try hierarchical first, fall back to flat on failure *)
-    match Crystal_hierarchical_mapper.parse_file ~extractor_cmd:hier_cmd ~path with
+    match Crystal_hierarchical_mapper.parse_file ~extractor_cmd:extractor_cmds.hier ~path with
     | Ok _ as result -> result
-    | Error _ -> Crystal_mapper.parse_file ~extractor_cmd:flat_cmd ~path
+    | Error _ -> Crystal_mapper.parse_file ~extractor_cmd:extractor_cmds.flat ~path
   );
 
-extract_file = Some (fun path ->
-    let cmd = Catseye_engine.Extractor_registry.flat_cmd extractor_registry in
-    let full_cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" (Stdlib.Filename.quote cmd) (Stdlib.Filename.quote path) in
+  extract_file = Some (fun path ->
+    let full_cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" 
+      (Stdlib.Filename.quote extractor_cmds.flat) 
+      (Stdlib.Filename.quote path) in
     try
       let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full full_cmd (Unix.environment ()) in
       let output = Stdlib.Buffer.create 4096 in

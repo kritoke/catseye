@@ -28,7 +28,8 @@ type t = {
   lang_filter : lang_filter;
   output_path : string;
   color : bool;
-  extractor_registry : Catseye_engine.Extractor_registry.t option;
+  extractor_registry : Catseye_engine.Extractor_registry.t option;  (* Legacy: kept for direct access *)
+  extractor_cmds : Catseye_types.Extractor_cmds.t option;  (* New: simple command record for AST layer *)
   crystal_available : bool;  (* Whether Crystal toolchain was detected *)
   rules_dir : string;
   extra_sources : string list;
@@ -68,6 +69,7 @@ let default = {
   output_path = "";
   color = true;
   extractor_registry = None;
+  extractor_cmds = None;
   crystal_available = false;
   rules_dir = "rules";
   extra_sources = [];
@@ -342,13 +344,18 @@ and detect_elixir () : bool =
   with _ -> false
 
 (** Initialize Crystal extractor registry if toolchain is available.
-    Sets extractor_registry and crystal_available fields. *)
+    Sets extractor_registry and extractor_cmds fields. *)
 let init_crystal (cfg : t) : t =
   if detect_crystal () then begin
     let reg = Catseye_engine.Extractor_registry.create () in
-    { cfg with extractor_registry = Some reg; crystal_available = true }
+    let cmds = Some {
+      Catseye_types.Extractor_cmds.default with
+      flat = Catseye_engine.Extractor_registry.flat_cmd reg;
+      hier = Catseye_engine.Extractor_registry.hier_cmd reg;
+    } in
+    { cfg with extractor_registry = Some reg; extractor_cmds = cmds; crystal_available = true }
   end else
-    { cfg with extractor_registry = None; crystal_available = false }
+    { cfg with extractor_registry = None; extractor_cmds = None; crystal_available = false }
 
 (** Initialize Elixir support if toolchain is available.
     Auto-enables elixir_enabled when mix is found on PATH. *)

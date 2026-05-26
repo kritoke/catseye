@@ -1,8 +1,10 @@
-(* lib/catseye_ast/plugins/gleam_plugin.ml
+(* lib/catseye_ast/gleam_plugin.ml
    Gleam language plugin descriptor.
+   
+   Gleam uses tree-sitter exclusively via Gleam_mapper.
+   No extractor registry needed for this language.
  *)
 
-open Base
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
@@ -12,14 +14,7 @@ let plugin : Language_plugin.t = {
 
   parse_file = Gleam_mapper.parse_file;
 
-  extract_file = Some (fun path ->
-    try
-      let nodes = Catseye_engine.Gleam.extract path in
-      (match nodes with
-       | Ok ns -> Some ns
-       | Error _ -> None)
-    with _ -> None
-  );
+  extract_file = None;  (* Uses tree-sitter via parse_file *)
 
   taint_sources = ["request"; "dynamic.from"];
   taint_sinks = ["ffi"; "todo"];

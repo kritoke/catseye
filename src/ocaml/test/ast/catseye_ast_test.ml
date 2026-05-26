@@ -7,16 +7,16 @@ let () =
   (* Set environment variables *)
   Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
   Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye";
-  let registry = Catseye_engine.Extractor_registry.create
-    ~flat_env:(Some "crystal run /workspaces/catseye/src/extractor/extractor.cr --")
-    ~hier_env:(Some "crystal run /workspaces/catseye/src/extractor/extractor.cr --")
-    () in
+  let cmds = {
+    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+  } in
 
   let sample = "/workspaces/catseye/test/samples/ai_antipatterns.gleam" in
   Printf.printf "=== Testing Gleam CatseyeAST parsing ===\n";
   Printf.printf "File: %s\n" sample;
 
-  match parse_file ~extractor_registry:(Some registry) ~path:sample with
+  match parse_file ~extractor_cmds:(Some cmds) ~path:sample with
   | Error err ->
       Printf.printf "ERROR: %s\n" err.message
   | Ok mod_ ->
