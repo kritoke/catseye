@@ -12,8 +12,20 @@
     enough to absorb minor overcounting.
 *)
 
+open Base
 open Catseye_types
 open Scope
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+
+(* Alias for using old List API temporarily *)
+module OldList = struct
+  let exists = Stdlib.List.exists
+  let fold_left = Stdlib.List.fold_left
+  let filter_map = Stdlib.List.filter_map
+end
 
 (* ── Decision patterns ──────────────────────────────────────────────── *)
 
@@ -30,19 +42,19 @@ let decision_patterns =
 
 (** Find substring [needle] in [haystack], returning start index or -1. *)
 let find_substring (haystack : string) (needle : string) : int =
-  let hlen = String.length haystack in
-  let nlen = String.length needle in
+  let hlen = Stdlib.String.length haystack in
+  let nlen = Stdlib.String.length needle in
   if nlen > hlen then -1
   else begin
     let result = ref (-1) in
     (try
       for i = 0 to hlen - nlen do
-        if String.sub haystack i nlen = needle then begin
+        if Stdlib.String.sub haystack i nlen = needle then begin
           result := i;
-          raise Exit
+          raise Stdlib.Exit
         end
       done
-    with Exit -> ());
+    with Stdlib.Exit -> ());
     !result
   end
 
@@ -53,14 +65,14 @@ let find_substring (haystack : string) (needle : string) : int =
     Requires word boundaries around the pattern.
 *)
 let is_decision (name : string) : bool =
-  let lower = String.lowercase_ascii name in
-  List.exists (fun pat ->
+  let lower = Stdlib.String.lowercase_ascii name in
+  OldList.exists (fun pat ->
     let idx = find_substring lower pat in
     if idx < 0 then false
     else begin
       let before_ok = idx = 0 || let c = lower.[idx - 1] in c = ' ' || c = '.' || c = '_' in
-      let after_idx = idx + String.length pat in
-      let after_ok = after_idx >= String.length lower
+      let after_idx = idx + Stdlib.String.length pat in
+      let after_ok = after_idx >= Stdlib.String.length lower
         || let c = lower.[after_idx] in c = ' ' || c = '.' || c = '_' || c = '('
       in
       before_ok && after_ok
@@ -71,7 +83,7 @@ let is_decision (name : string) : bool =
 
 (** Compute cyclomatic complexity for a function body. *)
 let compute_complexity (body : Security_node.t list) : int =
-  1 + List.fold_left (fun acc (n : Security_node.t) ->
+  1 + OldList.fold_left (fun acc (n : Security_node.t) ->
     if is_decision n.Security_node.name then acc + 1
     else acc
   ) 0 body
@@ -82,7 +94,7 @@ let compute_complexity (body : Security_node.t list) : int =
 let analyze (nodes : Security_node.t list) (config : Types.claws_config)
     : Finding.t list =
   let scopes = build_scopes nodes in
-  List.filter_map (fun ({ def; body } : scope) ->
+  OldList.filter_map (fun ({ def; body } : scope) ->
     let complexity = compute_complexity body in
     let severity, threshold =
       if complexity >= config.complexity_critical then
@@ -97,13 +109,13 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
       severity;
       file = def.Security_node.file;
       line = def.Security_node.line;
-      message = Printf.sprintf
+      message = Stdlib.Printf.sprintf
         "Function '%s' has cyclomatic complexity of %d (threshold: %d)"
         def.Security_node.name complexity threshold;
       flow = [ {
         Finding.file = def.Security_node.file;
         line = def.Security_node.line;
-        message = Printf.sprintf "Definition of '%s' (complexity: %d)"
+        message = Stdlib.Printf.sprintf "Definition of '%s' (complexity: %d)"
           def.Security_node.name complexity;
       } ];
       language = def.Security_node.language;

@@ -9,6 +9,12 @@
     https://martinfowler.com/bliki/LargeClass.html
 *)
 
+open Base
+
+(* String comparison shadow *)
+let (=) = Stdlib.( = )
+let (<>) = Stdlib.( <> )
+
 open Catseye_types
 
 (* ── Analyzer ─────────────────────────────────────────────────────── *)
@@ -19,7 +25,7 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
     let warn_threshold = config.large_class_loc_warning in
     let crit_threshold = config.large_class_loc_critical in
     let class_scopes = Scope.build_class_scopes nodes in
-    List.filter_map (fun (cs : Scope.class_scope) ->
+    Stdlib.List.filter_map (fun (cs : Scope.class_scope) ->
       let loc = cs.loc in
       if loc >= crit_threshold then
         Some {
@@ -27,14 +33,14 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
           severity = "High";
           file = cs.class_node.Security_node.file;
           line = cs.class_node.Security_node.line;
-          message = Printf.sprintf
+          message = Stdlib.Printf.sprintf
             "Class '%s' is %d lines (critical threshold: %d). \
              Consider splitting into smaller, focused classes."
             cs.class_node.Security_node.name loc crit_threshold;
           flow = [ {
             Finding.file = cs.class_node.Security_node.file;
             line = cs.class_node.Security_node.line;
-            message = Printf.sprintf "Definition of '%s' (%d lines)"
+            message = Stdlib.Printf.sprintf "Definition of '%s' (%d lines)"
               cs.class_node.Security_node.name loc;
           } ];
           language = cs.class_node.Security_node.language;
@@ -47,14 +53,14 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
           severity = "Medium";
           file = cs.class_node.Security_node.file;
           line = cs.class_node.Security_node.line;
-          message = Printf.sprintf
+          message = Stdlib.Printf.sprintf
             "Class '%s' is %d lines (warning threshold: %d). \
              Consider splitting into smaller, focused classes."
             cs.class_node.Security_node.name loc warn_threshold;
           flow = [ {
             Finding.file = cs.class_node.Security_node.file;
             line = cs.class_node.Security_node.line;
-            message = Printf.sprintf "Definition of '%s' (%d lines)"
+            message = Stdlib.Printf.sprintf "Definition of '%s' (%d lines)"
               cs.class_node.Security_node.name loc;
           } ];
           language = cs.class_node.Security_node.language;

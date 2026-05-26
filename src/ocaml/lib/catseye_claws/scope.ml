@@ -6,24 +6,30 @@
     (Def node + its body). This module centralizes that logic.
 *)
 
+open Base
+
+(* String/int comparison shadows *)
+let (=) = Stdlib.( = )
+let (<>) = Stdlib.( <> )
+
 open Catseye_types
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
 (** Find substring [needle] in [haystack], returning start index or -1. *)
 let find_substring (haystack : string) (needle : string) : int =
-  let hlen = String.length haystack in
-  let nlen = String.length needle in
+  let hlen = Stdlib.String.length haystack in
+  let nlen = Stdlib.String.length needle in
   if nlen > hlen then -1
   else begin
-    let result = ref (-1) in
+    let result = Stdlib.ref (-1) in
     (try
       for i = 0 to hlen - nlen do
-        if String.sub haystack i nlen = needle then begin
-          result := i; raise Exit
+        if Stdlib.String.sub haystack i nlen = needle then begin
+          result := i; raise Stdlib.Exit
         end
       done
-    with Exit -> ());
+    with Stdlib.Exit -> ());
     !result
   end
 
@@ -39,36 +45,32 @@ type scope = {
 type class_scope = {
   class_node : Security_node.t;
   methods : scope list;
-  loc : int;  (** end_line - start_line *)
+  loc : int;
 }
 
 (* ── Scope building ────────────────────────────────────────────────── *)
 
-(** Build function scopes from a flat node list, grouped by file.
-
-    Uses a line-range heuristic: a Def's body extends from its line
-    to the next Def's line (or end of file) in the same file.
-*)
+(** Build function scopes from a flat node list, grouped by file. *)
 let build_scopes (nodes : Security_node.t list) : scope list =
   (* Group by file *)
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  let by_file = Stdlib.Hashtbl.create 16 in
+  Stdlib.List.iter (fun (n : Security_node.t) ->
+    let existing = try Stdlib.Hashtbl.find by_file n.Security_node.file with Stdlib.Not_found -> [] in
+    Stdlib.Hashtbl.replace by_file n.Security_node.file (n :: existing)
   ) nodes;
   (* For each file, find Def nodes and their bodies *)
-  let scopes = ref [] in
-  Hashtbl.iter (fun _file file_nodes ->
-    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-    let defs = List.filter (fun n -> n.Security_node.node_type = Security_node.Def) sorted in
-    List.iteri (fun i (def : Security_node.t) ->
+  let scopes = Stdlib.ref [] in
+  Stdlib.Hashtbl.iter (fun _file file_nodes ->
+    let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
+    let defs = Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Def) sorted in
+    Stdlib.List.iteri (fun i (def : Security_node.t) ->
       let start_line = def.Security_node.line in
       let end_line =
-        if i + 1 < List.length defs then
-          (List.nth defs (i + 1)).Security_node.line
-        else max_int
+        if i + 1 < Stdlib.List.length defs then
+          (Stdlib.List.nth defs (i + 1)).Security_node.line
+        else Stdlib.max_int
       in
-      let body = List.filter (fun (n : Security_node.t) ->
+      let body = Stdlib.List.filter (fun (n : Security_node.t) ->
         n.Security_node.node_type <> Security_node.Def
         && n.Security_node.line >= start_line
         && n.Security_node.line < end_line
@@ -76,46 +78,39 @@ let build_scopes (nodes : Security_node.t list) : scope list =
       scopes := { def; body } :: !scopes
     ) defs
   ) by_file;
-  List.rev !scopes
+  Stdlib.List.rev !scopes
 
 (* ── Class scope building ──────────────────────────────────────────── *)
 
-(** Build class scopes from a flat node list.
-
-    Groups Def nodes by their enclosing class/module/enum.
-    Returns class_scope list with methods and LOC.
-*)
+(** Build class scopes from a flat node list. *)
 let build_class_scopes (nodes : Security_node.t list) : class_scope list =
   (* Group nodes by file *)
-  let by_file = Hashtbl.create 16 in
-  List.iter (fun (n : Security_node.t) ->
-    let existing = try Hashtbl.find by_file n.Security_node.file with Not_found -> [] in
-    Hashtbl.replace by_file n.Security_node.file (n :: existing)
+  let by_file = Stdlib.Hashtbl.create 16 in
+  Stdlib.List.iter (fun (n : Security_node.t) ->
+    let existing = try Stdlib.Hashtbl.find by_file n.Security_node.file with Stdlib.Not_found -> [] in
+    Stdlib.Hashtbl.replace by_file n.Security_node.file (n :: existing)
   ) nodes;
-  let class_scopes = ref [] in
-  Hashtbl.iter (fun _file file_nodes ->
-    let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-    (* Find class/module/enum boundaries *)
-    let type_defs = List.filter (fun n ->
-      List.mem n.Security_node.node_type
+  let class_scopes = Stdlib.ref [] in
+  Stdlib.Hashtbl.iter (fun _file file_nodes ->
+    let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
+    let type_defs = Stdlib.List.filter (fun n ->
+      Stdlib.List.mem n.Security_node.node_type
         [Security_node.Class; Security_node.Module; Security_node.Enum]
     ) sorted in
-    List.iteri (fun i (td : Security_node.t) ->
+    Stdlib.List.iteri (fun i (td : Security_node.t) ->
       let start_line = td.Security_node.line in
       let end_line =
-        if i + 1 < List.length type_defs then
-          (List.nth type_defs (i + 1)).Security_node.line
+        if i + 1 < Stdlib.List.length type_defs then
+          (Stdlib.List.nth type_defs (i + 1)).Security_node.line
         else 1000000
       in
-      (* Get all Def nodes within this class *)
-      let methods_in_class = List.filter (fun (n : Security_node.t) ->
+      let methods_in_class = Stdlib.List.filter (fun (n : Security_node.t) ->
         n.Security_node.node_type = Security_node.Def
         && n.Security_node.line >= start_line
         && n.Security_node.line < end_line
       ) sorted in
-      (* Build scope for each method *)
-      let method_scopes = List.map (fun (def : Security_node.t) ->
-        let body = List.filter (fun (n : Security_node.t) ->
+      let method_scopes = Stdlib.List.map (fun (def : Security_node.t) ->
+        let body = Stdlib.List.filter (fun (n : Security_node.t) ->
           n.Security_node.node_type <> Security_node.Def
           && n.Security_node.line >= def.Security_node.line
           && n.Security_node.line < end_line
@@ -124,16 +119,12 @@ let build_class_scopes (nodes : Security_node.t list) : class_scope list =
         { def; body }
       ) methods_in_class in
       let loc =
-        (* For the last type_def in a file, count lines to the actual last
-           node rather than using 1000000. Fall back to counting all nodes
-           in the file to estimate a real end line. *)
         let real_end =
           if end_line >= 1000000 then
-            (* Find the max line among all nodes in this file *)
-            let max_line = List.fold_left (fun acc (n : Security_node.t) ->
-              max acc n.Security_node.line
+            let max_line = Stdlib.List.fold_left (fun acc (n : Security_node.t) ->
+              Stdlib.max acc n.Security_node.line
             ) start_line sorted in
-            max_line + 1  (* +1 for the closing end token *)
+            max_line + 1
           else end_line
         in
         real_end - start_line
@@ -141,20 +132,19 @@ let build_class_scopes (nodes : Security_node.t list) : class_scope list =
       class_scopes := { class_node = td; methods = method_scopes; loc } :: !class_scopes
     ) type_defs
   ) by_file;
-  List.rev !class_scopes
+  Stdlib.List.rev !class_scopes
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
 (** Get the class/module/enum containing a node, by file and line range. *)
 let find_enclosing_class (nodes : Security_node.t list) (file : string) (line : int)
     : Security_node.t option =
-  let file_nodes = List.filter (fun n -> n.Security_node.file = file) nodes in
-  let sorted = List.sort (fun a b -> compare a.Security_node.line b.Security_node.line) file_nodes in
-  let type_defs = List.filter (fun n ->
-    List.mem n.Security_node.node_type
+  let file_nodes = Stdlib.List.filter (fun n -> n.Security_node.file = file) nodes in
+  let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
+  let type_defs = Stdlib.List.filter (fun n ->
+    Stdlib.List.mem n.Security_node.node_type
       [Security_node.Class; Security_node.Module; Security_node.Enum]
   ) sorted in
-  (* Find the last type def that starts before or at [line] *)
   let rec find = function
     | [] -> None
     | [td] -> if td.Security_node.line <= line then Some td else None

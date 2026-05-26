@@ -8,7 +8,19 @@
     https://martinfowler.com/bliki/Blob.html
 *)
 
+open Base
 open Catseye_types
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+let ( < ) = Stdlib.( < )
+let ( > ) = Stdlib.( > )
+
+(* Alias for using old List API temporarily *)
+module OldList = struct
+  let length = Stdlib.List.length
+  let filter_map = Stdlib.List.filter_map
+end
 
 (* ── Config thresholds ─────────────────────────────────────────────── *)
 
@@ -18,13 +30,13 @@ let default_method_count_critical = 25
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
 let contains (str : string) (sub : string) : bool =
-  let slen = String.length str in
-  let slen_sub = String.length sub in
+  let slen = Stdlib.String.length str in
+  let slen_sub = Stdlib.String.length sub in
   if slen_sub > slen then false
   else
     let rec check i =
       if i > slen - slen_sub then false
-      else if String.sub str i slen_sub = sub then true
+      else if Stdlib.String.sub str i slen_sub = sub then true
       else check (i + 1)
     in
     check 0
@@ -36,8 +48,8 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
   if not config.large_class_enabled then [] else
     let class_scopes = Scope.build_class_scopes nodes in
     (* Filter to real blob candidates: large + many methods *)
-    List.filter_map (fun (cs : Scope.class_scope) ->
-      let method_count = List.length cs.methods in
+    OldList.filter_map (fun (cs : Scope.class_scope) ->
+      let method_count = OldList.length cs.methods in
       let loc = cs.loc in
       let file = cs.class_node.Security_node.file in
       let name = cs.class_node.Security_node.name in
@@ -52,14 +64,14 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
           severity = "High";
           file;
           line = cs.class_node.Security_node.line;
-          message = Printf.sprintf
+          message = Stdlib.Printf.sprintf
             "Class '%s' appears to be a Blob (God Object): %d methods, %d LOC. \
              This class has too many responsibilities. Consider splitting by feature."
             name method_count loc;
           flow = [ {
             Finding.file;
             line = cs.class_node.Security_node.line;
-            message = Printf.sprintf "Definition of '%s' (%d methods, %d LOC)"
+            message = Stdlib.Printf.sprintf "Definition of '%s' (%d methods, %d LOC)"
               name method_count loc;
           } ];
           language = cs.class_node.Security_node.language;
@@ -72,14 +84,14 @@ let analyze (nodes : Security_node.t list) (config : Types.claws_config)
           severity = "Medium";
           file;
           line = cs.class_node.Security_node.line;
-          message = Printf.sprintf
+          message = Stdlib.Printf.sprintf
             "Class '%s' may be a Blob: %d methods, %d LOC. \
              Consider if it has multiple responsibilities that could be separated."
             name method_count loc;
           flow = [ {
             Finding.file;
             line = cs.class_node.Security_node.line;
-            message = Printf.sprintf "Definition of '%s' (%d methods, %d LOC)"
+            message = Stdlib.Printf.sprintf "Definition of '%s' (%d methods, %d LOC)"
               name method_count loc;
           } ];
           language = cs.class_node.Security_node.language;

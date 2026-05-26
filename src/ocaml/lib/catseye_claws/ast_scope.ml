@@ -6,7 +6,16 @@
    a single CatseyeAST-native scope builder.
 *)
 
+open Base
 open Catseye_ast.Types
+
+(* Use old List API via alias - Base.List.concat_map requires ~f label *)
+module OldList = struct
+  let concat_map = Stdlib.List.concat_map
+  let filter = Stdlib.List.filter
+  let filter_map = Stdlib.List.filter_map
+  let length = Stdlib.List.length
+end
 
 (** An AST-native function scope.
     Unlike the Security_node scope which uses line-range heuristics,
@@ -26,7 +35,7 @@ type ast_scope = {
     tracking parent class/module context. *)
 let rec collect_scopes (items : item list) (file : string) (lang : string)
     (parent : string option) : ast_scope list =
-  List.concat_map (fun (item : item) ->
+  OldList.concat_map (fun (item : item) ->
     let line = item.item_location.start.line in
     match item.item_value with
     | IFunction (name, params, _, body) ->
@@ -40,7 +49,7 @@ let rec collect_scopes (items : item list) (file : string) (lang : string)
 
 (** Build AST scopes from a list of parsed modules. *)
 let build (modules : Catseye_ast.Types.t list) : ast_scope list =
-  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+  OldList.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with
       | Gleam -> "gleam"
       | Crystal -> "crystal"
@@ -57,21 +66,21 @@ let build (modules : Catseye_ast.Types.t list) : ast_scope list =
 let count_methods_in_parent (modules : Catseye_ast.Types.t list)
     : (string * string * int) list =
   let rec count_in_items (items : item list) (file : string) =
-    List.concat_map (fun (item : item) ->
+    OldList.concat_map (fun (item : item) ->
       match item.item_value with
       | IClass (name, children) ->
-        let fn_count = List.filter_map (fun (c : item) ->
+        let fn_count = OldList.filter_map (fun (c : item) ->
           match c.item_value with IFunction _ -> Some () | _ -> None
-        ) children |> List.length in
+        ) children |> OldList.length in
         (name, file, fn_count) :: count_in_items children file
       | IModule (name, children) ->
-        let fn_count = List.filter_map (fun (c : item) ->
+        let fn_count = OldList.filter_map (fun (c : item) ->
           match c.item_value with IFunction _ -> Some () | _ -> None
-        ) children |> List.length in
+        ) children |> OldList.length in
         (name, file, fn_count) :: count_in_items children file
       | _ -> []
     ) items
   in
-  List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
+  OldList.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     count_in_items mod_.mod_items mod_.mod_path
   ) modules

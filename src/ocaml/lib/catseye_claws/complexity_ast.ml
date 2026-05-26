@@ -11,8 +11,19 @@
    which pattern-matches node names like "if", "unless", "case", etc.
 *)
 
+open Base
 open Catseye_ast.Types
 open Catseye_types
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+
+(* Alias for using old List API temporarily *)
+module OldList = struct
+  let fold_left = Stdlib.List.fold_left
+  let filter_map = Stdlib.List.filter_map
+  let length = Stdlib.List.length
+end
 
 (** Count decision points in an expression tree.
     McCabe cyclomatic complexity = 1 + decision_count. *)
@@ -23,15 +34,15 @@ let rec count_decisions (expr : expr) : int =
   | EFieldAccess (recv, _) ->
     count_decisions recv
   | ETuple es | EList es ->
-    List.fold_left (fun acc e -> acc + count_decisions e) 0 es
+    OldList.fold_left (fun acc e -> acc + count_decisions e) 0 es
   | ERecord fields ->
-    List.fold_left (fun acc (_, e) -> acc + count_decisions e) 0 fields
+    OldList.fold_left (fun acc (_, e) -> acc + count_decisions e) 0 fields
   | ERecordUpdate (e, fields) ->
     count_decisions e +
-    List.fold_left (fun acc (_, e) -> acc + count_decisions e) 0 fields
+    OldList.fold_left (fun acc (_, e) -> acc + count_decisions e) 0 fields
   | EApp (fn, args) ->
     count_decisions fn +
-    List.fold_left (fun acc a -> acc + count_decisions a) 0 args
+    OldList.fold_left (fun acc a -> acc + count_decisions a) 0 args
   | EFn (_, body) ->
     count_decisions body
   | EIf (_cond, then_, else_) ->
@@ -42,8 +53,8 @@ let rec count_decisions (expr : expr) : int =
     + (match else_ with Some e -> count_decisions e | None -> 0)
   | ECase (_target, branches) ->
     (* Each branch is a decision point *)
-    List.length branches
-    + List.fold_left (fun acc (_, body) -> acc + count_decisions body) 0 branches
+    OldList.length branches
+    + OldList.fold_left (fun acc (_, body) -> acc + count_decisions body) 0 branches
   | ELet (_, e1, e2) | ELetAssert (_, e1, e2) | EUse (_, e1, e2) ->
     count_decisions e1 + count_decisions e2
   | EAssignment (e1, e2) ->
@@ -54,7 +65,7 @@ let rec count_decisions (expr : expr) : int =
   | EUnOp (_, e1) ->
     count_decisions e1
   | EBlock es ->
-    List.fold_left (fun acc e -> acc + count_decisions e) 0 es
+    OldList.fold_left (fun acc e -> acc + count_decisions e) 0 es
   | EError _ | EUnknown _ | ETryCatchFinally _ ->
     0
 
@@ -62,7 +73,7 @@ let rec count_decisions (expr : expr) : int =
 let analyze (modules : Catseye_ast.Types.t list) (config : Types.claws_config)
     : Finding.t list =
   let scopes = Ast_scope.build modules in
-  List.filter_map (fun (scope : Ast_scope.ast_scope) ->
+  OldList.filter_map (fun (scope : Ast_scope.ast_scope) ->
     let complexity = 1 + count_decisions scope.body in
     let severity, threshold =
       if complexity >= config.complexity_critical then
@@ -77,13 +88,13 @@ let analyze (modules : Catseye_ast.Types.t list) (config : Types.claws_config)
       severity;
       file = scope.file;
       line = scope.line;
-      message = Printf.sprintf
+      message = Stdlib.Printf.sprintf
         "Function '%s' has cyclomatic complexity of %d (threshold: %d)"
         scope.fn_name complexity threshold;
       flow = [ {
         Finding.file = scope.file;
         line = scope.line;
-        message = Printf.sprintf "Definition of '%s' (complexity: %d)"
+        message = Stdlib.Printf.sprintf "Definition of '%s' (complexity: %d)"
           scope.fn_name complexity;
       } ];
       language = scope.lang;
