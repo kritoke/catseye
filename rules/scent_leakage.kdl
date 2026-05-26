@@ -1,0 +1,123 @@
+rule "ScentLeakage" severity="Critical" {
+    sinks {
+        // Crystal log sinks
+        sink "Logger.info" {
+            // URLs validated through SSRF checks are safe to log (diagnostic info)
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Logger.warn" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Logger.error" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Logger.debug" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Logger.notice" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Log.info" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Log.warn" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Log.error" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Log.debug" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        sink "Log.notice" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid logging sensitive data — redact or mask before logging"
+        }
+        // Crystal output sinks
+        sink "puts" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "pp!" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "print" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "STDOUT.puts" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "STDOUT.write" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "STDERR.puts" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "STDERR.write" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid printing sensitive data — redact or mask before output"
+        }
+        sink "Log.write" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid logging sensitive data — redact or mask"
+        }
+        sink "IO.write" {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            fix "Avoid writing sensitive data to unsecured output — redact or mask"
+        }
+    }
+    sources {
+        source "password"
+        source "token"
+        source "secret"
+        source "api_key"
+        source "credential"
+        source "email"
+        source "ssn"
+        source "credit_card"
+        source "session_id"
+    }
+    message "Scent Leakage: sensitive data may reach {sink} via scented variable(s): {tainted_vars}."
+}

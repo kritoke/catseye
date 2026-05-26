@@ -78,13 +78,21 @@ Examples:
 
 (* ── Simple argument parsing ─────────────────────────────────────────── *)
 
-let find_opt key args =
+let find_opt key args : string option =
+  (* First try --key=value format *)
   let prefix = "--" ^ key ^ "=" in
-  List.find_map args ~f:(fun s ->
-    if String.is_prefix s ~prefix then
-      let rem = String.drop_prefix s (String.length prefix) in
-      Some rem
-    else None)
+  match List.find args ~f:(fun s -> String.is_prefix s ~prefix) with
+  | Some s -> Some (String.drop_prefix s (String.length prefix))
+  | None ->
+    (* Then try --key VALUE format (space-separated) *)
+    let flag = "--" ^ key in
+    let idx = List.findi args ~f:(fun _ s -> String.equal s flag) in
+    match idx with
+    | Some (i, _) ->
+      (match List.nth args (i + 1) with
+       | Some v when not (String.is_prefix v ~prefix:"--") -> Some v
+       | _ -> None)
+    | None -> None
 
 let has_flag key args =
   let flag = "--" ^ key in

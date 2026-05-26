@@ -1,0 +1,21 @@
+rule "OpenRedirect" severity="Medium" {
+    sinks {
+        sink "redirect_to" arg=0 {
+            fix "redirect_to(validate_url({arg0}))"
+        }
+        sink "response.redirect" arg=0 {
+            fix "response.redirect(validate_url({arg0}))"
+        }
+        sink "send_redirect" arg=0 {
+            fix "Validate URL is relative or allowlisted: send_redirect(validate_url({arg0}))"
+        }
+    }
+    sources {
+        source "params" field="url"
+        source "url"
+        source "redirect_url"
+        source "return_to"
+        source "next"
+    }
+    message "Potential open redirect via {sink} with user-controlled URL: {tainted_vars}."
+}

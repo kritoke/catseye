@@ -1,0 +1,24 @@
+rule "ReDoS" severity="Medium" {
+    sinks {
+        sink "Regex.new" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
+        sink "Regex.compile" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
+        sink "re.compile" {
+            fix "re.compile(regex, timeout=1) or simplify nested quantifiers"
+        }
+        sink "regexp.compile" {
+            fix "Use a non-backtracking regex engine or simplify nested quantifiers"
+        }
+    }
+    conditions {
+        check_args_contain "+)+"
+        check_args_contain "+)*"
+        check_args_contain "*)+"
+        check_args_contain "*)*"
+        check_args_contain "?)"
+    }
+    message "Potential ReDoS: regex with nested quantifiers or overlapping groups. Catastrophic backtracking risk."
+}

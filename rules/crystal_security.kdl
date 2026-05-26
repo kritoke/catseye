@@ -1,0 +1,85 @@
+rule "IgnoredPermission" severity="Hint" {
+    sinks {
+        sink "File.chmod" arg=0 {
+            fix "Handle chmod result: result = File.chmod({arg0}, {arg1}); raise \"Permission failed\" unless result"
+        }
+        sink "chmod" arg=0 {
+            fix "Handle chmod result: result = chmod({arg0}, {arg1}); raise \"Permission failed\" unless result"
+        }
+        sink "File.chown" arg=0 {
+            fix "Handle chown result or check ownership separately"
+        }
+        sink "chown" arg=0 {
+            fix "Handle chown result or check ownership separately"
+        }
+        sink "File.chgrp" arg=0 {
+            fix "Handle chgrp result or check group membership separately"
+        }
+        sink "chgrp" arg=0 {
+            fix "Handle chgrp result or check group membership separately"
+        }
+    }
+    message "Permission operation {sink} may fail silently. Consider checking the result or using atomic operations."
+}
+
+rule "NonAtomicFileOp" severity="Hint" {
+    sinks {
+        sink "File.rename" arg=0 {
+            fix "Use atomic write pattern: write to temp, then rename"
+        }
+        sink "rename" arg=0 {
+            fix "Use atomic write pattern: write to temp, then rename"
+        }
+        sink "File.unlink" arg=0 {
+            fix "Check return value or use try/rescue for deletion failures"
+        }
+        sink "unlink" arg=0 {
+            fix "Check return value or use try/rescue for deletion failures"
+        }
+    }
+    message "File operation {sink} is non-atomic on some filesystems. Consider atomic write pattern."
+}
+
+rule "UnboundedRead" severity="Low" {
+    sinks {
+        sink "File.read" arg=0 {
+            sanitizer "File.size"
+            fix "Limit read size: content = File.read(path, max_size); raise \"File too large\" unless content.size < max_size"
+        }
+        sink "read" arg=0 {
+            sanitizer "size"
+            fix "Consider adding size limits to unbounded reads"
+        }
+    }
+    message "Unbounded read from {sink}. Consider adding size limits to prevent memory exhaustion."
+}
+
+rule "TOCTOU" severity="Medium" {
+    sinks {
+        sink "File.read" arg=0 {
+            sanitizer "File.info.size"
+            fix "Open file with exclusive lock: File.open(path, \"r\") { |f| ... }"
+        }
+        sink "File.write" arg=0 {
+            sanitizer "File.info"
+            fix "Use atomic write: File.write(path + \".tmp\", data); File.rename(path + \".tmp\", path)"
+        }
+        sink "File.delete" arg=0 {
+            sanitizer "File.info?"
+            fix "Check file exists before delete: raise \"Gone\" if !File.exists?(path)"
+        }
+        sink "open" arg=0 {
+            sanitizer "File.info"
+            fix "Use exclusive file locking or check-then-act pattern with locking"
+        }
+    }
+    sources {
+        source "params"
+        source "path"
+        source "filename"
+        source "filepath"
+        source "user_input"
+        source "url"
+    }
+    message "Time-of-check to time-of-use vulnerability: file may change between check and use. Use atomic operations or file locking."
+}

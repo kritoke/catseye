@@ -1,0 +1,193 @@
+rule "SSRF" severity="High" {
+    sinks {
+        sink "HTTP::Client.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "HTTP::Client.get(URI.parse({arg0}))"
+        }
+        sink "HTTP::Client.post" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "HTTP::Client.post(URI.parse({arg0}))"
+        }
+        sink "HTTP::Client.put" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before HTTP request: allowlisted_url?(arg0)"
+        }
+        sink "HTTP::Client.patch" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before HTTP request: allowlisted_url?({arg0})"
+        }
+        sink "HTTP::Client.delete" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before HTTP request: allowlisted_url?({arg0})"
+        }
+        sink "HTTP::Client.exec" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before HTTP request: allowlisted_url?({arg0})"
+        }
+        sink "client.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "client.get(URI.parse({arg0}))"
+        }
+        sink "client.post" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "client.post(URI.parse({arg0}))"
+        }
+        sink "client.put" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before request: allowlisted_url?({arg0})"
+        }
+        sink "client.delete" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before request: allowlisted_url?({arg0})"
+        }
+        sink "client.exec" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL before request: allowlisted_url?({arg0})"
+        }
+        sink "http.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "http.get(URI.parse({arg0}))"
+        }
+        sink "http.post" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "http.post(URI.parse({arg0}))"
+        }
+        sink "http_client.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "http_client.get(URI.parse({arg0}))"
+        }
+        sink "conn.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "conn.get(URI.parse({arg0}))"
+        }
+        sink "connection.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "URI.encode"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "connection.get(URI.parse({arg0}))"
+        }
+        sink "Crest::Request.execute" arg=1 {
+            // Crest::Request.execute(url, ...) - URL is arg 1 (0-indexed)
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            sanitizer "valid_url?"
+            fix "Validate URL with allowlist before Crest::Request.execute"
+        }
+        sink "Crest.get" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Crest.get(URI.parse({arg0}))"
+        }
+        sink "Crest.post" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Crest.post(URI.parse({arg0}))"
+        }
+        sink "Crest.put" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Crest.put(URI.parse({arg0}))"
+        }
+        sink "Crest.delete" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Crest.delete(URI.parse({arg0}))"
+        }
+        sink "Crest.patch" arg=0 {
+            sanitizer "URI.parse"
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Crest.patch(URI.parse({arg0}))"
+        }
+        sink "hackney.get" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL with allowlist before request"
+        }
+        sink "hackney.post" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL with allowlist before request"
+        }
+        sink "req.get" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL with allowlist before request"
+        }
+        sink "req.post" arg=0 {
+            sanitizer "check_ssrf"
+            sanitizer "validate_url"
+            sanitizer "allowlisted_url?"
+            fix "Validate URL with allowlist before request"
+        }
+    }
+    sources {
+        source "params" field="url"
+        source "request" field="body"
+        source "user_url"
+        source "url"
+        source "query"
+        source "href"
+        source "uri"
+    }
+    message "Potential SSRF via {sink} with user-controlled URL"
+}
