@@ -1,6 +1,6 @@
 (library
  (name catseye_cli)
  (public_name catseye.cli)
- (modules config command args discovery orchestrator sarif markdown heatmap crowsnest_format dot ai_linter_integration elixir_tools elixir_extractor elixir_claws)
- (libraries base stdio core incremental catseye.types catseye.engine catseye.crowsnest catseye.claws catseye.ai_linter catseye.il catseye.incremental unix yojson cmdliner bos rresult logs fmt toml ocamlgraph)
- (flags (:standard -w -27-26-50-6 -alert -deprecated)))
+ (modules config args discovery orchestrator sarif markdown heatmap crowsnest_format dot ai_linter_integration elixir_tools elixir_extractor elixir_claws)
+ (libraries base stdio catseye.types catseye.engine catseye.rules catseye.crowsnest catseye.claws catseye.ai_linter catseye.il catseye.ast unix yojson cmdliner bos rresult logs fmt toml ocamlgraph)
+ (flags (:standard -w -27-26-50-6-23 -alert -deprecated)))

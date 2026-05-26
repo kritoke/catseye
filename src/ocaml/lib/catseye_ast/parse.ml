@@ -1,5 +1,9 @@
 (* src/ocaml/lib/catseye_ast/parse.ml
    Unified parsing interface - dispatches through plugin registry.
+   
+   Architecture: catseye.ast is a PURE leaf library with zero dependencies
+   on other catseye libraries. It receives extractor commands as simple
+   string parameters, not registry objects.
  *)
 
 module PE = Error
@@ -9,7 +13,9 @@ open Types
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
-(** Language from file extension — legacy API, prefer plugin_registry. *)
+(* ── Language detection ─────────────────────────────────────────────── *)
+
+(** Language from file extension *)
 let lang_of_extension path =
   if Stdlib.Filename.check_suffix path ".gleam" then Some Gleam
   else if Stdlib.Filename.check_suffix path ".cr" then Some Crystal
@@ -19,6 +25,8 @@ let lang_of_extension path =
   else if Stdlib.Filename.check_suffix path ".rs" then Some Rust
   else if Stdlib.Filename.check_suffix path ".ml" || Stdlib.Filename.check_suffix path ".mli" then Some (Other "ocaml")
   else None
+
+(* ── File parsing ────────────────────────────────────────────────────── *)
 
 (** Parse a Gleam file using tree-sitter *)
 let parse_gleam = Gleam_mapper.parse_file
@@ -32,7 +40,7 @@ let parse_crystal_flat = Crystal_mapper.parse_file
 (** Parse a file using the plugin registry.
     Looks up the plugin by file extension and calls its parse_file function. *)
 let parse_via_registry ~(registry : Plugin_registry.registry) ~(path : string)
-    : (t, PE.parse_error) Result.t =
+    : (t, PE.parse_error) Stdlib.Result.t =
   (* Find the extension — check all registered extensions *)
   let exts = Plugin_registry.all_extensions registry in
   let matching_plugin = Stdlib.List.find_map (fun ext ->
@@ -41,37 +49,34 @@ let parse_via_registry ~(registry : Plugin_registry.registry) ~(path : string)
     else None
   ) exts in
   match matching_plugin with
-  | None -> Result.Error (PE.make_error ~file:path ~message:"No plugin for file type")
+  | None -> Stdlib.Result.Error (PE.make_error ~file:path ~message:"No plugin for file type")
   | Some plugin -> plugin.Language_plugin.parse_file ~path
 
 (** Parse a file, inferring language from extension.
-    Uses the extractor_cmd from the registry for Crystal files.
-    Falls back to legacy dispatch if no plugin registry is provided. *)
-let parse_file ~(extractor_registry : Catseye_engine.Extractor_registry.t option)
+    
+    @param extractor_cmds Optional record of extractor commands.
+                         If None, uses default crystal run commands.
+    @param path File to parse.
+*)
+let parse_file 
+    ~(extractor_cmds : Catseye_types.Extractor_cmds.t option)
     ~(path : string)
-    : (t, PE.parse_error) Result.t =
+    : (t, PE.parse_error) Stdlib.Result.t =
+  let cmds = Option.value extractor_cmds ~default:Catseye_types.Extractor_cmds.default in
   match lang_of_extension path with
-  | None -> Result.Error (PE.make_error ~file:path ~message:"Unknown file type")
+  | None -> Stdlib.Result.Error (PE.make_error ~file:path ~message:"Unknown file type")
   | Some lang ->
-      match lang with
+      (match lang with
       | Gleam -> parse_gleam ~path
       | Crystal ->
-        (let hier_cmd = match extractor_registry with
-          | Some r -> Catseye_engine.Extractor_registry.hier_cmd r
-          | None -> "crystal run src/extractor/hierarchical_extractor.cr --"
-        in
-        let flat_cmd = match extractor_registry with
-          | Some r -> Catseye_engine.Extractor_registry.flat_cmd r
-          | None -> "crystal run src/extractor/extractor.cr --"
-        in
-        (* Try hierarchical first, fall back to flat on failure *)
-        match parse_crystal ~extractor_cmd:hier_cmd ~path with
-        | Ok _ as result -> result
-        | Error _ -> parse_crystal_flat ~extractor_cmd:flat_cmd ~path)
+          (* Try hierarchical first, fall back to flat on failure *)
+          (match parse_crystal ~extractor_cmd:cmds.hier ~path with
+          | Ok ast -> Stdlib.Result.Ok ast
+          | Error _ -> parse_crystal_flat ~extractor_cmd:cmds.flat ~path)
       | JavaScript -> Javascript_mapper.parse_file ~path
       | TypeScript -> Typescript_mapper.parse_file ~path
       | Svelte -> Svelte_mapper.parse_file ~path
       | Rust -> Rust_mapper.parse_file ~path
       | Other "ocaml" -> Ocaml_mapper.parse_file ~path
       | Other _ ->
-        Result.Error (PE.make_error ~file:path ~message:"Unsupported language")
+          (Stdlib.Result.Error (PE.make_error ~file:path ~message:"Unsupported language")))

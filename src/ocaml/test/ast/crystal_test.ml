@@ -1,14 +1,14 @@
 let () =
   Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR"
     "crystal run /workspaces/catseye/src/extractor/hierarchical_extractor.cr --";
-  let registry = Catseye_engine.Extractor_registry.create
-    ~flat_env:(Some "crystal run /workspaces/catseye/src/extractor/extractor.cr --")
-    ~hier_env:(Some "crystal run /workspaces/catseye/src/extractor/hierarchical_extractor.cr --")
-    () in
+  let cmds = {
+    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/hierarchical_extractor.cr --";
+  } in
 
   let test_file path label =
     Printf.printf "=== %s (%s) ===\n" label path;
-    match Catseye_ast.Parse.parse_file ~extractor_registry:(Some registry) ~path with
+    match Catseye_ast.Parse.parse_file ~extractor_cmds:(Some cmds) ~path with
     | Error err -> Printf.eprintf "ERROR: %s\n%!" err.Catseye_ast.Error.message
     | Ok mod_ ->
       Printf.printf "Items: %d, Lang: %s\n"

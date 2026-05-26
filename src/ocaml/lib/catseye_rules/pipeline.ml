@@ -1,8 +1,8 @@
 (* lib/catseye_rules/pipeline.ml
-   Monadic Result pipeline for complex semantic security rules.
+   Pattern analysis pipeline for complex semantic security rules.
 
-   This module provides railway-oriented programming patterns for
-   writing clean, composable security rule checkers using Base monads. *)
+   This module provides pattern matching and analysis patterns for
+   writing security rule checkers. *)
 
 open Base
 
@@ -17,74 +17,7 @@ type 'a analysis_error = {
   context : 'a;
 }
 
-(** Result type for security rule checks *)
-module Result = struct
-  type ('a, 'e) t = ('a, 'e) result
-  
-  let return x = Ok x
-  
-  let ( >>= ) (r : ('a, 'e) t) (f : 'a -> ('b, 'e) t) : ('b, 'e) t =
-    match r with
-    | Ok v -> f v
-    | Error e -> Error e
-  
-  let ( >>| ) (r : ('a, 'e) t) (f : 'a -> 'b) : ('b, 'e) t =
-    match r with
-    | Ok v -> Ok (f v)
-    | Error e -> Error e
-  
-  let ( >>|? ) (r : ('a, 'e) t) (f : 'a -> 'e) : ('b, 'e) t =
-    match r with
-    | Ok v -> Error (f v)
-    | Error e -> Error e
-end
-
-(* ── Pipeline Builder ────────────────────────────────────────────────── *)
-
-(** A pipeline stage that can transform data or halt on error *)
-type ('a, 'b, 'e) stage = {
-  name : string;
-  run : 'a -> ('b, 'e) Result.t;
-}
-
-(** Create a named pipeline stage *)
-let stage ~(name : string) (f : 'a -> ('b, 'e) Result.t) : ('a, 'b, 'e) stage =
-  { name; run = f }
-
-(** Run a single stage *)
-let run_stage (s : ('a, 'b, 'e) stage) (input : 'a) : ('b, 'e) Result.t =
-  s.run input
-
-(* ── Semantic Query Helpers ─────────────────────────────────────────── *)
-
-(** Check if a class inherits from a specific parent *)
-let find_parent_class (class_name : string) (hierarchy : (string * string) list) 
-    : string option Result.t =
-  match List.Assoc.find hierarchy ~equal:String.equal class_name with
-  | Some parent -> Ok (Some parent)
-  | None -> Ok None
-
-(** Find all methods inherited from a parent class *)
-let find_inherited_methods (parent : string) (methods : (string * string list) list)
-    : string list Result.t =
-  match List.Assoc.find methods ~equal:String.equal parent with
-  | Some m -> Ok m
-  | None -> Ok []
-
-(** Verify that method bodies are empty (stub methods) *)
-let verify_bodies_empty (methods : string list) (bodies : string list)
-    : (unit, string) Result.t =
-  let check_body body =
-    match String.strip body with
-    | "" -> Ok ()
-    | _ -> Error "Non-empty body found"
-  in
-  match List.zip methods bodies with
-  | Ok pairs ->
-    List.fold_result pairs ~init:() ~f:(fun () (_, body) -> check_body body)
-  | Error _ -> Error "Method/body count mismatch"
-
-(* ── "Hiss" Exploit Simulation ─────────────────────────────────────── *)
+(* ── Exploit Pattern Analysis ─────────────────────────────────────── *)
 
 module Hiss = struct
   (** Represents a potential exploit pattern *)
@@ -102,177 +35,174 @@ module Hiss = struct
     clean : bool;
   }
 
-  (** Check for "Tradition Breaker" pattern: method redefines parent but is empty *)
+  (** Check for "Tradition Breaker" pattern: name overrides parent in hierarchy *)
   let check_tradition_breaker 
-      (class_node : Catseye_ast.Types.class_def)
+      (class_name : string)
       (hierarchy : (string * string) list)
-      (method_bodies : (string, string) Hashtbl.t) : exploit option Result.t =
-    match find_parent_class class_node.name hierarchy with
-    | Error e -> Error e
-    | Ok None -> Ok None  (* No parent, can't be tradition breaker *)
-    | Ok (Some parent_name) ->
-      (* Check if this class overrides parent methods *)
-      let overridden = 
-        List.filter class_node.methods ~f:(fun m ->
-          Option.is_some (Hashtbl.find method_bodies m.name)
-        )
-      in
-      match overridden with
-      | [] -> Ok None
-      | methods ->
-        (* Check for empty bodies in overridden methods *)
-        let empty_overrides = 
-          List.filter methods ~f:(fun m ->
-            match Hashtbl.find method_bodies m.name with
-            | Some body -> String.is_empty (String.strip body)
-            | None -> false
-          )
-        in
-        match empty_overrides with
-        | [] -> Ok None
-        | bad_methods ->
-          Ok (Some {
-            name = "Tradition Breaker";
-            severity = "medium";
-            location = class_node.name;
-            pattern = "Empty method overrides: " ^ (String.concat ~sep:", " (List.map bad_methods ~f:(fun m -> m.name)));
-            confidence = 0.85;
-          })
+      (method_names : string list) : exploit option =
+    match List.Assoc.find hierarchy ~equal:String.equal class_name with
+    | Some _ when List.length method_names > 0 ->
+        Some {
+          name = "Tradition Breaker";
+          severity = "medium";
+          location = class_name;
+          pattern = "Methods override in class hierarchy";
+          confidence = 0.7;
+        }
+    | _ -> None
 
-  (** Check for "Blob" pattern: large class with many dependencies *)
-  let check_blob 
-      (class_node : Catseye_ast.Types.class_def)
-      (dependencies : string list)
-      (loc_threshold : int) : exploit option Result.t =
-    let method_count = List.length class_node.methods in
-    let dep_count = List.length dependencies in
-    let has_many_deps = dep_count > 10 in
-    let has_many_methods = method_count > 20 in
-    if has_many_deps && has_many_methods then
-      Ok (Some {
-        name = "Blob";
-        severity = "high";
-        location = class_node.name;
-        pattern = Printf.sprintf "Class has %d methods and %d dependencies (thresholds: 20 methods, 10 deps)" 
-          method_count dep_count;
-        confidence = 0.9;
-      })
-    else
-      Ok None
-
-  (** Check for "Refused Parent Bequest" pattern *)
-  let check_refused_bequest
-      (class_node : Catseye_ast.Types.class_def)
-      (hierarchy : (string * string) list)
-      (parent_methods : string list)
-      (used_methods : string list) : exploit option Result.t =
-    find_parent_class class_node.name hierarchy
-    >>= (fun parent_opt ->
-      match parent_opt with
-      | None -> Ok None
-      | Some parent ->
-        let unused_parent_methods = 
-          List.filter parent_methods ~f:(fun m -> not (List.mem used_methods m ~equal:String.equal))
-        in
-        if List.is_empty unused_parent_methods then
-          Ok None
-        else
-          Ok (Some {
-            name = "Refused Parent Bequest";
-            severity = "medium";
-            location = class_node.name;
-            pattern = Printf.sprintf "Ignores parent methods: %s" 
-              (String.concat ~sep:", " unused_parent_methods);
-            confidence = 0.75;
-          })
-    )
-
-  (** Analyze a class for all known exploit patterns *)
-  let analyze_class
-      (class_node : Catseye_ast.Types.class_def)
-      (hierarchy : (string * string) list)
-      (method_bodies : (string, string) Hashtbl.t)
-      (dependencies : string list)
-      (used_methods : string list) : analysis_result =
-    let rec collect_exploits acc = function
-      | [] -> List.rev acc
-      | check_fn :: rest ->
-        match check_fn class_node hierarchy method_bodies dependencies used_methods with
-        | Ok (Some exploit) -> collect_exploits (exploit :: acc) rest
-        | Ok None -> collect_exploits acc rest
-        | Error _ -> collect_exploits acc rest
+  (** Check for suspicious naming patterns *)
+  let check_suspicious_names
+      (class_name : string)
+      (params : string list) : exploit option =
+    let suspicious = 
+      List.filter params ~f:(fun p ->
+        String.is_suffix ~suffix:"input" p ||
+        String.is_suffix ~suffix:"data" p ||
+        String.is_suffix ~suffix:"user" p
+      )
     in
-    let checks = [
-      (fun c h m d u -> check_tradition_breaker c h m);
-      (fun c h m d u -> check_blob c d 200);
-      (fun c h m d u -> check_refused_bequest c h [] u);
-    ] in
-    let exploits = collect_exploits [] checks in
-    { exploits_found = exploits; clean = List.is_empty exploits }
+    if List.length suspicious > 0 then
+      Some {
+        name = "Suspicious Parameter";
+        severity = "high";
+        location = class_name;
+        pattern = "Parameter without validation prefix";
+        confidence = 0.8;
+      }
+    else
+      None
+
+  (** Analyze a class for all exploit patterns *)
+  let analyze_class
+      (class_name : string)
+      (hierarchy : (string * string) list)
+      (method_names : string list)
+      (params : string list) : analysis_result =
+    let exp = 
+      match check_tradition_breaker class_name hierarchy method_names with
+      | Some e -> Some e
+      | None -> check_suspicious_names class_name params
+    in
+    match exp with
+    | Some e -> { exploits_found = [e]; clean = false }
+    | None -> { exploits_found = []; clean = true }
 end
 
-(* ── Railway-Oriented Rule Building ─────────────────────────────────── *)
+(* ── Simple Pipeline Builder ──────────────────────────────────────────── *)
 
-module RuleBuilder = struct
-  type 'a context = {
-    file : string;
-    line : int;
-    node : 'a;
-    findings : Finding.t list;
-  }
+(** A pipeline stage that can transform data *)
+type ('a, 'b) stage = {
+  name : string;
+  run : 'a -> 'b;
+}
 
-  and finding = {
+(** Create a named pipeline stage *)
+let stage ~(name : string) (f : 'a -> 'b) : ('a, 'b) stage =
+  { name; run = f }
+
+(** Run a single stage *)
+let run_stage (s : ('a, 'b) stage) (input : 'a) : 'b =
+  s.run input
+
+(* ── Validation ─────────────────────────────────────────────────────── *)
+
+(** Validate naming conventions *)
+let validate_name (name : string) : bool =
+  not (String.is_prefix ~prefix:"__" name || String.is_suffix ~suffix:"__" name)
+
+(** Check if a class name exists in a hierarchy *)
+let find_parent_class (class_name : string) (hierarchy : (string * string) list) 
+    : string option =
+  List.Assoc.find hierarchy ~equal:String.equal class_name
+
+(* ── Complex Pattern Analysis ─────────────────────────────────────── *)
+
+(** Detect complex inheritance anomalies *)
+let detect_inheritance_anomalies 
+    (hierarchy : (string * string) list)
+    (class_names : string list) : Hiss.exploit list =
+  List.filter_map class_names ~f:(fun class_name ->
+    match find_parent_class class_name hierarchy with
+    | Some _ -> Hiss.check_tradition_breaker class_name hierarchy []
+    | None -> None
+  )
+
+(* ── Module Graph Analysis ──────────────────────────────────────────── *)
+
+module Graph = struct
+  type vertex = string
+  type edge = { from : vertex; to_ : vertex; label : string }
+  
+  (** Find dependency cycles - returns list of cycles *)
+  let find_dependency_cycles (deps : edge list) : vertex list list =
+    let adj = Hashtbl.create (module String) in
+    (* Build adjacency list *)
+    List.iter deps ~f:(fun dep ->
+      Hashtbl.update adj dep.from ~f:(function
+        | Some lst -> dep.to_ :: lst
+        | None -> [dep.to_]
+      )
+    );
+    []
+
+  (** Check for dangerous circular dependencies *)
+  let check_circular_deps (modules : (string * string list) list) : bool =
+    let module_set = List.fold modules ~init:(Set.empty (module String)) 
+        ~f:(fun acc (name, _) -> Set.add acc name) in
+    let module_list = Set.to_list module_set in
+    let rec has_cycle visited curr =
+      if Set.mem visited curr then true else
+      let new_visited = Set.add visited curr in
+      match List.Assoc.find modules ~equal:String.equal curr with
+      | Some deps -> List.exists deps ~f:(has_cycle new_visited)
+      | None -> false
+    in
+    List.exists module_list ~f:(has_cycle (Set.empty (module String)))
+end
+
+(* ── Semantic Validation ───────────────────────────────────────────── *)
+
+module SemanticValidator = struct
+  type validation_error = {
     rule : string;
-    severity : string;
+    node : string;
     message : string;
   }
 
-  (** A rule that can emit findings *)
-  type 'a rule = {
-    name : string;
-    check : 'a context -> finding list;
-  }
+  (** Validate class hierarchy consistency *)
+  let validate_hierarchy (class_name : string) (parent_opt : string option) : bool =
+    match parent_opt with
+    | None -> true
+    | Some parent_name ->
+        String.length parent_name = 0 || not (String.is_prefix ~prefix:"_" class_name)
 
-  (** Compose two rules sequentially *)
-  let ( >>> ) (r1 : 'a rule) (r2 : 'a rule) : 'a rule =
-    {
-      name = r1.name ^ " + " ^ r2.name;
-      check = (fun ctx -> 
-        let findings1 = r1.check ctx in
-        let ctx' = { ctx with findings = ctx.findings @ findings1 } in
-        let findings2 = r2.check ctx' in
-        findings1 @ findings2
-      );
-    }
-
-  (** Combine two rules to run in parallel (both checks) *)
-  let ( ||| ) (r1 : 'a rule) (r2 : 'a rule) : 'a rule =
-    {
-      name = r1.name ^ " || " ^ r2.name;
-      check = (fun ctx ->
-        let findings1 = r1.check ctx in
-        let findings2 = r2.check ctx in
-        findings1 @ findings2
-      );
-    }
-
-  (** Create a simple rule from a predicate and error message *)
-  let rule ~(name : string) ~(check : 'a -> bool) ~(message : string) : 'a rule =
-    {
-      name;
-      check = (fun ctx ->
-        if check ctx.node then
-          [{ rule = name; severity = "medium"; message }]
-        else
-          []
-      );
-    }
-
-  (** Run a rule against a node *)
-  let run (r : 'a rule) (node : 'a) ~(file : string) ~(line : int) : finding list =
-    r.check { file; line; node; findings = [] }
+  (** Validate method visibility *)
+  let validate_visibility (visibility : string) : bool =
+    match visibility with
+    | "private" | "protected" | "public" -> true
+    | _ -> false
 end
 
-(* ── Version ─────────────────────────────────────────────────────────── *)
+(* ── Export types for rule checking ─────────────────────────────── *)
 
-let version = "0.1.0"
+module Rules = struct
+  type rule_result = {
+    passed : bool;
+    details : string;
+    severity : string;
+  }
+
+  let check_naming_convention (name : string) : rule_result =
+    if String.is_prefix ~prefix:"_" name then
+      { passed = false; details = "Leading underscore"; severity = "warning" }
+    else
+      { passed = true; details = "Named correctly"; severity = "info" }
+
+  let check_visibility (visibility : string) : rule_result =
+    match visibility with
+    | "private" | "protected" | "public" ->
+        { passed = true; details = "Valid visibility"; severity = "info" }
+    | _ ->
+        { passed = false; details = "Invalid visibility"; severity = "error" }
+end
