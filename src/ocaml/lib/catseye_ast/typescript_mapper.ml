@@ -5,8 +5,6 @@
    (type annotations, interfaces, enums, decorators, generics).
  *)
 
-module PE = Error
-
 open Base
 open Types
 let ( = ) = Stdlib.( = )

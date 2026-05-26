@@ -4,8 +4,10 @@
    Uses shared Tree_sitter_xml module for XML parsing.
 *)
 
+module PE = Error
+
+open Base
 open Types
-open Error
 
 (* Import shared tree-sitter XML types and functions *)
 module Tsx = Tree_sitter_xml
@@ -27,7 +29,7 @@ let parse_xml = Tsx.parse_xml
 (* ── Position helpers ─────────────────────────────────────────────── *)
 
 let position_of_xml (n : xml) ~field =
-  let row = try int_of_string (attr n field) + 1 with _ -> 0 in
+  let row = try Stdlib.int_of_string (attr n field) + 1 with _ -> 0 in
   Position.make ~line:row ~column:0 ~byte_offset:0
 
 let range_of_xml (n : xml) =
@@ -37,10 +39,10 @@ let range_of_xml (n : xml) =
 (* ── XML child helpers (non-recursive, direct children only) ─────── *)
 
 let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter (fun c -> attr c "field" = field) n.children
+  List.filter ~f:(fun c -> attr c "field" = field) n.children
 
 let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter (fun c -> c.tag = tag) n.children
+  List.filter ~f:(fun c -> c.tag = tag) n.children
 
 (* ── XML → CatseyeAST conversion ────────────────────────────────────── *)
 
@@ -100,7 +102,7 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         | [cn] -> text cn | _ -> "" in
         (match children_with_tag n ~tag:"arguments" with
          | [args_node] ->
-             let arg_exprs = List.filter_map (fun a ->
+             let arg_exprs = List.filter_map ~f:(fun a ->
                match children_where a ~f:(fun c -> c.tag <> "type") with
                | [v] -> Some (expr_of_xml ~depth:d v)
                | _ -> None
@@ -110,10 +112,10 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
 
     (* Collections *)
     | "tuple" ->
-        ETuple (List.map (expr_of_xml ~depth:d)
+        ETuple (List.map ~f:(expr_of_xml ~depth:d)
           (children_where n ~f:(fun c -> c.tag <> "type" && c.tag <> "")))
     | "list" ->
-        EList (List.map (expr_of_xml ~depth:d)
+        EList (List.map ~f:(expr_of_xml ~depth:d)
           (children_where n ~f:(fun c -> c.tag <> "type" && c.tag <> "")))
 
     (* Function call: <function_call> with function and arguments *)
@@ -124,7 +126,7 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         in
         let args = match children_with_field n ~field:"arguments" with
         | [args_node] ->
-            List.filter_map (fun a ->
+            List.filter_map ~f:(fun a ->
               match children_where a ~f:(fun c -> c.tag <> "type") with
               | [v] -> Some (expr_of_xml ~depth:d v)
               | _ -> None
@@ -145,7 +147,7 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         | [b] -> expr_of_xml ~depth:d b
         | _ -> { expr_value = EUnit; expr_location = loc }
         in
-        EFn (List.map pattern_of_xml params, body)
+        EFn (List.map ~f:pattern_of_xml params, body)
 
     (* If expression *)
     | "if" ->
@@ -206,7 +208,7 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
 
     (* Block — sequence of expressions *)
     | "block" ->
-        let body_exprs = List.filter_map (fun c ->
+        let body_exprs = List.filter_map ~f:(fun c ->
           match c.tag with
           | "comment" | "" -> None
           | _ -> Some (expr_of_xml ~depth:d c)
@@ -229,18 +231,18 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         let branches =
           match children_with_field n ~field:"clauses" with
           | [clauses_node] ->
-            List.filter_map (fun (clause : xml) ->
+            List.filter_map ~f:(fun (clause : xml) ->
               if clause.tag = "case_clause" then begin
                 let body = match children_with_field clause ~field:"value" with
                   | [v] -> Some (expr_of_xml ~depth:d v)
                   | _ ->
                     (* No value field — try children after the pattern as block *)
-                    let body_children = List.filter (fun (c : xml) ->
+                    let body_children = List.filter ~f:(fun (c : xml) ->
                       c.tag <> "case_clause_patterns"
                       && c.tag <> "case_clause_guard"
                     ) clause.children in
                     if body_children <> [] then
-                      Some { expr_value = EBlock (List.map (expr_of_xml ~depth:d) body_children); expr_location = loc }
+                      Some { expr_value = EBlock (List.map ~f:(expr_of_xml ~depth:d) body_children); expr_location = loc }
                     else
                       Some { expr_value = EUnit; expr_location = loc }
                 in
@@ -273,15 +275,15 @@ and expr_of_xml ?(depth=0) (n : xml) : expr =
         | [r] -> expr_of_xml ~depth:d r
         | _ -> { expr_value = EUnit; expr_location = loc }
         in
-        let op = String.trim (text n) in
+        let op = String.strip (text n) in
         EBinOp (left, op, right)
 
     (* ERROR nodes from tree-sitter *)
-    | "ERROR" -> EError (String.trim (text n))
+    | "ERROR" -> EError (String.strip (text n))
 
     (* Fallback: bare text becomes a variable reference *)
     | _ ->
-        let t = String.trim (text n) in
+        let t = String.strip (text n) in
         if t <> "" then EVar t
         else EUnknown n.tag
   in
@@ -292,10 +294,10 @@ and item_of_xml (n : xml) : item =
   let loc = range_of_xml n in
   let value = match n.tag with
     | "function" ->
-        let name = (try List.find (fun c ->
+        let name = (match List.find ~f:(fun c ->
           c.tag = "identifier" && attr c "field" = "name"
-        ) n.children |> text with Not_found -> "unknown") in
-        let params = List.map (fun p -> PVar (text p))
+        ) n.children with Some c -> text c | None -> "unknown") in
+        let params = List.map ~f:(fun p -> PVar (text p))
           (children_with_tag n ~tag:"function_parameter") in
         let body = match children_with_field n ~field:"body" with
         | [b] -> expr_of_xml b
@@ -319,35 +321,35 @@ and item_of_xml (n : xml) : item =
 let resolve_gleam_grammar () : string option =
   Tree_sitter_xml.resolve_grammar ~lang:"gleam" ~env_var:"TREE_SITTER_GLEAM_GRAMMAR"
 
-let parse_file ~(path : string) : (t, parse_error) result =
+let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
   let grammar_path = resolve_gleam_grammar () in
   match grammar_path with
   | None ->
-      Error (make_error ~file:path ~message:"Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")
+      Error (PE.make_error ~file:path ~message:"Gleam tree-sitter grammar not found. Set TREE_SITTER_GLEAM_GRAMMAR or install tree-sitter-gleam.")
   | Some grammar ->
       (* Use grammar directly for .so files, dirname for nix store parser dirs *)
-      let lib_path = if Filename.check_suffix grammar ".so" then grammar
-        else Filename.dirname grammar in
-      let cmd = Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" lib_path path in
+      let lib_path = if Stdlib.Filename.check_suffix grammar ".so" then grammar
+        else Stdlib.Filename.dirname grammar in
+      let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" lib_path path in
       (try
         let ic = Unix.open_process_in cmd in
-        let xml_str = Buffer.create 4096 in
-        (try while true do Buffer.add_channel xml_str ic 4096 done with End_of_file -> ());
+        let xml_str = Stdlib.Buffer.create 4096 in
+        (try while true do Stdlib.Buffer.add_channel xml_str ic 4096 done with Stdlib.End_of_file -> ());
         let status = Unix.close_process_in ic in
         match status with
         | Unix.WEXITED 0 | Unix.WEXITED 1 ->
-            let xml_content = Buffer.contents xml_str in
-            if String.length xml_content > 100 && String.sub xml_content 0 5 = "<?xml" then
+            let xml_content = Stdlib.Buffer.contents xml_str in
+            if String.length xml_content > 100 && Stdlib.String.sub xml_content 0 5 = "<?xml" then
               let xml = parse_xml xml_content in
-              let root = if xml.tag = "sources" && List.length xml.children > 0 then List.hd xml.children else xml in
-              let source_file = if root.tag = "source" && List.length root.children > 0 then List.hd root.children else root in
-              let items = List.filter (fun c -> List.mem c.tag ["function"; "import"; "type"; "module"]) source_file.children in
-              let items_list = List.map item_of_xml items in
+              let root = if xml.tag = "sources" && List.length xml.children > 0 then (match xml.children with c :: _ -> c | [] -> xml) else xml in
+              let source_file = if root.tag = "source" && List.length root.children > 0 then (match root.children with c :: _ -> c | [] -> root) else root in
+              let items = List.filter ~f:(fun c -> List.mem ["function"; "import"; "type"; "module"] ~equal:String.equal c.tag) source_file.children in
+              let items_list = List.map ~f:item_of_xml items in
               Ok { mod_lang = Gleam; mod_path = path; mod_items = items_list; parse_errors = [] }
             else
-              Error (make_error ~file:path ~message:("Invalid XML output: " ^ String.sub xml_content 0 (min 100 (String.length xml_content))))
+              Error (PE.make_error ~file:path ~message:("Invalid XML output: " ^ Stdlib.String.sub xml_content 0 (min 100 (String.length xml_content))))
         | _ ->
-            let xml_str = Buffer.contents xml_str in
-            Error (make_error ~file:path ~message:("tree-sitter parse failed: " ^ xml_str))
+            let xml_str = Stdlib.Buffer.contents xml_str in
+            Error (PE.make_error ~file:path ~message:("tree-sitter parse failed: " ^ xml_str))
       with e ->
-        Error (make_error ~file:path ~message:(Printexc.to_string e)))
+        Error (PE.make_error ~file:path ~message:(Exn.to_string e)))

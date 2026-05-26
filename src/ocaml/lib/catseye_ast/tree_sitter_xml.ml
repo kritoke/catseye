@@ -8,6 +8,11 @@
    Used by all tree-sitter language mappers (Gleam, TypeScript, Svelte, JS).
 *)
 
+open Base
+
+let ( = ) = Stdlib.( = )
+let ( <> ) = Stdlib.( <> )
+
 (* ── XML tree type ──────────────────────────────────────────────────── *)
 
 type xml = {
@@ -19,22 +24,22 @@ type xml = {
 
 (** Get an attribute value from an XML node. *)
 let attr (n : xml) (k : string) : string =
-  try List.assoc k n.attrs with Not_found -> ""
+  try Stdlib.List.assoc k n.attrs with Stdlib.Not_found -> ""
 
 (** Get the text content of an XML node. *)
 let text (n : xml) = n.text
 
 (** Get the source line number from the srow attribute (1-indexed). *)
 let line_of (n : xml) : int =
-  match attr n "srow" with "" -> 0 | s -> (try int_of_string s + 1 with _ -> 0)
+  match attr n "srow" with "" -> 0 | s -> (try Stdlib.int_of_string s + 1 with _ -> 0)
 
 (** Deep collect all descendants matching [tag]. *)
 let rec find (n : xml) ~tag : xml list =
-  (if n.tag = tag then [n] else []) @ List.concat_map (find ~tag) n.children
+  (if n.tag = tag then [n] else []) @ List.concat_map ~f:(find ~tag) n.children
 
 (** Collect only *direct* children matching a predicate. *)
 let children_where (n : xml) ~f : xml list =
-  List.filter f n.children
+  List.filter n.children ~f:f
 
 (* ── Tokenizer ─────────────────────────────────────────────────────── *)
 
@@ -48,7 +53,7 @@ let skip_until s pos pred =
   let start = pos in
   let rec go i = if i < len && not (pred s.[i]) then go (i + 1) else i in
   let stop = go start in
-  (String.sub s start (stop - start), stop)
+  (Stdlib.String.sub s start (stop - start), stop)
 
 (** Parse name=value pairs from inside a tag. Respects quoting. *)
 let parse_attrs s =
@@ -81,7 +86,7 @@ let tokenize s =
     if pos >= len then List.rev acc
     else if s.[pos] <> '<' then begin
       let (txt, next) = skip_until s pos (fun c -> c = '<') in
-      let trimmed = String.trim txt in
+      let trimmed = String.strip txt in
       if trimmed = "" then go next acc
       else go next (Text trimmed :: acc)
     end else if pos + 1 < len && s.[pos + 1] = '?' then begin
@@ -91,7 +96,7 @@ let tokenize s =
     end else if pos + 1 < len && s.[pos + 1] = '/' then begin
       (* closing tag *)
       let (name, next) = skip_until s (pos + 2) (fun c -> c = '>') in
-      go (next + 1) (Close (String.trim name) :: acc)
+      go (next + 1) (Close (String.strip name) :: acc)
     end else if pos + 3 < len && s.[pos + 1] = '!' && s.[pos + 2] = '-' && s.[pos + 3] = '-' then begin
       (* comment *)
       let rec find_end i =
@@ -179,11 +184,11 @@ let parse_xml_all s =
 
 (** Direct children with a specific tag. *)
 let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter (fun c -> c.tag = tag) n.children
+  List.filter ~f:(fun c -> c.tag = tag) n.children
 
 (** Direct children with a specific attribute. *)
 let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter (fun c -> List.mem_assoc field c.attrs) n.children
+  List.filter ~f:(fun c -> Stdlib.List.mem_assoc field c.attrs) n.children
 
 (* ── Grammar resolution ─────────────────────────────────────────────── *)
 
@@ -201,25 +206,25 @@ let children_with_field (n : xml) ~(field : string) : xml list =
 let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
   (* 1. User tree-sitter directory first (~/.tree-sitter/{lang}.so) *)
   (* Native parsers compiled from npm packages are more reliable than nix store *)
-  let user_so = Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
+  let user_so = Stdlib.Filename.concat "/home/kritoke/.tree-sitter" (lang ^ ".so") in
   if Stdlib.Sys.file_exists user_so then Some user_so
   else
     (* 2. Explicit env var *)
     (match Stdlib.Sys.getenv env_var with
      | path -> Some path
-     | exception Not_found ->
+     | exception Stdlib.Not_found ->
        (* 3. Grammar directory from env *)
        (match Stdlib.Sys.getenv "TREE_SITTER_GRAMMAR_DIR" with
         | dir ->
           (* Try .so first, then .wasm for WASM-based grammars *)
-          let so_path = Filename.concat dir (lang ^ ".so") in
-          let wasm_path = Filename.concat dir (lang ^ ".wasm") in
+          let so_path = Stdlib.Filename.concat dir (lang ^ ".so") in
+          let wasm_path = Stdlib.Filename.concat dir (lang ^ ".wasm") in
           if Stdlib.Sys.file_exists so_path then Some so_path
           else if Stdlib.Sys.file_exists wasm_path then Some wasm_path
           else None
-        | exception Not_found ->
+        | exception Stdlib.Not_found ->
           (* 4. Bundled grammars next to executable *)
-          let exe_dir = Filename.dirname (Stdlib.Sys.executable_name) in
+          let exe_dir = Stdlib.Filename.dirname (Stdlib.Sys.executable_name) in
           let bundled = exe_dir ^ "/../lib/catseye/grammars/" ^ lang ^ ".so" in
           if Stdlib.Sys.file_exists bundled then Some bundled
           else
@@ -227,9 +232,9 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
             let discovered =
               try
                 let ic = Unix.open_process_in
-                  (Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" lang)
+                  (Stdlib.Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" lang)
                 in
-                let line = try Some (input_line ic) with End_of_file -> None in
+                let line = try Some (Stdlib.input_line ic) with Stdlib.End_of_file -> None in
                 let _ = Unix.close_process_in ic in
                 (match line with
                  | Some p when Stdlib.Sys.file_exists p -> Some p
@@ -240,5 +245,5 @@ let resolve_grammar ~(lang : string) ~(env_var : string) : string option =
              | Some p -> Some p
              | None ->
                (* 6. CWD fallback *)
-               let local = Filename.concat (Stdlib.Sys.getcwd ()) (lang ^ "_parser.so") in
+               let local = Stdlib.Filename.concat (Stdlib.Sys.getcwd ()) (lang ^ "_parser.so") in
                if Stdlib.Sys.file_exists local then Some local else None)))

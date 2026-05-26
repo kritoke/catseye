@@ -9,8 +9,10 @@
    - Macros → EApp
 *)
 
+module PE = Error
+
+open Base
 open Types
-open Error
 
 module Tsx = Tree_sitter_xml
 
@@ -23,10 +25,10 @@ type xml = {
 }
 
 let attr (n : xml) (k : string) : string =
-  try List.assoc k n.attrs with Not_found -> ""
+  try Stdlib.List.assoc k n.attrs with Stdlib.Not_found -> ""
 
 let line_of (n : xml) : int =
-  match attr n "srow" with "" -> 0 | s -> (try int_of_string s + 1 with _ -> 0)
+  match attr n "srow" with "" -> 0 | s -> (try Stdlib.int_of_string s + 1 with _ -> 0)
 
 let parse_xml = Tsx.parse_xml
 let find = Tsx.find
@@ -35,14 +37,14 @@ let find = Tsx.find
 let rec convert_xml (n : Tsx.xml) : xml = {
   tag = n.tag;
   attrs = n.attrs;
-  children = List.map convert_xml n.children;
+  children = List.map ~f:convert_xml n.children;
   text = n.text;
 }
 
 (* ── Position helpers ─────────────────────────────────────────────── *)
 
 let position_of_xml (n : xml) ~(field : string) =
-  let row = try int_of_string (attr n field) + 1 with _ -> 0 in
+  let row = try Stdlib.int_of_string (attr n field) + 1 with _ -> 0 in
   Position.make ~line:row ~column:0 ~byte_offset:0
 
 let range_of_xml (n : xml) =
@@ -50,10 +52,10 @@ let range_of_xml (n : xml) =
     end_ = position_of_xml n ~field:"erow" }
 
 let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter (fun c -> attr c "field" = field) n.children
+  List.filter ~f:(fun c -> attr c "field" = field) n.children
 
 let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter (fun c -> c.tag = tag) n.children
+  List.filter ~f:(fun c -> c.tag = tag) n.children
 
 let child_with_tag (n : xml) ~(tag : string) : xml option =
   let rec find = function
@@ -75,7 +77,7 @@ let trim_quotes (s : string) : string =
   if String.length s >= 2 then
     let first = s.[0] and last = s.[String.length s - 1] in
     if (first = '"' && last = '"') || (first = '\'' && last = '\'') then
-      String.sub s 1 (String.length s - 2)
+      Stdlib.String.sub s 1 (String.length s - 2)
     else s
   else s
 
@@ -92,8 +94,8 @@ let rec walk_pattern (n : xml) : pattern =
               | [i] -> PLiteral (LInt i.text)
               | _ -> PLiteral LUnit))
   | "tuple_pattern" ->
-    let elems = List.filter (fun c -> c.tag <> ",") n.children in
-    PTuple (List.map walk_pattern elems)
+    let elems = List.filter ~f:(fun c -> c.tag <> ",") n.children in
+    PTuple (List.map ~f:walk_pattern elems)
   | _ -> PVar n.text
 
 (* ── Expression mapping ─────────────────────────────────────────────── *)
@@ -120,7 +122,7 @@ let rec walk_expr (n : xml) : expr =
 
     (* Struct *)
     | "struct_item" ->
-      let fields = List.filter_map (fun c ->
+      let fields = List.filter_map ~f:(fun c ->
         if c.tag = "field_declaration" then
           let name = match child_with_tag c ~tag:"field_identifier" with
             | Some f -> f.text
@@ -139,7 +141,7 @@ let rec walk_expr (n : xml) : expr =
       let scrutinee = match child_with_field n ~field:"value" with
         | Some v -> walk_expr v
         | None -> { expr_value = EVar "?"; expr_location = loc } in
-      let arms = List.filter_map (fun c ->
+      let arms = List.filter_map ~f:(fun c ->
         if c.tag = "match_arm" then Some (walk_match_arm c) else None
       ) n.children in
       ECase (scrutinee, arms)
@@ -223,7 +225,7 @@ let rec walk_expr (n : xml) : expr =
       let fn_node = match child_with_field n ~field:"function" with
         | Some f -> walk_expr f
         | _ -> { expr_value = EVar "?"; expr_location = loc } in
-      let args = List.filter_map (fun c ->
+      let args = List.filter_map ~f:(fun c ->
         if c.tag = "," then None else Some (walk_expr c)
       ) (children_with_field n ~field:"arguments") in
       EApp (fn_node, args)
@@ -261,7 +263,7 @@ let rec walk_expr (n : xml) : expr =
     (* Macro invocation *)
     | "macro_invocation" ->
       let name_node = child_with_tag n ~tag:"identifier" in
-      let args = List.filter_map (fun c ->
+      let args = List.filter_map ~f:(fun c ->
         if c.tag = "," then None else Some (walk_expr c)
       ) n.children in
       let name = match name_node with
@@ -282,7 +284,7 @@ let rec walk_expr (n : xml) : expr =
 
     (* Expression statement (wraps expressions with trailing semicolon) *)
     | "expression_statement" ->
-      let children = List.filter (fun c -> c.text <> "") n.children in
+      let children = List.filter ~f:(fun c -> c.text <> "") n.children in
       (match children with
        | [c] -> (walk_expr c).expr_value
        | _ -> EUnit)
@@ -297,7 +299,7 @@ let rec walk_expr (n : xml) : expr =
   { expr_value = v; expr_location = loc }
 
 and walk_block (n : xml) : expr list =
-  List.filter_map (fun c ->
+  List.filter_map ~f:(fun c ->
     match c.tag with
     | ";" -> None
     | "attribute_item" -> None
@@ -323,7 +325,7 @@ let rec walk_item (n : xml) (file : string) : item list =
     let name = match child_with_tag n ~tag:"identifier" with
       | Some id -> id.text
       | None -> "_" in
-    let params = List.filter_map (fun p ->
+    let params = List.filter_map ~f:(fun p ->
       if p.tag = "parameter" then
         let pname = match child_with_tag p ~tag:"identifier" with
           | Some id -> id.text
@@ -339,7 +341,7 @@ let rec walk_item (n : xml) (file : string) : item list =
     let name = match child_with_tag n ~tag:"type_identifier" with
       | Some id -> id.text
       | None -> "_" in
-    let fields = List.filter_map (fun f ->
+    let fields = List.filter_map ~f:(fun f ->
       if f.tag = "field_declaration" then
         let fname = match child_with_tag f ~tag:"field_identifier" with
           | Some id -> id.text
@@ -350,7 +352,7 @@ let rec walk_item (n : xml) (file : string) : item list =
     let body = { expr_value = ERecord []; expr_location = range_of_xml n } in
     [{ item_location = range_of_xml n; item_value = IClass (name, [{ item_location = range_of_xml n; item_value = IFunction (name, fields, None, body) }]) }]
   | "source_file" ->
-    List.concat_map (fun c -> walk_item c file) n.children
+    List.concat_map ~f:(fun c -> walk_item c file) n.children
   | _ -> []
 
 (* ── Parse via tree-sitter CLI ─────────────────────────────────────── *)
@@ -358,31 +360,31 @@ let rec walk_item (n : xml) (file : string) : item list =
 let resolve_rust_grammar () : string option =
   Tree_sitter_xml.resolve_grammar ~lang:"rust" ~env_var:"TREE_SITTER_RUST_GRAMMAR"
 
-let parse_with_grammar ~grammar ~path : (t, parse_error) result =
+let parse_with_grammar ~grammar ~path : (t, PE.parse_error) Result.t =
   (* Use --lib-path for native .so parsers, --grammar-path for WASM/compiled grammars *)
   let cmd =
     (* Check if grammar looks like a native .so (exports tree_sitter_rust) *)
     if Stdlib.Sys.file_exists grammar && not (Stdlib.Sys.is_directory grammar) then
       (* Native parser - use --lib-path with --lang-name *)
-      Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name rust -x '%s' 2>/dev/null" grammar path
+      Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name rust -x '%s' 2>/dev/null" grammar path
     else
       (* WASM or compiled grammar - use --grammar-path *)
-      Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path
+      Stdlib.Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path
   in
   try
     let ic = Unix.open_process_in cmd in
-    let xml_str = Buffer.create 4096 in
-    (try while true do Buffer.add_channel xml_str ic 4096 done with End_of_file -> ());
+    let xml_str = Stdlib.Buffer.create 4096 in
+    (try while true do Stdlib.Buffer.add_channel xml_str ic 4096 done with Stdlib.End_of_file -> ());
     let status = Unix.close_process_in ic in
     match status with
     | Unix.WEXITED 0 | Unix.WEXITED 1 ->
-      let doc = parse_xml (Buffer.contents xml_str) in
+      let doc = parse_xml (Stdlib.Buffer.contents xml_str) in
       (* Drill through wrapper tags *)
       let program = match find doc ~tag:"source_file" with
         | [p] -> convert_xml p
         | _ -> convert_xml doc
       in
-      let items = List.concat_map (fun c -> walk_item c path) program.children in
+      let items = List.concat_map ~f:(fun c -> walk_item c path) program.children in
       let mod_ = {
         mod_lang = Rust;
         mod_path = path;
@@ -391,15 +393,15 @@ let parse_with_grammar ~grammar ~path : (t, parse_error) result =
       } in
       Ok mod_
     | _ ->
-      Error (make_error ~file:path ~message:"tree-sitter parse failed")
+      Error (PE.make_error ~file:path ~message:"tree-sitter parse failed")
   with e ->
-    Error (make_error ~file:path ~message:(Printexc.to_string e))
+    Error (PE.make_error ~file:path ~message:(Exn.to_string e))
 
 (* ── Main entry point ─────────────────────────────────────────────── *)
 
-let parse_file ~(path : string) : (t, parse_error) result =
+let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
   match resolve_rust_grammar () with
   | None ->
-    Error (make_error ~file:path ~message:"Rust tree-sitter grammar not found. Set TREE_SITTER_RUST_GRAMMAR or install tree-sitter-rust.")
+    Error (PE.make_error ~file:path ~message:"Rust tree-sitter grammar not found. Set TREE_SITTER_RUST_GRAMMAR or install tree-sitter-rust.")
   | Some grammar ->
     parse_with_grammar ~grammar ~path
