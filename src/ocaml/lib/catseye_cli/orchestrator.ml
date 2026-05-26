@@ -5,6 +5,9 @@ open Catseye_types
 open Config
 open Discovery
 
+(* Incremental analysis integration *)
+module Inc = Catseye_incremental.Integration
+
 let version = Catseye_engine.Engine.version
 
 (* ANSI color codes *)
@@ -437,6 +440,17 @@ let run (config : t) : int =
   let cache = Catseye_engine.Cache.open_cache
     ~no_cache:config.no_cache ~cache_dir:config.cache_dir in
 
+  (* Step 1d: Create incremental session for change detection *)
+  let incremental_session = 
+    if config.incremental then begin
+      let source_infos = List.map ~f:(fun (s : source_file) -> 
+        ({ Inc.path = s.path; Inc.lang = s.lang } : Inc.source_info)
+      ) sources
+      in
+      Some (Inc.Session.create_session source_infos)
+    end else None
+  in
+
   (* Step 2: Extract (with cache, optional worker pool or parallel) *)
   let (nodes, cache_hits) = time_phase "extraction" (fun () ->
     let all_nodes = ref [] in
@@ -451,6 +465,18 @@ let run (config : t) : int =
       | None ->
         uncached := src :: !uncached
     ) sources;
+    (* Phase 1b: Incremental - detect changed files (log stats only) *)
+    (match incremental_session with
+     | Some _session ->
+       if config.format = Terminal then
+         Stdio.eprintf "  [incremental] Detecting changed files...\n%!";
+       let paths = List.map ~f:(fun (s : source_file) -> s.path) !uncached in
+       let tracker = Inc.Change_detector.create () in
+       let _changes = Inc.Change_detector.detect tracker paths in
+       if config.format = Terminal then
+         Stdio.eprintf "  [incremental] %d files to process\n%!"
+           (List.length paths)
+     | None -> ());
     (* Split uncached by language *)
     let uncached_crystal = List.filter ~f:(fun s -> s.lang = "crystal") !uncached in
     let uncached_other = List.filter ~f:(fun s -> s.lang <> "crystal") !uncached in
