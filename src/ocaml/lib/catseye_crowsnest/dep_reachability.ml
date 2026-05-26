@@ -14,9 +14,6 @@ let ( > ) = Stdlib.( > )
 let ( <= ) = Stdlib.( <= )
 let ( >= ) = Stdlib.( >= )
 
-(** StringSet for file sets. *)
-module StringSet = Stdlib.Set.Make(Stdlib.String)
-
 (** A dependency import site — where a dependency is used in the code. *)
 type import_site = {
   file : string;
@@ -159,12 +156,12 @@ let scan_imports (files : (string * string) list)  (* (path, lang) pairs *)
 
     reachable_files: files reachable from entry points (from Predator Vision)
     dep_imports: dependency → import sites mapping (from scan_imports) *)
-let compute_reachability (reachable_files : StringSet.t)
+let compute_reachability (reachable_files : string Set.Poly.t)
     (dep_imports : (string * import_site list) list)
     : reachability list =
   List.map ~f:(fun (dep_name, sites) ->
     let reachable = List.filter ~f:(fun s ->
-      StringSet.mem s.file reachable_files
+      Set.Poly.mem reachable_files s.file
     ) sites in
     { dep_name;
       import_sites = sites;

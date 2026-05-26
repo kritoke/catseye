@@ -8,8 +8,6 @@
 
 open Base
 open Catseye_types
-module StringMap = Stdlib.Map.Make(String)
-module StringSet = Stdlib.Set.Make(String)
 
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
@@ -72,7 +70,7 @@ let is_abstract_class (name : string) : bool =
 
     Groups Class nodes and their Def children into class_info records.
 *)
-let build_class_graph (nodes : Security_node.t list) : class_info StringMap.t =
+let build_class_graph (nodes : Security_node.t list) : (string, class_info) Map.Poly.t =
   (* Group nodes by file *)
   let by_file = Stdlib.Hashtbl.create 16 in
   OldList.iter (fun (n : Security_node.t) ->
@@ -122,27 +120,27 @@ let build_class_graph (nodes : Security_node.t list) : class_info StringMap.t =
   ) by_file;
 
   (* Build map from class name to info *)
-  let graph = StringMap.empty in
+  let graph = Map.Poly.empty in
   OldList.fold_left (fun map ci ->
-    StringMap.add ci.name ci map
+    Map.Poly.set map ~key:ci.name ~data:ci
   ) graph (OldList.rev !class_infos)
 
 (* ── Graph Queries ──────────────────────────────────────────────────── *)
 
 (** Get direct children of a class *)
-let get_children (graph : class_info StringMap.t) (class_name : string) : class_info list =
-  StringMap.fold (fun _name info acc ->
+let get_children (graph : (string, class_info) Map.Poly.t) (class_name : string) : class_info list =
+  Map.Poly.fold graph ~init:[] ~f:(fun ~key:_ ~data:info acc ->
     match info.parent with
     | Some p when p = class_name -> info :: acc
     | _ -> acc
-  ) graph []
+  )
 
 (** Get ancestor chain (parent, grandparent, etc.) *)
-let get_ancestors (graph : class_info StringMap.t) (class_name : string) : class_info list =
+let get_ancestors (graph : (string, class_info) Map.Poly.t) (class_name : string) : class_info list =
   let rec collect (name : string) (visited : string list) : class_info list =
     if OldList.mem name visited then []  (* Prevent cycles *)
     else
-      match StringMap.find_opt name graph with
+      match Map.Poly.find graph name with
       | Some info ->
         let new_visited = name :: visited in
         (match info.parent with
@@ -153,22 +151,22 @@ let get_ancestors (graph : class_info StringMap.t) (class_name : string) : class
   collect class_name []
 
 (** Get inheritance depth (how many ancestors) *)
-let get_inheritance_depth (graph : class_info StringMap.t) (class_name : string) : int =
+let get_inheritance_depth (graph : (string, class_info) Map.Poly.t) (class_name : string) : int =
   let ancestors = get_ancestors graph class_name in
   OldList.length ancestors
 
 (** Check if class B inherits from class A (directly or indirectly) *)
-let inherits_from (graph : class_info StringMap.t) (child : string) (ancestor : string) : bool =
+let inherits_from (graph : (string, class_info) Map.Poly.t) (child : string) (ancestor : string) : bool =
   let ancestors = get_ancestors graph child in
   OldList.exists (fun a -> a.name = ancestor) ancestors
 
 (** Get all methods in a class and its ancestors *)
-let get_all_methods (graph : class_info StringMap.t) (class_name : string) : string list =
+let get_all_methods (graph : (string, class_info) Map.Poly.t) (class_name : string) : string list =
   let ancestors = get_ancestors graph class_name in
   OldList.fold_left (fun methods a -> a.methods @ methods) [] ancestors
 
 (** Check if a class overrides a method from a parent *)
-let overrides_method (graph : class_info StringMap.t) (class_name : string) (method_name : string) : bool =
-  match StringMap.find_opt class_name graph with
+let overrides_method (graph : (string, class_info) Map.Poly.t) (class_name : string) (method_name : string) : bool =
+  match Map.Poly.find graph class_name with
   | Some info -> OldList.mem method_name info.methods
   | None -> false

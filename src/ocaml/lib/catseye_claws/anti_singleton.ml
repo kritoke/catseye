@@ -119,13 +119,11 @@ let is_config_class (name : string) : bool =
 
 let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_config)
     : Finding.t list =
-  let module StringMap = Stdlib.Map.Make(String) in
-  (* Group nodes by file using Map *)
+  (* Group nodes by file using Map.Poly *)
   let by_file = OldList.fold_left (fun acc (n : Security_node.t) ->
-    let existing = match StringMap.find_opt n.Security_node.file acc with
-      | Some nodes -> nodes | None -> [] in
-    StringMap.add n.Security_node.file (n :: existing) acc
-  ) StringMap.empty nodes in
+    let existing = Map.Poly.find acc n.Security_node.file |> Option.value ~default:[] in
+    Map.Poly.set acc ~key:n.Security_node.file ~data:(n :: existing)
+  ) Map.Poly.empty nodes in
   (* Collect findings from each file's class nodes *)
   OldList.concat_map (fun (file, file_nodes) ->
     if is_config_file file then [] else
@@ -172,7 +170,7 @@ let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_c
            reachability = None; suggestion = None; }]
       else []
     ) class_nodes
-  ) (StringMap.bindings by_file)
+  ) (Map.Poly.to_alist by_file)
 
 (* ── Analyzer ─────────────────────────────────────────────────────── *)
 

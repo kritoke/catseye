@@ -10,7 +10,6 @@ module List = Stdlib.List
 module String = Stdlib.String
 module Hashtbl = Stdlib.Hashtbl
 module Printf = Stdlib.Printf
-module Map = Stdlib.Map
 module Float = Stdlib.Float
 module Int = Stdlib.Int
 module Char = Stdlib.Char
@@ -1173,9 +1172,8 @@ let detect_callback_hell (m : t) =
     Detects the same regex literal appearing in 2+ functions.
     AI often duplicates regex patterns instead of extracting to a constant. *)
 let detect_repeated_regex (m : t) =
-  let module StringMap = Map.Make(String) in
-  let regex_by_func = StringMap.empty in
-  let regex_locations = StringMap.empty in
+  let regex_by_func = Map.Poly.empty in
+  let regex_locations = Map.Poly.empty in
   
   let rec collect_regexes (e : expr) : string list =
     match e.expr_value with
@@ -1202,13 +1200,13 @@ let detect_repeated_regex (m : t) =
       | IFunction (name, _, _, body) ->
         let rx_list = collect_regexes body in
         let new_by_func = List.fold_left (fun acc rx ->
-          let funcs = try StringMap.find rx acc with Stdlib.Not_found -> [] in
-          StringMap.add rx (name :: funcs) acc
+          let funcs = Map.Poly.find acc rx |> Option.value ~default:[] in
+          Map.Poly.set acc ~key:rx ~data:(name :: funcs)
         ) by_func rx_list in
         let new_locs = List.fold_left (fun acc rx ->
           let line = item.item_location.start.line in
-          let existing = try StringMap.find rx acc with Stdlib.Not_found -> [] in
-          StringMap.add rx ((name, line) :: existing) acc
+          let existing = Map.Poly.find acc rx |> Option.value ~default:[] in
+          Map.Poly.set acc ~key:rx ~data:((name, line) :: existing)
         ) locs rx_list in
         (new_by_func, new_locs)
       | _ -> (by_func, locs)
@@ -1219,7 +1217,7 @@ let detect_repeated_regex (m : t) =
       let _, line = List.hd locations in
       [Printf.sprintf "Regex %s duplicated in functions: %s — extract to a constant" rx funcs, line]
     else []
-  ) (StringMap.bindings regex_locations)
+  ) (Map.Poly.to_alist regex_locations)
 
 (* ── Category 15: Arity ────────────────────────────────────────────── *)
 

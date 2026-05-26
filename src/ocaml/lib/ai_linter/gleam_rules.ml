@@ -10,7 +10,6 @@ module List = Stdlib.List
 module String = Stdlib.String
 module Hashtbl = Stdlib.Hashtbl
 module Printf = Stdlib.Printf
-module Map = Stdlib.Map
 module Int = Stdlib.Int
 module Char = Stdlib.Char
 
@@ -1177,7 +1176,6 @@ let detect_int_float_division (m : t) =
     AI often duplicates string constants across functions. *)
 let detect_repeated_string_literal (m : t) =
   let min_length = 4 in
-  let module StringMap = Map.Make(String) in
   let rec collect_strings (e : expr) : string list =
     match e.expr_value with
     | ELiteral (LString s) when String.length s >= min_length -> [s]
@@ -1196,12 +1194,12 @@ let detect_repeated_string_literal (m : t) =
       | IFunction (name, _, _, body) ->
         let strings = collect_strings body in
         let new_locs = List.fold_left (fun acc s ->
-          let existing = try StringMap.find s acc with Stdlib.Not_found -> [] in
-          StringMap.add s ((name, item.item_location.start.line) :: existing) acc
+          let existing = Map.Poly.find acc s |> Option.value ~default:[] in
+          Map.Poly.set acc ~key:s ~data:((name, item.item_location.start.line) :: existing)
         ) locs strings in
         new_locs
       | _ -> locs
-    ) StringMap.empty m.mod_items in
+    ) Map.Poly.empty m.mod_items in
   let all_strings =
     List.concat_map (fun (s, locations) ->
       if List.length locations >= 2 then
@@ -1212,7 +1210,7 @@ let detect_repeated_string_literal (m : t) =
           "String \"%s\" appears in %d functions (%s) — extract to a module constant"
           s (List.length locations) funcs, line]
       else []
-    ) (StringMap.bindings lit_locations) in
+    ) (Map.Poly.to_alist lit_locations) in
   List.sort_uniq (fun (_, l1) (_, l2) -> Int.compare l1 l2) all_strings
 
 (** Rule: Use Expression Candidate

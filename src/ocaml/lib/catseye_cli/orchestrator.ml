@@ -601,8 +601,8 @@ let run (config : t) : int =
       ) nodes in
       let all_reachable =
         List.fold ~f:(fun s f ->
-          Catseye_crowsnest.Dep_reachability.StringSet.add f s
-        ) ~init:Catseye_crowsnest.Dep_reachability.StringSet.empty
+          Set.Poly.add s f
+        ) ~init:Set.Poly.empty
           (reachable_files @ def_files)
       in
       (* Scan source files for imports and compute reachability *)

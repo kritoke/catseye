@@ -50,7 +50,7 @@ let is_abstract_class (name : string) : bool =
 (* ── Class Registry Building ────────────────────────────────────────── *)
 
 let build_registry (nodes : Security_node.t list) :
-    (Class_graph.class_info list * string list Class_graph.StringMap.t * Class_graph.class_info Class_graph.StringMap.t) =
+    (Class_graph.class_info list * (string, string list) Map.Poly.t * (string, Class_graph.class_info) Map.Poly.t) =
   let by_file = Stdlib.Hashtbl.create 16 in
   Stdlib.List.iter (fun (n : Security_node.t) ->
     let existing = try Stdlib.Hashtbl.find by_file n.Security_node.file with Stdlib.Not_found -> [] in
@@ -102,14 +102,14 @@ let build_registry (nodes : Security_node.t list) :
   let parent_to_children = Stdlib.List.fold_left (fun acc info ->
     match info.Class_graph.parent with
     | Some parent ->
-        let children = try Class_graph.StringMap.find parent acc with Stdlib.Not_found -> [] in
-        Class_graph.StringMap.add parent (info.Class_graph.name :: children) acc
+        let children = Map.Poly.find acc parent |> Option.value ~default:[] in
+        Map.Poly.set acc ~key:parent ~data:(info.Class_graph.name :: children)
     | None -> acc
-  ) Class_graph.StringMap.empty infos in
+  ) Map.Poly.empty infos in
 
   let graph = Stdlib.List.fold_left (fun acc info ->
-    Class_graph.StringMap.add info.Class_graph.name info acc
-  ) Class_graph.StringMap.empty infos in
+    Map.Poly.set acc ~key:info.Class_graph.name ~data:info
+  ) Map.Poly.empty infos in
 
   (infos, parent_to_children, graph)
 
@@ -117,11 +117,10 @@ let build_registry (nodes : Security_node.t list) :
 
 let detect_base_class_not_abstract
     (infos : Class_graph.class_info list)
-    (parent_to_children : string list Class_graph.StringMap.t)
+    (parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
   Stdlib.List.filter_map (fun (info : Class_graph.class_info) ->
-    let children = try Class_graph.StringMap.find info.Class_graph.name parent_to_children
-                  with Stdlib.Not_found -> [] in
+    let children = Map.Poly.find parent_to_children info.Class_graph.name |> Option.value ~default:[] in
     let child_count = Stdlib.List.length children in
     if not info.Class_graph.is_abstract && child_count >= base_class_subclass_threshold then
       Some {
@@ -147,11 +146,10 @@ let detect_base_class_not_abstract
 
 let detect_speculative_generality
     (infos : Class_graph.class_info list)
-    (parent_to_children : string list Class_graph.StringMap.t)
+    (parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
   Stdlib.List.filter_map (fun (info : Class_graph.class_info) ->
-    let children = try Class_graph.StringMap.find info.Class_graph.name parent_to_children
-                  with Stdlib.Not_found -> [] in
+    let children = Map.Poly.find parent_to_children info.Class_graph.name |> Option.value ~default:[] in
     let child_count = Stdlib.List.length children in
     if info.Class_graph.is_abstract && child_count < speculative_generality_child_threshold then
       Some {
@@ -177,7 +175,7 @@ let detect_speculative_generality
 
 let detect_deep_inheritance
     (infos : Class_graph.class_info list)
-    (graph : Class_graph.class_info Class_graph.StringMap.t)
+    (graph : (string, Class_graph.class_info) Map.Poly.t)
     : Finding.t list =
   Stdlib.List.filter_map (fun (info : Class_graph.class_info) ->
     let depth = Class_graph.get_inheritance_depth graph info.name in
@@ -205,7 +203,7 @@ let detect_deep_inheritance
 
 let detect_tradition_breaker
     (infos : Class_graph.class_info list)
-    (_parent_to_children : string list Class_graph.StringMap.t)
+    (_parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
   Stdlib.List.filter_map (fun (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
@@ -243,14 +241,12 @@ let detect_tradition_breaker
 let detect_refused_parent_bequest
     (nodes : Security_node.t list)
     (infos : Class_graph.class_info list)
-    (_parent_to_children : string list Class_graph.StringMap.t)
+    (_parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
-  let module StringMap = Stdlib.Map.Make(Stdlib.String) in
   let by_file = Stdlib.List.fold_left (fun acc (n : Security_node.t) ->
-    let existing = match StringMap.find_opt n.Security_node.file acc with
-      | Some nodes -> nodes | None -> [] in
-    StringMap.add n.Security_node.file (n :: existing) acc
-  ) StringMap.empty nodes in
+    let existing = Map.Poly.find acc n.Security_node.file |> Option.value ~default:[] in
+    Map.Poly.set acc ~key:n.Security_node.file ~data:(n :: existing)
+  ) Map.Poly.empty nodes in
   
   let rec get_ancestor_methods name visited =
     if Stdlib.List.mem name visited then []
@@ -271,9 +267,8 @@ let detect_refused_parent_bequest
        | Some _parent ->
          let ancestor_methods = get_ancestor_methods parent_name [] in
          Stdlib.List.concat_map (fun method_name ->
-           if not (Stdlib.List.mem method_name ancestor_methods) then [] else
-           let file_nodes = match StringMap.find_opt info.Class_graph.file by_file with
-             | Some nodes -> nodes | None -> [] in
+if not (Stdlib.List.mem method_name ancestor_methods) then [] else
+            let file_nodes = Map.Poly.find by_file info.Class_graph.file |> Option.value ~default:[] in
            let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
            let all_classes = Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in
            let class_start = info.Class_graph.line in
@@ -328,19 +323,17 @@ let detect_refused_parent_bequest
 
 let detect_base_class_knows_derived
     (infos : Class_graph.class_info list)
-    (_parent_to_children : string list Class_graph.StringMap.t)
+    (_parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
-  let module StringMap = Stdlib.Map.Make(Stdlib.String) in
   let parent_children = Stdlib.List.fold_left (fun acc (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent ->
-      let siblings = match StringMap.find_opt parent acc with
-        | Some siblings -> siblings | None -> [] in
-      StringMap.add parent (info :: siblings) acc
+      let siblings = Map.Poly.find acc parent |> Option.value ~default:[] in
+      Map.Poly.set acc ~key:parent ~data:(info :: siblings)
     | None -> acc
-  ) StringMap.empty infos in
+  ) Map.Poly.empty infos in
   Stdlib.List.concat_map (fun (info : Class_graph.class_info) ->
-    match StringMap.find_opt info.Class_graph.name parent_children with
+    match Map.Poly.find parent_children info.Class_graph.name with
     | Some children when Stdlib.List.length children >= 3 ->
       [{ Finding.rule = "BaseClassKnowsDerivedClass";
          severity = "Low";
@@ -364,18 +357,18 @@ let detect_base_class_knows_derived
 
 let detect_parallel_inheritance
     (infos : Class_graph.class_info list)
-    (_parent_to_children : string list Class_graph.StringMap.t)
+    (_parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
   let all_class_names = Stdlib.List.fold_left (fun acc info ->
-    Class_graph.StringSet.add info.Class_graph.name acc
-  ) Class_graph.StringSet.empty infos in
+    Set.Poly.add acc info.Class_graph.name
+  ) Set.Poly.empty infos in
   let rec check_splits (info : Class_graph.class_info) (name : string) (namelen : int) (pos : int) : Finding.t list =
     if pos >= namelen - 1 then []
     else
       let prefix = Stdlib.String.sub name 0 pos in
       let suffix = Stdlib.String.sub name pos (namelen - pos) in
       let new_findings = 
-        if Class_graph.StringSet.mem prefix all_class_names && Class_graph.StringSet.mem suffix all_class_names then
+        if Set.Poly.mem all_class_names prefix && Set.Poly.mem all_class_names suffix then
           [{ Finding.rule = "ParallelInheritance";
              severity = "Low";
              file = info.Class_graph.file;
