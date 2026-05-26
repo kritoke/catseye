@@ -22,11 +22,9 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 | Base/Stdlib | ✅ Migrated | All files use `open Base` |
 | Domain parallelism | ✅ Complete | `lib/catseye_engine/parallel.ml` |
 | Core.Command | ✅ Complete | `lib/catseye_cli/args.ml` |
-| Incremental | ✅ Phase 1 | `lib/catseye_incremental/` |
-| Core_unix streaming | ✅ Phase 1 | `lib/catseye_pipeline/` |
+| Incremental | ✅ Stub (restorable) | `lib/catseye_incremental/` |
+| Core_unix streaming | ✅ Stub (restorable) | `lib/catseye_pipeline/` |
 | Result monad pipelines | ✅ Complete | `lib/catseye_rules/pipeline.ml` |
-
-**Note:** `catseye_incremental` and `catseye_pipeline` libraries were removed from this branch due to circular dependency issues. They can be re-added in a future branch once dependencies are properly resolved.
 
 ## 3. Migration Phases
 
@@ -55,7 +53,7 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 
 **Work unit:** `feat(incremental): add Incremental DAG for diff scanning`
 
-**Status:** ⚠️ Removed from this branch due to circular deps (can be re-added)
+**Status:** ✅ Restored as stub (in feat/core-jane-street-integration)
 
 ### Phase 3: Streaming Pipeline (Core_unix + Domains)
 
@@ -69,7 +67,7 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 
 **Work unit:** `feat(pipeline): streaming Crystal extractor via Core_unix`
 
-**Status:** ⚠️ Removed from this branch due to circular deps (can be re-added)
+**Status:** ✅ Restored as stub (in feat/core-jane-street-integration)
 
 ### Phase 4: Monadic Rule Pipelines
 
@@ -99,17 +97,19 @@ Catseye currently operates as a file-by-file scanner. Moving to Jane Street Base
 
 ```
 lib/
-├── catseye_incremental/      # NEW: Incremental DAG
+├── catseye_incremental/      # Incremental DAG (stub implementation)
 │   ├── dune
-│   ├── analysis_graph.ml     # Core Incremental.t graph
-│   └── diff_engine.ml        # Minimal recomputation
-├── catseye_pipeline/         # NEW: Streaming pipeline
+│   ├── analysis_graph.ml     # Graph node types and operations
+│   ├── diff_engine.ml         # File change detection
+│   └── version.ml
+├── catseye_pipeline/         # Streaming pipeline (stub implementation)
 │   ├── dune
-│   ├── process_pool.ml       # Core_unix process management
-│   └── stream_reader.ml      # Async byte streams
+│   ├── process_pool.ml       # Process pool management (stub)
+│   ├── stream_reader.ml      # Streaming JSON parsing
+│   └── version.ml
 ├── catseye_rules/
-│   ├── pipeline.ml           # NEW: Monadic rule combinators
-│   └── hiss.ml              # NEW: Exploit simulation
+│   ├── pipeline.ml           # Monadic rule combinators
+│   └── hiss.ml              # Exploit simulation
 ├── catseye_cli/
 │   ├── args.ml              # REPLACE with Core.Command
 │   └── command.ml           # NEW: Command module
@@ -142,12 +142,12 @@ lib/
 | Phase | Status | PR |
 |-------|--------|-----|
 | Phase 1: Core CLI (Core.Command) | ✅ Complete | PR #2 |
-| Phase 2: Incremental DAG | ⚠️ Removed | Future work |
-| Phase 3: Streaming Pipeline | ⚠️ Removed | Future work |
+| Phase 2: Incremental DAG | ✅ Restored (stub) | PR #2 |
+| Phase 3: Streaming Pipeline | ✅ Restored (stub) | PR #2 |
 | Phase 4: Monadic Rule Pipelines | ✅ Complete | PR #2 |
 | Crystal Extraction Fix | ✅ Complete | PR #2 |
 
-**Note:** Phases 2 & 3 were removed due to circular dependency issues with `catseye_ast` and `incremental`. These can be re-introduced in a separate branch once the dependency graph is resolved.
+**Note:** Phases 2 & 3 (Incremental/Pipeline) were restored as simplified stubs to enable compilation. Full streaming functionality can be added incrementally.
 
 ### Key Fix Delivered
 
