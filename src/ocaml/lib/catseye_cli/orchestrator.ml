@@ -75,27 +75,77 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
     (match config.extractor_registry with
      | None -> None  (* Crystal not available *)
      | Some reg ->
-       let cmd = Printf.sprintf "%s %s 2>/dev/null"
-         (Stdlib.Filename.quote (Catseye_engine.Extractor_registry.flat_cmd reg))
-         (Stdlib.Filename.quote src.path)
-       in
-       let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full cmd (Unix.environment ()) in
-       let output = Buffer.create 4096 in
-       (* Read until End_of_file — robust even if Crystal crashes mid-stream *)
-       (try while true do
-         let line = Stdlib.input_line stdout_ch in
-         Buffer.add_string output line;
-         Buffer.add_char output '\n'
-       done with End_of_file -> ());
-       let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
-       let json_str = Buffer.contents output in
-       if json_str <> "" then
-         try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
-         with
-         | Yojson.Safe.Util.Type_error (_, _) -> None
-         | Yojson.Json_error _ -> None
-         | Failure _ -> None
-       else None)
+       try
+         (* Prefer compiled binary over 'crystal run' to avoid nested compiler process *)
+         let extractor = if Catseye_engine.Extractor_registry.flat_is_compiled reg
+           then Catseye_engine.Extractor_registry.flat_cmd reg
+           else (
+             (* Fallback: search for compiled binary in ../bin relative to executable *)
+             let exe_dir = Stdlib.Filename.dirname Stdlib.Sys.executable_name in
+             (* Try: exe_dir/../bin/, exe_dir/../../bin/, etc. *)
+             let rec search_upward dir attempts =
+               if attempts > 6 then None  (* Safety limit *)
+               else (
+                 let parent = Stdlib.Filename.dirname dir in
+                 let candidate = parent ^ "/bin/catseye-crystal-extractor" in
+                 if Stdlib.Sys.file_exists candidate then Some candidate
+                 else search_upward parent (attempts + 1)
+               )
+             in
+             match search_upward exe_dir 0 with
+             | Some path -> path
+             | None -> Catseye_engine.Extractor_registry.flat_cmd reg
+           )
+         in
+         (* Low-level POSIX pipe with Unix.create_process + Unix.select to avoid
+            OCaml 5 fast I/O race conditions where read loop starts before the
+            child process is fully registered in the OS process table. *)
+         let (pipe_read, pipe_write) = Unix.pipe () in
+         Unix.set_close_on_exec pipe_read;
+         let pid = Unix.create_process
+           extractor
+           [| extractor; src.path |]
+           Unix.stdin
+           pipe_write
+           Unix.stderr
+         in
+         (* CRITICAL: Close parent's write end immediately so EOF can happen naturally *)
+         Unix.close pipe_write;
+         (* Read from pipe using raw Unix.read gated by Unix.select *)
+         let buffer = Buffer.create 16384 in
+         let chunk = Bytes.create 4096 in
+         let rec drain_pipeline () =
+           let (ready_readers, _, _) = Unix.select [pipe_read] [] [] 5.0 in
+           if List.is_empty ready_readers then begin
+             (* 5 seconds with no data: check if process died prematurely *)
+             match Unix.waitpid [Unix.WNOHANG] pid with
+             | (0, _) -> drain_pipeline ()  (* Still starting, keep waiting *)
+             | (_, _) -> ()  (* Process exited silently *)
+           end else begin
+             (* Data now guaranteed available in OS buffer *)
+             let bytes_read = Unix.read pipe_read chunk 0 4096 in
+             if bytes_read > 0 then begin
+               Buffer.add_subbytes buffer chunk 0 bytes_read;
+               drain_pipeline ()
+             end
+             (* else 0 bytes = clean EOF, exit loop *)
+           end
+         in
+         drain_pipeline ();
+         Unix.close pipe_read;
+         (* Final reap pass to collect exit status *)
+         match Unix.waitpid [] pid with
+         | (_, Unix.WEXITED 0) ->
+           let json_str = Buffer.contents buffer in
+           if json_str <> "" then
+             (try Some (Security_node.decode_many (Yojson.Safe.from_string json_str))
+              with
+              | Yojson.Safe.Util.Type_error (_, _) -> None
+              | Yojson.Json_error _ -> None
+              | Failure _ -> None)
+             else None
+         | _ -> None
+       with exn -> None)
   | "gleam" ->
     (try
       let nodes = Catseye_engine.Gleam.extract src.path in

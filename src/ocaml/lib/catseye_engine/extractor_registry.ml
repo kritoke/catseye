@@ -26,6 +26,18 @@ let rec search_upward (dir : string) (name : string) : string option =
     if parent = dir then None
     else search_upward parent name
 
+(** Search for a source file relative to the executable directory. *)
+let search_exe_relative (source_relative : string list) : string option =
+  let exe_dir = Stdlib.Filename.dirname (Stdlib.Sys.executable_name) in
+  let rec try_sources = function
+    | [] -> None
+    | rel :: rest ->
+      let candidate = exe_dir ^ "/" ^ rel in
+      if Stdlib.Sys.file_exists candidate then Some candidate
+      else try_sources rest
+  in
+  try_sources source_relative
+
 (** Check if a resolved command is a pre-compiled binary (vs "crystal run ..."). *)
 let is_compiled_binary (cmd : string) : bool =
   String.length cmd >= 12 && Stdlib.String.sub cmd 0 12 <> "crystal run "
@@ -55,11 +67,15 @@ let resolve_one
       let global = exe_dir ^ "/../lib/catseye/extractor/" ^ exe_name in
       if Stdlib.Sys.file_exists global then global
       else
-        (* 5. crystal run on source (slow) *)
-        let source = List.find ~f:Stdlib.Sys.file_exists source_relative in
-        match source with
+        (* 5. Search source relative to executable *)
+        (match search_exe_relative source_relative with
         | Some p -> "crystal run " ^ p ^ " --"
-        | None -> "crystal run src/extractor/" ^ exe_name ^ ".cr --"
+        | None ->
+          (* 6. Search source relative to CWD (last resort) *)
+          let source = List.find ~f:Stdlib.Sys.file_exists source_relative in
+          match source with
+          | Some p -> "crystal run " ^ p ^ " --"
+          | None -> "crystal run src/extractor/" ^ exe_name ^ ".cr --")
 
 (* ── Registry type ──────────────────────────────────────────────────── *)
 

@@ -14,6 +14,19 @@ open Base
 open Catseye_types
 let ( = ) = Stdlib.( = )
 
+let string_prefix s ~prefix =
+  let plen = Stdlib.String.length prefix in
+  if Stdlib.String.length s < plen then false
+  else Stdlib.String.sub s 0 plen = prefix
+
+(* Read raw bytes from a file descriptor, gated by Unix.select to avoid
+   OCaml 5 fast I/O race conditions where the read loop starts before
+   the child process is fully registered in the OS process table. *)
+let read_with_select (fd : Unix.file_descr) (buf : bytes) : int =
+  let (ready, _, _) = Unix.select [(Stdlib.Obj.magic fd : Unix.file_descr)] [] [] 5.0 in
+  if List.is_empty ready then 0  (* Timeout *)
+  else Unix.read fd buf 0 (Bytes.length buf)
+
 (* ── Protocol types ──────────────────────────────────────────────────── *)
 
 type worker = {
@@ -67,9 +80,17 @@ let spawn_worker (extractor_path : string) (worker_id : int) : worker =
      By using fork+execv and closing stderr ourselves, we eliminate this entirely. *)
   let stdin_r, stdin_w = Unix.pipe () in
   let stdout_r, stdout_w = Unix.pipe () in
+  (* CRITICAL: Set close_on_exec on ALL pipe ends before fork to prevent
+     file descriptor leaks or accidental inheritance in child processes. *)
+  Unix.set_close_on_exec stdin_r;
+  Unix.set_close_on_exec stdin_w;
+  Unix.set_close_on_exec stdout_r;
+  Unix.set_close_on_exec stdout_w;
   let pid = Unix.fork () in
   if pid = 0 then begin
     (* Child process *)
+    (* Ignore SIGPIPE in child so writes to closed pipe don't kill us *)
+    let (_ : Stdlib.Sys.signal_behavior) = Stdlib.Sys.signal Stdlib.Sys.sigpipe Stdlib.Sys.Signal_ignore in
     Unix.dup2 stdin_r Unix.stdin;
     Unix.dup2 stdout_w Unix.stdout;
     Unix.close Unix.stderr;  (* Close stderr → /dev/null *)
@@ -89,23 +110,59 @@ let create (extractor_path : string) (pool_size : int) : t =
   let workers = Stdlib.Array.init size (spawn_worker extractor_path) in
   { workers; next_req_id = 0; extractor_path }
 
+(* ── Request/Response protocol ───────────────────────────────────────── *)
+
 (** Send a request to a specific worker. *)
 let send_request (w : worker) (req_id : int) (file : string) : unit =
   let json = Stdlib.Printf.sprintf
     "{\"id\":%d,\"method\":\"extract\",\"file\":%s,\"content\":null}"
     req_id (Yojson.Safe.to_string (`String file)) in
-  Stdlib.output_string w.worker_stdin json;
-  Stdlib.output_char w.worker_stdin '\n';
-  Stdlib.flush w.worker_stdin
+  let oc = w.worker_stdin in
+  (try
+    Stdlib.output_string oc json;
+    Stdlib.output_char oc '\n';
+    Stdlib.flush oc
+  with
+  (* Handle EPIPE/Broken pipe — worker died mid-request *)
+  | Sys_error msg when string_prefix msg ~prefix:"Broken pipe" ->
+    Logs.warn (fun m -> m "Worker %d EPIPE on flush" w.id);
+    raise (Stdlib.Failure "Worker EPIPE")
+  | Sys_error msg when string_prefix msg ~prefix:"Write failed" ->
+    Logs.warn (fun m -> m "Worker %d write failed" w.id);
+    raise (Stdlib.Failure "Worker write failed")
+  | exn -> raise exn)
 
 (** Read a single NDJSON response line from a persistent --serve worker.
-    Each request produces exactly one JSON line; the worker stays alive
-    afterwards, so we must NOT read until EOF. *)
+    Uses Unix.select to avoid OCaml 5 fast I/O races. *)
 let read_response (w : worker) : (int * Security_node.t list option) =
-  try
-    let line = Stdlib.input_line w.worker_stdout in
-    if line = "" then (-1, None)
-    else (try decode_response line with _ -> (-1, None))
+  let buf = Bytes.create 8192 in
+  let buffer = Stdlib.Buffer.create 8192 in
+  let rec read_until_newline () =
+    (* Get raw fd from the in_channel *)
+    let fd = (Stdlib.Obj.magic w.worker_stdout : Unix.file_descr) in
+    let n = read_with_select fd buf in
+    if n = 0 then begin
+      (* Timeout or EOF *)
+      let content = Stdlib.Buffer.contents buffer in
+      if content = "" then (-1, None)
+      else (try decode_response content with _ -> (-1, None))
+    end else begin
+      (* Got data — append to buffer and look for newline *)
+      Stdlib.Buffer.add_subbytes buffer buf 0 n;
+      let content = Stdlib.Buffer.contents buffer in
+      match Stdlib.String.index_opt content '\n' with
+      | Some pos ->
+        let line = Stdlib.String.sub content 0 pos in
+        if Stdlib.String.length content > pos + 1 then begin
+          (* More data after newline — keep it for next response *)
+          Stdlib.Buffer.clear buffer;
+          Stdlib.Buffer.add_string buffer (Stdlib.String.sub content (pos + 1) (Stdlib.String.length content - pos - 1))
+        end;
+        (try decode_response line with _ -> (-1, None))
+      | None -> read_until_newline ()
+    end
+  in
+  try read_until_newline ()
   with Stdlib.End_of_file -> (-1, None)
 
 (** Extract a single file via the pool (round-robin). *)
@@ -125,21 +182,41 @@ let respawn (pool : t) (worker_id : int) : unit =
   (try Stdlib.close_out old.worker_stdin with _ -> ());
   pool.workers.(worker_id) <- spawn_worker pool.extractor_path worker_id
 
+(* Check if an exception is a worker death signal *)
+let is_worker_death (exn : exn) : bool =
+  let msg = Stdlib.Printexc.to_string exn in
+  msg = "Worker EPIPE" || msg = "Worker write failed" || msg = "Worker dead"
+
 (** Extract with automatic crash recovery. Retries once on failure. *)
 let extract_with_recovery (pool : t) (file : string) : Security_node.t list option =
   let req_id = pool.next_req_id in
   pool.next_req_id <- pool.next_req_id + 1;
   let idx = Int.rem req_id (Stdlib.Array.length pool.workers) in
   let worker = pool.workers.(idx) in
-  send_request worker req_id file;
-  match read_response worker with
-  | (-1, None) ->
-    Logs.warn (fun m -> m "Worker %d crashed on %s, respawning" idx file);
+  (try
+    send_request worker req_id file;
+    match read_response worker with
+    | (-1, None) ->
+      Logs.warn (fun m -> m "Worker %d crashed on %s, respawning" idx file);
+      respawn pool idx;
+      let worker = pool.workers.(idx) in
+      send_request worker req_id file;
+      snd (read_response worker)
+    | (_, nodes) -> nodes
+  with exn when is_worker_death exn ->
+    (* Worker died while writing - respawn and retry once *)
+    Logs.warn (fun m -> m "Worker %d died (EPIPE), respawning" idx);
     respawn pool idx;
     let worker = pool.workers.(idx) in
-    send_request worker req_id file;
-    snd (read_response worker)
-  | (_, nodes) -> nodes
+    (try
+      send_request worker req_id file;
+      snd (read_response worker)
+    with exn ->
+      Logs.err (fun m -> m "Worker %d still dead after respawn: %s" idx (Stdlib.Printexc.to_string exn));
+      None)
+  | exn ->
+    Logs.err (fun m -> m "Worker pool extract error: %s" (Stdlib.Printexc.to_string exn));
+    None)
 
 (** Shutdown all workers gracefully. *)
 let shutdown (pool : t) : unit =

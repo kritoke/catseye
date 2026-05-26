@@ -926,4 +926,5 @@ else
 
   file_path = ARGV[0]
   puts extract_file(file_path)
+  STDOUT.flush
 end

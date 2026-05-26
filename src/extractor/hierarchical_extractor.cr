@@ -716,10 +716,13 @@ begin
   end
 
   puts json_output
+  STDOUT.flush
 rescue ex : Crystal::SyntaxException
   puts({"type" => "ParseError", "message" => ex.message.to_s, "line" => ex.line_number}.to_json)
+  STDOUT.flush
   exit 1
 rescue ex : Exception
   puts({"type" => "ParseError", "message" => ex.message.to_s, "line" => 0}.to_json)
+  STDOUT.flush
   exit 1
 end
