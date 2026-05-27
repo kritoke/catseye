@@ -24,6 +24,8 @@ let lang_to_string = function
   | TypeScript -> "typescript"
   | JavaScript -> "javascript"
   | Rust -> "rust"
+  | OCaml -> "ocaml"
+  | Elixir -> "elixir"
   | Other s -> s
 
 (* ── Helpers ────────────────────────────────────────────────────────── *)

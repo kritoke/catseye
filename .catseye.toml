@@ -6,7 +6,7 @@
 # extensions = [".cr", ".gleam"]
 
 # Directories to exclude
-exclude = ["node_modules", ".git", "vendor", "lib", "spec"]
+exclude = ["node_modules", ".git", "vendor", "lib", "spec", "test", "samples"]
 
 # Maximum file size to scan (bytes)
 # max_file_size = 1_000_000

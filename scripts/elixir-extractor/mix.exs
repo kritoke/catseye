@@ -8,7 +8,8 @@ defmodule CatseyeExtractor.MixProject do
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      escript: escript()
     ]
   end
 
@@ -24,6 +25,12 @@ defmodule CatseyeExtractor.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"}
+    ]
+  end
+
+  defp escript do
+    [
+      main_module: CatseyeExtractor.CLI
     ]
   end
 end

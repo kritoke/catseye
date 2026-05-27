@@ -1,9 +1,13 @@
 rule "InsecureDeserialization" severity="High" {
-    languages {
-        exclude "crystal"
-    }
     sinks {
         sink "JSON.parse" {
+            // Safe if input was validated through schema validation or input checking
+            sanitizer "schema.validate"
+            sanitizer "Schema.parse"
+            sanitizer "Schema.from_json"
+            sanitizer "check_json"
+            sanitizer "validate_json"
+            sanitizer "JSON::Schema.new"
             fix "JSON.parse(schema.validate({arg0}))"
         }
         sink "YAML.parse" {

@@ -1,0 +1,150 @@
+(* lib/catseye_ast/elixir_mapper.ml
+   Bridge from elixir-extractor JSON output to CatseyeAST.t.
+   
+   Maps onto CatseyeAST.t for taint analysis.
+   Works as a drop-in scanner for any Elixir project.
+*)
+
+module PE = Error
+open Base
+open Types
+
+(* ── JSON helpers ───────────────────────────────────────────────────── *)
+
+let assoc key fields = List.Assoc.find ~equal:String.equal fields key
+
+let json_string (json : Yojson.Safe.t) : string =
+  match json with `String s -> s | _ -> ""
+
+let json_int (json : Yojson.Safe.t) : int =
+  match json with `Int n -> n | _ -> 0
+
+(* ── Position helpers ────────────────────────────────────────────── *)
+
+let pos line = Position.make ~line ~column:0 ~byte_offset:0
+let range line = { start = pos line; end_ = pos line }
+
+(* ── Build expressions from escript JSON call list ───────────────── *)
+
+let build_call_list (fn_calls : Yojson.Safe.t list) : expr list =
+  List.map fn_calls ~f:(function
+    | `Assoc cf ->
+      { expr_value = EVar (json_string (match assoc "name" cf with Some v -> v | _ -> `String ""));
+        expr_location = range (json_int (match assoc "line" cf with Some v -> v | _ -> `Int 0)) }
+    | _ -> { expr_value = EUnit; expr_location = range 0 })
+
+(* ── Build function item from a JSON function entry ─────────────── *)
+
+let build_function_item (json_fn : Yojson.Safe.t) : item =
+  match json_fn with
+  | `Assoc fields ->
+    let fn_name = json_string (match assoc "name" fields with Some v -> v | _ -> `String "") in
+    let fn_line = json_int (match assoc "line" fields with Some v -> v | _ -> `Int 0) in
+    let params = (match assoc "params" fields with 
+                 | Some (`List ps) -> List.filter_map ps ~f:(function `String s -> Some (PVar s) | _ -> None) 
+                 | _ -> []) in
+    let fn_calls = (match assoc "calls" fields with Some (`List cs) -> cs | _ -> []) in
+    let call_exprs = build_call_list fn_calls in
+    let r = range fn_line in
+    let body = { expr_value = EBlock call_exprs; expr_location = r } in
+    { item_location = r; item_value = IFunction (fn_name, params, None, body) }
+  | _ -> { item_location = range 0; item_value = IUnknown "parse_error" }
+
+(* ── Convert escript JSON module to CatseyeAST.t ─────────────────── *)
+
+let of_json (json : Yojson.Safe.t) : (t, PE.parse_error) Result.t =
+  match json with
+  | `Assoc fields ->
+    (match assoc "file" fields with
+     | Some (`String file) ->
+       (match assoc "functions" fields with
+        | Some (`List functions) ->
+          let items = List.map functions ~f:build_function_item in
+          Ok { mod_lang = Elixir; mod_path = file; mod_items = items; parse_errors = [] }
+        | _ -> Ok { mod_lang = Elixir; mod_path = file; mod_items = []; parse_errors = [] })
+     | _ -> Error (PE.make_error ~file:"?" ~message:"Missing file field"))
+  | _ -> Error (PE.make_error ~file:"?" ~message:"Invalid elixir JSON")
+
+(* ── Helpers ──────────────────────────────── *)
+
+let get_realpath (path : string) : string =
+  let cmd = Stdlib.Printf.sprintf "realpath %s" (Stdlib.Filename.quote path) in
+  let ch = Unix.open_process_in cmd in
+  let rec read_all acc = try read_all (Stdlib.input_line ch :: acc) with End_of_file -> List.rev acc in
+  let lines = read_all [] in
+  let _ = Unix.close_process_in ch in
+  match lines with [p] -> p | _ -> path
+
+let find_root (start_path : string) : string option =
+  let start_dir = if Stdlib.Sys.is_directory start_path then start_path else Stdlib.Filename.dirname start_path in
+  let rec search dir depth =
+    if depth > 20 then None
+    else
+      let has_project =
+        Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "mix.exs") ||
+        Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "mix.lock") in
+      if has_project then Some dir
+      else
+        let parent = Stdlib.Filename.dirname dir in
+        if parent = dir then None else search parent (depth + 1) in
+  search start_dir 0
+
+(* ── Find catseye_extractor escript ──────────────────────────────── *)
+(* Tries multiple locations in order of preference *)
+
+let find_extractor () : string option =
+  let candidates = [
+    (* In catseye bin directory (where we build it) *)
+    "/workspaces/catseye/bin/catseye_extractor";
+    (* Relative to catseye binary location *)
+    Stdlib.Filename.concat (Stdlib.Filename.dirname (Sys.get_argv ()).(0)) "catseye_extractor";
+    (* In PATH *)
+    "catseye_extractor";
+  ] in
+  let rec try_all = function
+    | [] -> None
+    | candidate :: rest ->
+      if Stdlib.Sys.file_exists candidate then Some candidate
+      else try_all rest
+  in
+  try_all candidates
+
+(* ── Run extractor on a single file ──────────────────────────────── *)
+
+let run_extractor_single (abs_file_path : string) : string option =
+  match find_extractor () with
+  | None -> None
+  | Some extractor ->
+    (* Use --file flag to extract a single file *)
+    let cmd = Stdlib.Printf.sprintf "%s --file %s 2>/dev/null"
+      (Stdlib.Filename.quote extractor)
+      (Stdlib.Filename.quote abs_file_path)
+    in
+    let ch = Unix.open_process_in cmd in
+    let rec read_all acc = 
+      try read_all (Stdlib.input_line ch :: acc) 
+      with End_of_file -> List.rev acc 
+    in
+    let lines = read_all [] in
+    let status = Unix.close_process_in ch in
+    if status = Unix.WEXITED 0 && lines <> [] then Some (String.concat ~sep:"\n" lines)
+    else None
+
+(* ── Parse file ───────────────────────────────────────────────────── *)
+
+let parse_file ~(path : string) ~(extractor_cmd : string) : (t, PE.parse_error) Result.t =
+  let _extractor_cmd = extractor_cmd in
+  if not (Stdlib.Filename.check_suffix path ".ex" || Stdlib.Filename.check_suffix path ".exs") then
+    Error (PE.make_error ~file:path ~message:"Not an Elixir file")
+  else
+    let abs_path = get_realpath path in
+    match find_root abs_path with
+    | None -> Error (PE.make_error ~file:path ~message:"Could not find Elixir project root")
+    | Some _ ->
+      (match run_extractor_single abs_path with
+       | Some json_str ->
+         (try 
+           let json = Yojson.Safe.from_string json_str in
+           of_json json
+         with _ -> Error (PE.make_error ~file:path ~message:"Parse error"))
+       | None -> Error (PE.make_error ~file:path ~message:"Extractor failed"))

@@ -115,9 +115,26 @@ let parse_args () : Config.t =
     Stdlib.exit 0
   end;
   
-  (* Parse path - first non-flag argument *)
+  (* Parse optional string values — collect values consumed by multi-arg flags so they aren't mistaken for the target path *)
+  let consumed_values = [] in
+  let consumed_values = match find_opt "rules" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "output" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "config" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "cache-dir" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "lang" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "format" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "suppress" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "parallel" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "analysis-timeout" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "cfg-max-blocks" args with Some v -> v :: consumed_values | None -> consumed_values in
+  let consumed_values = match find_opt "cfg-timeout" args with Some v -> v :: consumed_values | None -> consumed_values in
+  
+  (* Parse path - first non-flag argument, skipping flag values already consumed above *)
+  let non_consumed s =
+    not (String.is_prefix s ~prefix:"--") &&
+    not (Stdlib.List.mem s consumed_values) in
   let path = 
-    match List.find args ~f:(fun s -> not (String.is_prefix ~prefix:"--" s)) with
+    match List.find args ~f:non_consumed with
     | Some p -> p
     | None -> "."
   in

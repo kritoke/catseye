@@ -1,4 +1,7 @@
 rule "OpenRedirect" severity="Medium" {
+    languages {
+        exclude "crystal"
+    }
     sinks {
         sink "redirect_to" arg=0 {
             fix "redirect_to(validate_url({arg0}))"

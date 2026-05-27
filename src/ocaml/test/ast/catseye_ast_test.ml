@@ -21,8 +21,7 @@ let () =
       Printf.printf "ERROR: %s\n" err.message
   | Ok mod_ ->
       Printf.printf "Parsed %s (%s)\n" mod_.mod_path
-        (match mod_.mod_lang with Gleam -> "Gleam" | Crystal -> "Crystal" | Svelte -> "Svelte" | TypeScript -> "TypeScript" | JavaScript -> "JavaScript" | Rust -> "rust"
-    | Other s -> s);
+        (match mod_.mod_lang with Gleam -> "Gleam" | Crystal -> "Crystal" | Svelte -> "Svelte" | TypeScript -> "TypeScript" | JavaScript -> "JavaScript" | Rust -> "rust" | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s);
       Printf.printf "Items: %d\n" (List.length mod_.mod_items);
 
       List.iter (fun item ->

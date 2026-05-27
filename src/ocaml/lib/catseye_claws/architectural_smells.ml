@@ -138,6 +138,8 @@ let check_god_class (modules : t list) : Finding.t list =
       | TypeScript -> "typescript" 
       | Rust -> "rust" 
       | JavaScript -> "javascript"
+      | OCaml -> "ocaml"
+      | Elixir -> "elixir"
       | Other s -> s
     in
     let check_items items file findings =

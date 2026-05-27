@@ -238,3 +238,43 @@ rule "Elixir-Config-Secrets" severity="Critical" languages="elixir" {
     }
     message "Potential hardcoded secret in {sink}"
 }
+
+rule "Elixir-Command-Injection" severity="Critical" languages="elixir" {
+    // OS command execution vulnerabilities
+    sinks {
+        sink "System.cmd" arg=1 {
+            sanitizer "System.cmd(\"echo\", [sanitized_args])"
+            fix "Use explicit arguments instead of string interpolation"
+        }
+        sink ":os.cmd" arg=1 {
+            fix "Avoid :os.cmd with user input"
+        }
+        sink "Port.open" arg=1 {
+            sanitizer "Port.open({:spawn_executable, path})",
+            fix "Use spawn_executable instead of spawn with user input"
+        }
+        sink ":os.find_executable" arg=0 {
+            fix "Avoid finding executables based on user input"
+        }
+        sink "System.shell" arg=0 {
+            fix "Use System.cmd with explicit arguments instead"
+        }
+        sink "Porcelain.shell" arg=0 {
+            fix "Use Porcelain.process instead with explicit args"
+        }
+        sink "Porcelain.exec" arg=0 {
+            fix "Use Porcelain.Process with explicit arguments"
+        }
+    }
+    sources {
+        source "conn.params"
+        source "conn.body"
+        source "conn.query_params"
+        source "conn.path_params"
+        source "user_input"
+        source "command"
+        source "cmd"
+        source "shell_cmd"
+    }
+    message "Potential command injection via {sink} - user input may allow arbitrary command execution"
+}

@@ -72,8 +72,7 @@ let () =
       Printf.printf "PARSE ERROR: %s\n" err.message
     | Ok mod_ ->
       Printf.printf "Lang: %s, Items: %d\n"
-        (match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Rust -> "rust"
-    | Other s -> s)
+        (match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | JavaScript -> "javascript" | Rust -> "rust" | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s)
         (List.length mod_.mod_items);
 
       let unit = translate mod_ in

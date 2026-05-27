@@ -14,32 +14,30 @@ alias s := scan
 
 build:
     @mkdir -p bin
-    @if [ ! -f bin/catseye-crystal-extractor ]; then \
-        echo "  Compiling Crystal extractors (first build)..."; \
-        crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true; \
-    fi
-    @if [ ! -f bin/catseye-hierarchical-extractor ]; then \
-        crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true; \
-    fi
+    @echo "  Compiling Crystal extractors..."
+    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
+    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
     @echo "  Generating embedded rules (OCaml)..."
     cd src/ocaml && dune exec -- tools/generate_rules/main.exe rules lib/catseye_rules/default_rules.ml
     @echo "  Compiling OCaml..."
-    cd src/ocaml && dune build
-    cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
-    @echo "✓ Built → bin/catseye-ocaml"
+    cd src/ocaml && dune build && cp -f _build/default/bin/main.exe /workspaces/catseye/bin/catseye-ocaml
+    @echo "  Building Elixir escript..."
+    cd /workspaces/catseye/scripts/elixir-extractor && MIX_ENV=prod mix escript.build 2>/dev/null && cp -f catseye_extractor /workspaces/catseye/bin/ || true
+    @echo "✓ Built → bin/"
 
 nix-build:
     nix develop --command bash -c "just build"
 
 build-release:
     @mkdir -p bin
-    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "  ⚠ Crystal not found, extractor will use crystal run (slow)"
+    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "  ⚠ Crystal not found"
     crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
     cd src/ocaml && dune exec -- tools/generate_rules/main.exe rules lib/catseye_rules/default_rules.ml
     @echo "  Compiling OCaml (release)..."
-    cd src/ocaml && dune build --profile release
-    cp -f src/ocaml/_build/default/bin/main.exe bin/catseye-ocaml
-    @echo "✓ Built (release) → bin/catseye-ocaml"
+    cd src/ocaml && dune build --profile release && cp -f _build/default/bin/main.exe /workspaces/catseye/bin/catseye-ocaml
+    @echo "  Building Elixir escript..."
+    cd /workspaces/catseye/scripts/elixir-extractor && MIX_ENV=prod mix escript.build 2>/dev/null && cp -f catseye_extractor /workspaces/catseye/bin/ || true
+    @echo "✓ Built (release) → bin/"
 
 build-extractors:
     @mkdir -p bin
@@ -131,14 +129,17 @@ install prefix="$HOME/.local": build
     @echo "Installing to {{prefix}} ..."
     @install -d {{prefix}}/bin
     @install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
+    @install -m 755 bin/catseye_extractor {{prefix}}/bin/catseye-extractor 2>/dev/null || true
     @install -d {{prefix}}/lib/catseye/rules
     @install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/
     @install -d {{prefix}}/lib/catseye/extractor
     @install -m 755 bin/catseye-crystal-extractor {{prefix}}/lib/catseye/extractor/catseye-crystal-extractor
     @install -m 755 bin/catseye-hierarchical-extractor {{prefix}}/lib/catseye/extractor/catseye-hierarchical-extractor 2>/dev/null || true
+    @install -d {{prefix}}/lib/catseye/elixir-extractor
+    @install -m 755 bin/catseye_extractor {{prefix}}/lib/catseye/elixir-extractor/catseye_extractor 2>/dev/null || true
     @echo "✓ Installed to {{prefix}}"
-    @if ! echo ":$PATH:" | grep -q ":$HOME/.local/bin:"; then \
-        echo "💡 Add ~/.local/bin to your PATH"; \
+    @if ! echo ":$$PATH:" | grep -q ":$$HOME/.local/bin:"; then \
+        echo "Hint: Add ~/.local/bin to your PATH"; \
     fi
 
 # Install pi extension (project-local)
@@ -155,7 +156,7 @@ install-pi-global:
 
 uninstall prefix="$HOME/.local":
     @echo "Uninstalling from {{prefix}} ..."
-    @rm -f {{prefix}}/bin/catseye-ocaml
+    @rm -f {{prefix}}/bin/catseye-ocaml {{prefix}}/bin/catseye-extractor
     @rm -rf {{prefix}}/lib/catseye
     @echo "✓ Uninstalled from {{prefix}}"
 

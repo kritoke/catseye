@@ -88,7 +88,7 @@ defmodule CatseyeExtractor do
     end
   end
 
-  defp extract_module(file, ast) do
+  def extract_module(file, ast) do
     module_name = extract_module_name(ast)
     functions = extract_functions(ast)
 
@@ -283,7 +283,7 @@ defmodule CatseyeExtractor do
     |> MapSet.to_list()
   end
 
-  defp find_sources({{:., meta, [{:conn, _, _}, field]}, _, _}, acc)
+  defp find_sources({{:., _meta, [{:conn, _, _}, field]}, _, _}, acc)
        when field in [:params, :body, :query_params, :path_params, :req_headers, :resp_body] do
     MapSet.put(acc, "conn.#{field}")
   end

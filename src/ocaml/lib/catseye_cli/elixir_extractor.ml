@@ -169,32 +169,24 @@ let run_cmd (cmd : string) : (process_status * string list) =
   let status = Unix.close_process_in ch in
   (status, lines)
 
-(* Find the catseye root - first try binary location, then search upward from CWD *)
-let find_catseye_root (start_dir : string) : string option =
-  (* Try binary's location first *)
-  let exe_dir = Stdlib.Filename.dirname Stdlib.Sys.executable_name in
-  let try_dir dir =
-    let mix_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/mix.exs" in
-    Stdlib.Sys.file_exists mix_path
-  in
-  (* Check binary's directory and parent *)
-  if try_dir exe_dir then Some exe_dir
-  else
-    let parent_exe = Stdlib.Filename.concat exe_dir ".." in
-    if try_dir parent_exe then Some parent_exe
+(* Find the catseye root - look relative to binary location *)
+let find_catseye_root (_start_dir : string) : string option =
+  (* The escript is at: catseye_root/scripts/elixir-extractor/catseye_extractor
+     The OCaml binary is at: catseye_root/bin/catseye-ocaml
+     From the CWD, binary could be anywhere. We search upward from CWD. *)
+  let rec search dir depth =
+    if depth > 20 then None
     else
-      (* Search upward from current directory *)
-      let rec search dir depth =
-        if depth > 20 then None
-        else
-          let mix_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/mix.exs" in
-          if Stdlib.Sys.file_exists mix_path then Some dir
-          else
-            let parent = Stdlib.Filename.concat dir ".." in
-            if parent = dir then None
-            else search parent (depth + 1)
-      in
-      search start_dir 0
+      let bin_dir = Stdlib.Filename.concat dir "bin" in
+      let escript_path = Stdlib.Filename.concat dir "scripts/elixir-extractor/catseye_extractor" in
+      if Stdlib.Sys.file_exists escript_path then Some dir
+      else if Stdlib.Sys.file_exists (Stdlib.Filename.concat bin_dir "catseye-ocaml") then Some dir
+      else
+        let parent = Stdlib.Filename.concat dir ".." in
+        if parent = dir then None
+        else search parent (depth + 1)
+  in
+  search (Stdlib.Sys.getcwd ()) 0
 
 (* Convert relative path to absolute using shell realpath *)
 let realpath (path : string) : string =
@@ -214,25 +206,37 @@ let realpath (path : string) : string =
 
 (* Run extractor and return both sink findings and raw JSON for Claws analysis *)
 let extract_with_data (project_dir : string) : (Catseye_types.Finding.t list * Yojson.Safe.t list) =
-  (* Find our extractor script by traversing up from current working dir *)
+  (* Find our extractor script — check all possible locations *)
   let catseye_root = match find_catseye_root (Stdlib.Sys.getcwd ()) with
     | Some dir -> dir
     | None -> Stdlib.Sys.getcwd ()
   in
-  (* Get absolute paths to avoid cd issues with relative paths *)
   let catseye_root_abs = realpath catseye_root in
-  let extractor_dir = Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor" in
-  let extractor_dir_abs = realpath extractor_dir in
-  let has_extractor = Stdlib.Sys.file_exists (Stdlib.Filename.concat extractor_dir_abs "mix.exs") in
+  
+  (* Try multiple escript locations (installed and dev) *)
+  let try_escript dir =
+    let escript = Stdlib.Filename.concat dir "catseye_extractor" in
+    if Stdlib.Sys.file_exists escript then Some escript else None
+  in
+  let escript_path_opt = 
+    Option.bind (try_escript (Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor")) (fun _ ->
+      try_escript (Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor"))
+    |> (fun o -> match o with Some _ -> o | None -> try_escript (Stdlib.Filename.concat catseye_root_abs "bin"))
+  in
   let (status, lines) =
-    if has_extractor then
-      let cmd = Stdlib.Printf.sprintf "cd %s && MIX_ENV=prod mix run -e 'CatseyeExtractor.run_dir(\"%s\")' 2>&1"
-        (Stdlib.Filename.quote extractor_dir_abs)
+    match escript_path_opt with
+    | Some escript ->
+      (* Use escript directly — no Elixir/Mix runtime needed *)
+      let cmd = Stdlib.Printf.sprintf "%s %s"
+        (Stdlib.Filename.quote escript)
         (Stdlib.Filename.quote project_dir)
       in
       run_cmd cmd
-    else
-      let cmd = Stdlib.Printf.sprintf "cd %s && MIX_ENV=prod mix run -e 'CatseyeExtractor.run' 2>&1"
+    | None ->
+      (* Fallback: try Mix if escript not present (requires Elixir/Mix runtime) *)
+      let extractor_dir_abs = realpath (Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor") in
+      let cmd = Stdlib.Printf.sprintf "cd %s && MIX_ENV=prod mix run -e 'CatseyeExtractor.run_dir(\"%s\")' 2>&1"
+        (Stdlib.Filename.quote extractor_dir_abs)
         (Stdlib.Filename.quote project_dir)
       in
       run_cmd cmd
@@ -268,10 +272,37 @@ let extract (project_dir : string) : Catseye_types.Finding.t list =
 
 (* Run extractor on a single file *)
 let extract_file (file : string) : Catseye_types.Finding.t list =
-  let cmd = Stdlib.Printf.sprintf "MIX_ENV=prod mix run -e 'CatseyeExtractor.run_file(\"%s\")' 2>&1"
-    (Stdlib.Filename.quote file)
+  (* Find our extractor script — check all possible locations *)
+  let catseye_root = match find_catseye_root (Stdlib.Sys.getcwd ()) with
+    | Some dir -> dir
+    | None -> "."
   in
-  let (status, lines) = run_cmd cmd in
+  let catseye_root_abs = realpath catseye_root in
+  let try_escript dir =
+    let escript = Stdlib.Filename.concat dir "catseye_extractor" in
+    if Stdlib.Sys.file_exists escript then Some escript else None
+  in
+  let escript_path_opt = 
+    Option.bind (try_escript (Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor")) (fun _ ->
+      try_escript (Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor"))
+    |> (fun o -> match o with Some _ -> o | None -> try_escript (Stdlib.Filename.concat catseye_root_abs "bin"))
+  in
+  let (status, lines) =
+    match escript_path_opt with
+    | Some escript ->
+      let cmd = Stdlib.Printf.sprintf "%s %s"
+        (Stdlib.Filename.quote escript)
+        (Stdlib.Filename.quote file)
+      in
+      run_cmd cmd
+    | None ->
+      let extractor_dir = Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor" in
+      let cmd = Stdlib.Printf.sprintf "cd %s && MIX_ENV=prod mix run -e 'CatseyeExtractor.run_file(\"%s\")' 2>&1"
+        (Stdlib.Filename.quote extractor_dir)
+        (Stdlib.Filename.quote file)
+      in
+      run_cmd cmd
+  in
   match status with
   | WEXITED 0 ->
     (match parse_module_json (String.concat ~sep:"\n" lines) with

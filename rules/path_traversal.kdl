@@ -1,4 +1,7 @@
 rule "PathTraversal" severity="High" {
+    languages {
+        exclude "crystal"
+    }
     sinks {
         sink "File.read" arg=0 {
             sanitizer "Path.basename"
@@ -54,6 +57,9 @@ rule "PathTraversal" severity="High" {
 }
 
 rule "PathTraversal" severity="Medium" {
+    languages {
+        exclude "crystal"
+    }
     sinks {
         sink "File.join" {
             sanitizer "Digest::MD5.hexdigest"

@@ -1,4 +1,7 @@
 rule "CommandInjection" severity="Critical" {
+    languages {
+        exclude "crystal"
+    }
     sinks {
         sink "system" arg=0 {
             fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"

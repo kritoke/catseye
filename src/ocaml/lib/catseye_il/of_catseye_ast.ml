@@ -256,6 +256,8 @@ let translate (mod_ : Catseye_ast.Types.t) : il_unit =
     | TypeScript -> "typescript"
     | JavaScript -> "javascript"
     | Rust -> "rust"
+    | OCaml -> "ocaml"
+    | Elixir -> "elixir"
     | Other s -> s
   in
   let fns = List.concat_map ~f:walk_item mod_.mod_items in

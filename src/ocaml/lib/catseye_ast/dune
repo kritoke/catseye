@@ -1,5 +1,5 @@
 (library
  (name catseye_ast)
  (public_name catseye.ast)
- (modules types error parse gleam_mapper crystal_mapper crystal_hierarchical_mapper to_security_node language_plugin plugin_registry crystal_plugin gleam_plugin tree_sitter_xml javascript_mapper javascript_plugin typescript_mapper typescript_plugin svelte_mapper svelte_plugin ocaml_mapper ocaml_plugin rust_mapper)
+ (modules types error parse gleam_mapper crystal_mapper crystal_hierarchical_mapper to_security_node language_plugin plugin_registry crystal_plugin gleam_plugin tree_sitter_xml javascript_mapper javascript_plugin typescript_mapper typescript_plugin svelte_mapper svelte_plugin ocaml_mapper ocaml_plugin rust_mapper elixir_mapper)
  (libraries base stdio unix yojson catseye.types))
