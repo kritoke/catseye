@@ -406,14 +406,12 @@ let parse_items (json : Yojson.Safe.t) : item list =
 
 let parse_file ~(extractor_cmd : string) ~(path : string) : (t, PE.parse_error) Result.t =
   let cmd = Stdlib.Printf.sprintf "%s '%s'" extractor_cmd path in
-  Stdlib.Printf.eprintf "DEBUG: Running: %s\n" cmd;
   let ic = Unix.open_process_in cmd in
   let json_str = Stdlib.Buffer.create 8192 in
   (try while true do Stdlib.Buffer.add_channel json_str ic 4096 done
    with Stdlib.End_of_file -> ());
   let status = Unix.close_process_in ic in
   let output = Stdlib.Buffer.contents json_str in
-  Stdlib.Printf.eprintf "DEBUG: Output length=%d, starts with: %s\n" (Stdlib.String.length output) (Stdlib.String.sub output 0 (Stdlib.min 200 (Stdlib.String.length output)));
   match status with
   | Unix.WEXITED 0 ->
     let json = Yojson.Safe.from_string output in
