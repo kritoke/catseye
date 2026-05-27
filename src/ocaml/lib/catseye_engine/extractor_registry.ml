@@ -81,11 +81,17 @@ let resolve_one
         (match search_exe_relative source_relative with
         | Some p -> "crystal run " ^ p ^ " --"
         | None ->
-          (* 6. Search source relative to CWD (last resort) *)
-          let source = List.find ~f:Stdlib.Sys.file_exists source_relative in
-          match source with
-          | Some p -> "crystal run " ^ p ^ " --"
-          | None -> "crystal run src/extractor/" ^ exe_name ^ ".cr --")
+          (* 6. Search source relative to executable directory (not CWD) *)
+          let exe_dir = Stdlib.Filename.dirname (Stdlib.Sys.executable_name) in
+          (match source_relative with
+          | [] -> "crystal run " ^ exe_dir ^ "/../src/extractor/" ^ exe_name ^ ".cr --"
+          | first :: _ ->
+            let source_path = exe_dir ^ "/../" ^ first in
+            if Stdlib.Sys.file_exists source_path then
+              "crystal run " ^ source_path ^ " --"
+            else
+              (* 7. Hard fallback: use exe_dir as base *)
+              "crystal run " ^ exe_dir ^ "/../src/extractor/" ^ exe_name ^ ".cr --"))
 
 (* ── Registry type ──────────────────────────────────────────────────── *)
 

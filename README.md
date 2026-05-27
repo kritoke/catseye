@@ -73,7 +73,7 @@ just test
 just scan path/to/project/src
 
 # Scan specific languages only
-./bin/catseye-ocaml --rules src/ocaml/rules --lang javascript,typescript path/to/project/
+catseye-ocaml --lang javascript,typescript path/to/project/
 
 # Scan with all checks
 just scan-full path/to/project/src
@@ -101,7 +101,7 @@ catseye [options] <directory>
 
   -f, --format <fmt>         terminal (default), json, sarif, markdown, dot
   -o, --output <path>        write results to file
-  -r, --rules <path>         rules directory (default: rules/)
+  -r, --rules <path>         rules directory (default: ~/.local/lib/catseye/rules/)
   --config <path>            config file path (default: .catseye.toml in target or parents)
   --lang <lang>              all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml,rust
   --no-color                 disable colored output

@@ -42,7 +42,6 @@ let parse_sinks_node (node : Kdl.node) : sink_def list =
   let fix_template = match get_prop node.props "fix" with
     | Some f -> Some f
     | None ->
-      (* Also check child nodes: fix "value" syntax *)
       node.children
       |> List.find_map ~f:(fun (child : Kdl.node) ->
         if child.name = "fix" then get_first_arg child.args else None)
@@ -103,7 +102,6 @@ let parse_conditions (children : Kdl.node list) : conditions =
   ) children
 
 let parse_rule_node (node : Kdl.node) : rule_def option =
-  (* Node name is "rule", actual id is first positional arg *)
   let id = match get_first_arg node.args with
     | Some s -> s
     | None -> node.name
@@ -148,10 +146,20 @@ let parse_string (content : string) : (rule_def list, [> `Msg of string ]) Resul
   | Error (msg, _) ->
     Error (`Msg (Printf.sprintf "KDL parse error: %s" msg))
 
+let load_default_rules () : (rule_def list, [> `Msg of string ]) Result.t =
+  let content = Default_rules.get_all_kdl () in
+  match Kdl.of_string content with
+  | Ok doc ->
+    let rules = List.filter_map ~f:parse_rule_node doc in
+    Ok rules
+  | Error (msg, _) ->
+    Error (`Msg (Printf.sprintf "Default rules parse error: %s" msg))
+
 let load_rules (path : string) : (rule_def list, [> `Msg of string ]) Result.t =
-  if not (Stdlib.Sys.file_exists path) then
-    Error (`Msg (Printf.sprintf "Rules directory not found: %s" path))
-  else if Stdlib.Sys.is_directory path then begin
+  if not (Stdlib.Sys.file_exists path) then begin
+    Logs.info (fun m -> m "Rules not found at '%s', using embedded defaults" path);
+    load_default_rules ()
+  end else if Stdlib.Sys.is_directory path then begin
     let files =
       Stdlib.Sys.readdir path
       |> Array.to_list
@@ -173,10 +181,11 @@ let load_rules (path : string) : (rule_def list, [> `Msg of string ]) Result.t =
         []
     ) files in
     Ok rules
-  end else
+  end else begin
     let ic = Stdlib.open_in path in
     let len = Stdlib.in_channel_length ic in
     let buf = Bytes.create len in
     Stdlib.really_input ic buf 0 len;
     Stdlib.close_in ic;
     parse_string (Bytes.to_string buf)
+  end

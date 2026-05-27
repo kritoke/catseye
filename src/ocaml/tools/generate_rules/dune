@@ -1,0 +1,6 @@
+(executable
+ (package catseye)
+ (name main)
+ (public_name generate_rules)
+ (libraries)
+ (modules main))

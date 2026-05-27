@@ -7,6 +7,8 @@ open Base
 let ( = ) = Stdlib.( = )
 let ( <>) = Stdlib.( <> )
 
+module Architectural = Architectural_smells
+
 (** Unified Claws pipeline.
 
     Orchestrates all code smell detectors and returns merged findings.
@@ -160,6 +162,7 @@ let analyze_ast (modules : Catseye_ast.Types.t list) (config : Types.claws_confi
     if config.concurrency_enabled then Concurrency_ast.analyze modules config
     else []
   in
-  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings)
+  let architectural_findings = Architectural.check_god_class modules @ Architectural.check_inappropriate_intimacy modules in
+  (complexity_findings @ anatomy_findings @ dry_findings @ extra_findings @ concurrency_findings @ architectural_findings)
   |> deduplicate
   |> List.filter ~f:(fun f -> not (is_suppressed config f))

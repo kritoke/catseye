@@ -578,6 +578,24 @@ class CatseyeHierarchicalVisitor < Crystal::Visitor
     false
   end
 
+  # ── Enum ─────────────────────────────────────────────────────────
+
+  def visit(node : Crystal::EnumDef) : Bool
+    @json.object do
+      @json.field "type", "enum"
+      @json.field "name", node.name.to_s
+      @json.field "line", line_of(node)
+      @json.field "members" do
+        @json.array do
+          node.members.each do |member|
+            member.accept(self)
+          end
+        end
+      end
+    end
+    false
+  end
+
   # ── Require / Import ────────────────────────────────────────────
 
   def visit(node : Crystal::Require) : Bool
@@ -593,6 +611,26 @@ class CatseyeHierarchicalVisitor < Crystal::Visitor
           end
         end
       end
+    end
+    false
+  end
+
+  # ── Const / Type Alias ────────────────────────────────────────────
+
+  def visit(node : Crystal::Const) : Bool
+    @json.object do
+      @json.field "type", "const"
+      @json.field "name", node.name.to_s
+      @json.field "line", line_of(node)
+    end
+    false
+  end
+
+  def visit(node : Crystal::TypeDef) : Bool
+    @json.object do
+      @json.field "type", "type_def"
+      @json.field "name", node.name.to_s
+      @json.field "line", line_of(node)
     end
     false
   end
