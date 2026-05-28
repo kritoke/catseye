@@ -106,12 +106,12 @@ let parse_args () : Config.t =
   
   (* Show help if requested *)
   if has_flag "help" args || List.mem ~equal:String.equal args "-h" then begin
-    Stdio.print_endline help_text;
+    print_endline help_text;
     Stdlib.exit 0
   end;
   
   if has_flag "version" args then begin
-    Stdio.print_endline "catseye v0.4.3";
+    print_endline "catseye v0.4.3";
     Stdlib.exit 0
   end;
   

@@ -44,7 +44,7 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
   if exit_code = 0 then
     try
       let tmp_file = Printf.sprintf "/tmp/catseye-extract-%d.out" (Unix.getpid ()) in
-      let content = Stdio.In_channel.read_all tmp_file in
+      let content = Core.In_channel.read_all tmp_file in
       Ok content
     with
     | Sys_error _ -> Error (-2)
@@ -63,11 +63,11 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
           let nodes = Catseye_ast.To_security_node.derive mod_ in
           Some nodes
       | Error err ->
-          Stdio.eprintf "Bridge parse error: %s:%d: %s\n" err.file
+          Format.eprintf "Bridge parse error: %s:%d: %s\n" err.file
             (Option.value err.line ~default:0) err.message;
           None
     with e ->
-      Stdio.eprintf "Bridge error: %s\n" (Exn.to_string e);
+      Format.eprintf "Bridge error: %s\n" (Exn.to_string e);
       None
   end else
   match src.lang with
@@ -130,13 +130,13 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
               | Failure _ -> None)
            else None
          | (_, Unix.WEXITED code) ->
-           Stdio.eprintf "Extractor exited with code %d\n" code;
+           Format.eprintf "Extractor exited with code %d\n" code;
            None
          | _ ->
-           Stdio.eprintf "Extractor terminated by signal\n";
+           Format.eprintf "Extractor terminated by signal\n";
            None
        with exn ->
-         Stdio.eprintf "Crystal extraction error: %s\n" (Exn.to_string exn);
+         Format.eprintf "Crystal extraction error: %s\n" (Exn.to_string exn);
          None)
   | "gleam" ->
     (try
@@ -144,10 +144,10 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
       (match nodes with
        | Ok ns -> Some ns
        | Error (`Msg msg) ->
-         Stdio.eprintf "Gleam extraction failed: %s\n" msg;
+         Format.eprintf "Gleam extraction failed: %s\n" msg;
          None)
      with e ->
-       Stdio.eprintf "Gleam extraction error: %s\n" (Exn.to_string e);
+       Format.eprintf "Gleam extraction error: %s\n" (Exn.to_string e);
        None)
   | "javascript" | "typescript" | "svelte" | "ocaml" | "rust" ->
     (* New languages: parse via tree-sitter → CatseyeAST → Security_node *)
@@ -157,11 +157,11 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
         let nodes = Catseye_ast.To_security_node.derive mod_ in
         Some nodes
       | Error err ->
-        Stdio.eprintf "Parse error: %s:%d: %s\n" err.file
+        Format.eprintf "Parse error: %s:%d: %s\n" err.file
           (Option.value err.line ~default:0) err.message;
         None
      with e ->
-      Stdio.eprintf "Extraction error: %s\n" (Exn.to_string e);
+      Format.eprintf "Extraction error: %s\n" (Exn.to_string e);
       None)
   | _ -> None
 
@@ -170,17 +170,17 @@ let extract_file (config : t) (src : source_file) : Security_node.t list option 
 let extract_with_log (config : t) (src : source_file)
     : Security_node.t list option =
   if config.format = Terminal then
-    Stdio.printf "%s→ Extracting: %s%s\n"
+    Format.printf "%s→ Extracting: %s%s\n"
       (styled cyan config "") src.path (styled reset config "");
   try extract_file config src with Sys_error _ -> None
 
 (* ── Banner ─────────────────────────────────────────────────────────── *)
 
 let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (svelte_count : int) (ocaml_count : int) (dep_count : int) =
-  Stdio.printf "
+  Format.printf "
   %sCatseye v%s%s
 " (styled (bold ^ cyan) config "") version (styled reset config "");
-  Stdio.printf "  Target:   %s
+  Format.printf "  Target:   %s
 " (styled green config config.target_dir);
   let lang_parts = [] in
   let lang_parts = if cr_count > 0 then (Printf.sprintf "%d Crystal" cr_count) :: lang_parts else lang_parts in
@@ -193,11 +193,11 @@ let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : i
     | [] -> "0 files"
     | parts -> String.concat ~sep:", " (List.rev parts)
   in
-  Stdio.printf "  Files:    %s%s
+  Format.printf "  Files:    %s%s
 "
     files_str
     (if dep_count > 0 then Printf.sprintf " (%d dependencies)" dep_count else "");
-  Stdio.printf "
+  Format.printf "
 "
 
 (* ── Finding output ─────────────────────────────────────────────────── *)
@@ -211,25 +211,25 @@ let print_finding (config : t) (f : Finding.t) =
   let c = severity_color f.severity in
   let icon = severity_icon f.severity in
   let label = severity_label f.severity in
-  Stdio.printf "  %s%s %s  %s:%d%s\n"
+  Format.printf "  %s%s %s  %s:%d%s\n"
     (styled (bold ^ c) config icon)
     label f.rule f.file f.line (styled reset config "");
-  Stdio.printf "%s       %s%s\n"
+  Format.printf "%s       %s%s\n"
     (styled dim config "") f.message (styled reset config "");
   List.iter ~f:(fun ({ Finding.file = sf; line = sl; message = sm } : Finding.flow_step) ->
     let loc = if sf <> "" && sl > 0
       then Printf.sprintf "  (%s:%d)" sf sl
       else ""
     in
-    Stdio.printf "%s    ← %s%s%s\n"
+    Format.printf "%s    ← %s%s%s\n"
       (styled dim config "") sm loc (styled reset config "")
   ) f.flow;
   (match f.Finding.suggestion with
    | Some fix ->
-     Stdio.printf "%s  💡 Suggestion: %s%s%s\n"
+     Format.printf "%s  💡 Suggestion: %s%s%s\n"
        (styled green config "") fix (styled reset config "") ""
    | None -> ());
-  Stdio.printf "\n"
+  Format.printf "\n"
 
 (* ── Summary helpers ────────────────────────────────────────────────── *)
 
@@ -277,7 +277,7 @@ let output_json (config : t) (sources : source_file list)
     Stdio.Out_channel.output_string oc json_str;
     Stdio.Out_channel.output_string oc "\n";
     Stdio.Out_channel.close oc;
-    Stdio.printf "Results written to %s\n" config.output_path
+    Format.printf "Results written to %s\n" config.output_path
   end else
     Stdio.Out_channel.output_string Stdio.stdout json_str
 
@@ -363,7 +363,7 @@ let time_phase label f =
   let t0 = Unix.gettimeofday () in
   let result = f () in
   let t1 = Unix.gettimeofday () in
-  Stdio.eprintf "  [timing] %s: %.3fs\n" label (t1 -. t0);
+  Format.eprintf "  [timing] %s: %.3fs\n" label (t1 -. t0);
   result
 
 (* ── Timeout helper ─────────────────────────────────────────────────── *)
@@ -412,7 +412,7 @@ let run (config : t) : int =
        if config.format = Terminal then
          Crowsnest_format.print_crows_nest config results
      | _ -> ());
-    Stdio.printf "No .cr or .gleam files found in %s\n" config.target_dir;
+    Format.printf "No .cr or .gleam files found in %s\n" config.target_dir;
     Stdlib.exit 0
   end;
   let cr_count = List.length (List.filter ~f:(fun s -> s.lang = "crystal") sources) in
@@ -424,13 +424,13 @@ let run (config : t) : int =
   let dep_count = List.length (List.filter ~f:(fun s -> s.is_dependency) sources) in
   if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count svelte_count ocaml_count dep_count;
   if config.format = Terminal && not config.crystal_available then
-    Stdio.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
+    Format.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
 
   (* Step 1b: Handle --clear-cache *)
   if config.clear_cache then begin
     Catseye_engine.Cache.delete_cache config.cache_dir;
     if config.format = Terminal then
-      Stdio.printf "  Cache cleared.\n"
+      Format.printf "  Cache cleared.\n"
   end;
 
   (* Step 1c: Open persistent cache *)
@@ -513,9 +513,9 @@ let run (config : t) : int =
        | [] -> ()
        | errs ->
          if config.format = Terminal then
-           Stdio.eprintf "  [parallel] %d file(s) failed in domain workers:\n" (List.length errs);
+           Format.eprintf "  [parallel] %d file(s) failed in domain workers:\n" (List.length errs);
          List.iter ~f:(fun (path, err) ->
-           Stdio.eprintf "    ✗ %s: %s\n" path err
+           Format.eprintf "    ✗ %s: %s\n" path err
          ) errs);
       List.iter ~f:(fun ns -> all_nodes := List.rev_append ns !all_nodes) results
     else
@@ -528,7 +528,7 @@ let run (config : t) : int =
   ) in
   if nodes = [] && not config.ai_lint && not config.claws then begin
     Catseye_engine.Cache.close cache;
-    Stdio.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
+    Format.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
     Stdlib.exit 0
   end;
 
@@ -537,7 +537,7 @@ let run (config : t) : int =
     match Catseye_rules.Loader.load_rules config.rules_dir with
     | Ok r -> r
     | Error (`Msg msg) ->
-      Stdio.eprintf "Warning: %s\n" msg;
+      Format.eprintf "Warning: %s\n" msg;
       [])
   in
 
@@ -546,13 +546,13 @@ let run (config : t) : int =
 
   (* Step 4: Analyze *)
   if config.format = Terminal then
-    Stdio.printf "\n  → Running analysis engine (%d nodes)...\n\n" (List.length nodes);
+    Format.printf "\n  → Running analysis engine (%d nodes)...\n\n" (List.length nodes);
 
   let do_analysis () =
     if config.use_cfg then begin
       (* CFG-based taint analysis *)
       if config.format = Terminal then
-        Stdio.printf "  [cfg] Using IL/CFG-based taint engine\n";
+        Format.printf "  [cfg] Using IL/CFG-based taint engine\n";
       let all_sources = List.concat_map ~f:(fun (r : Catseye_rules.Types.rule_def) ->
         r.sources
       ) rules in
@@ -560,7 +560,7 @@ let run (config : t) : int =
       List.concat_map ~f:(fun src ->
         Int.incr analyzed;
         if config.format = Terminal && !analyzed mod 10 = 0 then
-          Stdio.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
+          Format.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
         try
           match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
           | Error _ -> []
@@ -574,17 +574,17 @@ let run (config : t) : int =
             (match result.skipped_functions with
              | [] -> ()
              | fns ->
-               Stdio.eprintf "  [warn] Skipped %d functions due to CFG bounds in %s\n"
+               Format.eprintf "  [warn] Skipped %d functions due to CFG bounds in %s\n"
                  (List.length fns) src.path);
             result.findings
         with e ->
-          Stdio.eprintf "  [warn] CFG analysis failed for %s: %s\n" src.path (Exn.to_string e);
+          Format.eprintf "  [warn] CFG analysis failed for %s: %s\n" src.path (Exn.to_string e);
           []
       ) sources
     end else begin
       (* Flat taint engine — more predictable performance *)
       if config.format = Terminal then
-        Stdio.printf "  [engine] Using flat taint engine\n";
+        Format.printf "  [engine] Using flat taint engine\n";
       Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes
     end
   in
@@ -592,10 +592,10 @@ let run (config : t) : int =
     match config.analysis_timeout_ms with
     | 0 -> do_analysis ()  (* No timeout *)
     | ms ->
-      Stdio.eprintf "  [timeout] Analysis timeout set to %dms\n" ms;
+      Format.eprintf "  [timeout] Analysis timeout set to %dms\n" ms;
       try with_timeout ~ms do_analysis with
       | Failure msg when String.length msg >= 7 && String.sub msg ~pos:0 ~len:7 = "timeout" ->
-        Stdio.eprintf "\n  [timeout] Analysis exceeded limit. Falling back to flat engine...\n";
+        Format.eprintf "\n  [timeout] Analysis exceeded limit. Falling back to flat engine...\n";
         Catseye_engine.Engine.analyze ~extra_sources:config.extra_sources rules nodes
   ) in
 
@@ -671,7 +671,7 @@ let run (config : t) : int =
   (* Step 4d: AI Linter — Gleam & Crystal antipattern detection *)
   let ai_findings = if config.ai_lint then begin
     if config.format = Terminal then
-      Stdio.printf "\n  → AI antipattern detection:\n\n";
+      Format.printf "\n  → AI antipattern detection:\n\n";
     let ai_lint_findings = List.concat_map ~f:(fun src ->
       (try
         (* Skip Crystal files - they were already extracted in Step 2 *)
@@ -693,7 +693,7 @@ let run (config : t) : int =
            | Other "ocaml" ->
             List.map ~f:(convert_ai_finding ~lang:"ocaml") (Ai_linter.Ocaml_rules.analyze_module mod_)
            | _ -> [])
-      with exn -> Stdio.eprintf "AI lint error: %s\n" (Exn.to_string exn); [])
+      with exn -> Format.eprintf "AI lint error: %s\n" (Exn.to_string exn); [])
     ) sources in
     (* Apply --suppress and ai_suppress (per-rule file globs) to AI findings *)
     let suppressed = config.suppress in
@@ -760,7 +760,7 @@ let run (config : t) : int =
     ) ai_lint_findings in
     if config.format = Terminal && ai_lint_findings <> [] then begin
       List.iter ~f:(fun (f : Catseye_types.Finding.t) ->
-        Stdio.printf "  [ai:%s] %s:%d - %s\n" f.rule f.file f.line f.message
+        Format.printf "  [ai:%s] %s:%d - %s\n" f.rule f.file f.line f.message
       ) ai_lint_findings
     end;
     ai_lint_findings
@@ -795,7 +795,7 @@ let run (config : t) : int =
     ) flat_claws in
     let all_claws = claws_findings @ extra_flat in
     if config.format = Terminal && all_claws <> [] then
-        Stdio.printf "\n  → Code smell analysis:\n\n";
+        Format.printf "\n  → Code smell analysis:\n\n";
     let base_findings = reachability @ all_claws @ ai_findings in
     base_findings
   end else reachability @ ai_findings in
@@ -810,11 +810,11 @@ let run (config : t) : int =
                                run_credo = List.mem config.elixir_tools ~equal:String.equal "credo";
                                run_reach = List.mem config.elixir_tools ~equal:String.equal "reach";
                                threshold = `Low } in
-          if config.format = Terminal then Stdio.printf "\n  → Elixir tools scan:\n\n";
+          if config.format = Terminal then Format.printf "\n  → Elixir tools scan:\n\n";
           let findings = Elixir_tools.run_all_tools ~config:elixir_config ~project_dir:config.target_dir () in
           if config.format = Terminal then begin
-            if findings <> [] then Stdio.printf "  Found %d Elixir tool findings\n\n" (List.length findings)
-            else Stdio.printf "  No Elixir tool findings\n\n"
+            if findings <> [] then Format.printf "  Found %d Elixir tool findings\n\n" (List.length findings)
+            else Format.printf "  No Elixir tool findings\n\n"
           end;
           findings
         end else []
@@ -824,9 +824,9 @@ let run (config : t) : int =
       let claws_findings = Elixir_claws.analyze json_data in
       let extractor_findings = sink_findings @ claws_findings in
       if config.format = Terminal && extractor_findings <> [] then begin
-        Stdio.printf "\n  → Elixir AST analysis:\n\n";
+        Format.printf "\n  → Elixir AST analysis:\n\n";
         List.iter ~f:(print_finding config) extractor_findings;
-        Stdio.printf "\n  Found %d Elixir findings\n\n" (List.length extractor_findings)
+        Format.printf "\n  Found %d Elixir findings\n\n" (List.length extractor_findings)
       end;
       all_findings @ elixir_findings @ extractor_findings
     end else all_findings in
@@ -862,15 +862,15 @@ let run (config : t) : int =
      | _ -> ());
 
     List.iter ~f:(print_finding config) all_findings;
-    Stdio.printf "──────────────────────────────────────────────────────────────\n";
+    Format.printf "──────────────────────────────────────────────────────────────\n";
     if all_findings <> [] then begin
       let (errors, warnings) = count_by_severity all_findings in
-      Stdio.printf "  Found %d Error(s), %d Warning(s) across %d files.\n"
+      Format.printf "  Found %d Error(s), %d Warning(s) across %d files.\n"
         errors warnings (List.length sources);
-      Stdio.printf "  Review the findings above.\n";
+      Format.printf "  Review the findings above.\n";
       1
     end else begin
-      Stdio.printf "%sNo issues found across %d file(s). ✨%s\n"
+      Format.printf "%sNo issues found across %d file(s). ✨%s\n"
         (styled green config "") (List.length sources) (styled reset config "");
       0
     end
@@ -892,7 +892,7 @@ let run (config : t) : int =
       let oc = Stdio.Out_channel.create config.output_path in
       Stdio.Out_channel.output_string oc content; Stdio.Out_channel.output_string oc "\n";
       Stdio.Out_channel.close oc;
-      Stdio.printf "Results written to %s\n" config.output_path
+      Format.printf "Results written to %s\n" config.output_path
     end else
       Stdio.Out_channel.output_string Stdio.stdout content;
     if all_findings <> [] then 1 else 0
@@ -906,7 +906,7 @@ let run (config : t) : int =
       let oc = Stdio.Out_channel.create config.output_path in
       Stdio.Out_channel.output_string oc content; Stdio.Out_channel.output_string oc "\n";
       Stdio.Out_channel.close oc;
-      Stdio.printf "Results written to %s\n" config.output_path
+      Format.printf "Results written to %s\n" config.output_path
     end else
       Stdio.Out_channel.output_string Stdio.stdout content;
     if all_findings <> [] then 1 else 0
