@@ -1,0 +1,46 @@
+// OCaml Error Context Detection Rule
+// Detects error handling that loses valuable debugging and security audit information
+// Matches patterns found in parallel.ml:80 - hardcoded "unknown file" strings
+
+rule "MissingErrorContext" severity="Medium" {
+    sinks {
+        sink "Failed" arg=0 {
+            sanitizer "file"
+            sanitizer "path"
+            sanitizer "src.path"
+            sanitizer "src"
+            fix "Include actual file path or identifier in error context"
+        }
+    }
+    patterns {
+        pattern "HardcodedUnknownFile" {
+            match "\"unknown file\""
+            message "Hardcoded error context 'unknown file' detected in error handler. This loses valuable debugging information and makes security audit trail incomplete (CWE-755: Improper Check for Unusual or Exceptional Conditions).\n\nFound in: parallel.ml:80\n  file = \"unknown file\";\n\nThis pattern indicates an error handler that cannot provide meaningful context about which file failed, making incident response and debugging difficult.\n\nFix: Pass the actual file path to the error context:\n  file = source_file.path;  (* Include actual file for debugging *)"
+            severity "Medium"
+        }
+        pattern "HardcodedErrorMessage" {
+            match "\"unknown error\""
+            message "Hardcoded error context 'unknown error' detected. Include actual error information."
+            severity "Low"
+        }
+        pattern "OpaqueError" {
+            match "\"failed\""
+            message "Generic error message 'failed' provides no debugging context. Include specific error details."
+            severity "Low"
+        }
+    }
+    message "Error handling loses context. Using hardcoded strings like 'unknown file' in error handlers prevents effective debugging and security audit trail analysis."
+}
+
+rule "SilentErrorSwallow" severity="Low" {
+    sinks {
+        sink "try" arg=0 {
+            pattern "_ -> ()"
+            pattern "_ -> ()"
+            pattern "with _ -> ()"
+            pattern "with exn -> ()"
+            fix "Log or report errors instead of silently swallowing them"
+        }
+    }
+    message "Error silently swallowed with empty handler. Errors should be logged or propagated for proper monitoring and incident response."
+}

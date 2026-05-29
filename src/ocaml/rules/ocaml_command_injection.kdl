@@ -1,0 +1,72 @@
+// OCaml Command Injection Detection Rule
+// Detects shell command injection via OCaml process execution functions
+// Matches patterns found in gleam.ml: grammar_path() and extract()
+
+rule "OCamlCommandInjection" severity="Critical" {
+    sinks {
+        sink "Unix.open_process_full" arg=0 {
+            sanitizer "Filename.quote"
+            sanitizer "Core.Filename.quote"
+            sanitizer "Filename.dirname"
+            sanitizer "Filename.basename"
+            fix "Use Unix.create_process with array arguments instead of shell string"
+        }
+        sink "Unix.open_process_in" arg=0 {
+            sanitizer "Filename.quote"
+            sanitizer "Core.Filename.quote"
+            fix "Use Unix.create_process or validate command string thoroughly"
+        }
+        sink "Unix.open_process_out" arg=0 {
+            sanitizer "Filename.quote"
+            sanitizer "Core.Filename.quote"
+            fix "Use Unix.create_process to avoid shell interpretation"
+        }
+        sink "Sys.command" arg=0 {
+            sanitizer "Filename.quote"
+            sanitizer "Core.Filename.quote"
+            fix "Sys.command invokes /bin/sh - use Unix.create_process for safe argument separation"
+        }
+        sink "Stdlib.Sys.command" arg=0 {
+            sanitizer "Filename.quote"
+            sanitizer "Core.Filename.quote"
+            fix "Use Unix.create_process with separate arguments"
+        }
+        sink "Core.Shell.run" arg=0 {
+            fix "Validate command arguments before passing to Core.Shell.run"
+        }
+        sink "Core.Process.exec" arg=0 {
+            fix "Use Core.Process.run with explicit argument list"
+        }
+    }
+    sources {
+        source "Sys.getenv"
+        source "Stdlib.Sys.getenv"
+        source "Unix.environment"
+        source "Core.Env.get"
+        source "ARGV"
+        source "params"
+        source "user_input"
+        source "request"
+        source "file_path"
+        source "path"
+        source "grammar_path"
+    }
+    message "Potential command injection in OCaml: {sink} receives unsanitized input. OCaml process execution functions invoke /bin/sh, allowing arbitrary command execution if paths or arguments contain shell metacharacters (single quotes, semicolons, pipes, etc.).\n\nDetected in: gleam.ml grammar_path() and extract() functions.\nFix: Use Unix.create_process with array arguments to avoid shell interpretation."
+}
+
+rule "OCamlShellInterpolation" severity="High" {
+    sinks {
+        sink "Printf.sprintf" {
+            pattern "Unix.open_process"
+            pattern "Sys.command"
+            fix "Avoid building shell commands with sprintf - use create_process with argument array"
+        }
+    }
+    sources {
+        source "Sys.getenv"
+        source "Stdlib.Sys.getenv"
+        source "file_path"
+        source "grammar_path"
+    }
+    message "Shell command built via Printf.sprintf with interpolated paths: {sinks}. If any interpolated value contains single quotes or shell metacharacters, command injection is possible.\n\nExample vulnerable pattern:\n  let cmd = Printf.sprintf \"find '%s'\" user_path in\n  Unix.open_process_in cmd\n\nSafe pattern:\n  Unix.create_process \"find\" [| \"find\"; user_path |] ..."
+}

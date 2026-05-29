@@ -43,14 +43,17 @@ let run_crystal_extractor (extractor : string) (file_path : string) : (string, i
   let exit_code = Stdlib.Sys.command cmd in
   if exit_code = 0 then
     try
-      let tmp_file = Printf.sprintf "/tmp/catseye-extract-%d.out" (Unix.getpid ()) in
-      let content = Core.In_channel.read_all tmp_file in
+      let tmp_file, oc = Stdlib.Filename.open_temp_file ~perms:0o600 "catseye-extract-" ".out" in
+      (* SECURE: open_temp_file creates atomically with random suffix *)
+      let content = Stdlib.In_channel.read_all tmp_file in
+      Stdlib.close_out oc;
       Ok content
     with
     | Sys_error _ -> Error (-2)
     | End_of_file -> Error (-3)
     | _ -> Error (-4)
-  else Error exit_code
+  else
+    Error exit_code
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
   (* JS/TS/Svelte/OCaml always use AST bridge — they have no flat extractor *)

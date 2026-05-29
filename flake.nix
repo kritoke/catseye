@@ -7,9 +7,10 @@
     opam-repository.flake = false;
     flake-utils.url = "github:numtide/flake-utils";
     flake-utils.inputs.systems.follows = "opam-nix/flake-utils/systems";
+    openspec.url = "github:Fission-AI/OpenSpec";
   };
 
-  outputs = { self, nixpkgs, opam-nix, opam-repository, flake-utils, ... }:
+  outputs = { self, nixpkgs, opam-nix, opam-repository, flake-utils, openspec, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -28,18 +29,26 @@
           ocaml-base-compiler = "5.4.1";
         };
 
-        # 2. Define the correct custom overlay to inject system C-libraries into Opam bindings
-        overlay = self: super: {
+        sqliteOverlay = self: super: {
           sqlite3 = super.sqlite3.overrideAttrs (old: {
             buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.sqlite ];
             nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.pkg-config ];
           });
         };
 
-        # 3. Build the scope using the repos and applying the system overlay
+        flattenOverlay = self: super:
+          builtins.mapAttrs (name: drv:
+            if drv ? overrideAttrs then
+              drv.overrideAttrs (old: {
+                nativeBuildInputs = pkgs.lib.flatten (old.nativeBuildInputs or [ ]);
+                buildInputs = pkgs.lib.flatten (old.buildInputs or [ ]);
+              })
+            else drv
+          ) super;
+
         scope = on.buildOpamProject' { repos = [ opam-repository ]; } ./src/ocaml query;
-        
-        finalScope = scope.overrideScope overlay;
+
+        finalScope = scope.overrideScope (pkgs.lib.composeExtensions sqliteOverlay flattenOverlay);
       in {
         packages.default = finalScope.catseye;
 
@@ -59,6 +68,7 @@
             (if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 else pkgs.crystal)
             just
             go
+            openspec.packages.${system}.default
           ];
         };
       }

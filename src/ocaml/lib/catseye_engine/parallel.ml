@@ -34,14 +34,14 @@ let extract_parallel (extract_fn : ('a -> 'b option)) (file_list : 'a list) : 'b
   | many ->
     let arr = Stdlib.Array.of_list many in
     let n = Stdlib.Array.length arr in
-    let results = Stdlib.Array.make n None in
     try
+      (* Spawn domains that return results directly via Domain.join *)
       let domains = Stdlib.Array.init n (fun i ->
-        Domain.spawn (fun () -> results.(i) <- extract_fn arr.(i))
+        Domain.spawn (fun () -> extract_fn arr.(i))
       ) in
-      Stdlib.Array.iter Domain.join domains;
-      Stdlib.Array.to_list results
-      |> filter_map_opt (function Some nodes -> Some nodes | None -> None)
+      Stdlib.Array.to_list domains
+      |> List.map ~f:Domain.join
+      |> filter_map_opt (function Some x -> Some x | None -> None)
     with exn ->
       (* Domain creation failed — run sequentially *)
       Stdlib.Printf.eprintf "Parallel extraction failed (%s), falling back to sequential\n"
@@ -68,16 +68,17 @@ let default_scan_config = {
 let process_file_domain_safe
     (extract_fn : 'a -> 'b option)
     (file : 'a)
+    (file_path : string)
     : 'b processing_result =
   try
     match extract_fn file with
     | Some result -> Done result
-    | None -> Failed { file = Stdlib.Printexc.to_string (Invalid_argument "no result") (* placeholder *); 
+    | None -> Failed { file = file_path; 
                       error = "Extraction returned no nodes" }
   with
   | exn ->
     Failed {
-      file = "unknown file";
+      file = file_path;
       error = Stdlib.Printexc.to_string exn
     }
 
@@ -109,8 +110,6 @@ let parallel_workspace_scan
   else
     (* Multiple files: use Domain parallelism *)
     let num_domains = min cfg.max_domains n in
-    let results_arr = Stdlib.Array.make n (Failed { file = ""; error = "" }) in
-    
     try
       (* Spawn domains — each processes a subset of files *)
       let domains = 
@@ -118,40 +117,36 @@ let parallel_workspace_scan
           let start_idx = (n * d_idx) / num_domains in
           let end_idx = (n * (d_idx + 1)) / num_domains in
           Domain.spawn (fun () ->
+            (* Process files in this domain's range, accumulating results locally *)
+            let local_successes : 'a list ref = ref [] in
+            let local_errors : (string * string) list ref = ref [] in
             for i = start_idx to end_idx - 1 do
               let file_path = paths.(i) in
               try
                 match extract_fn file_path with
-                | Some result -> results_arr.(i) <- Done result
+                | Some result -> local_successes := result :: !local_successes
                 | None -> 
-                  results_arr.(i) <- Failed { 
-                    file = file_path; 
-                    error = "Extraction returned no nodes" 
-                  }
+                  local_errors := (file_path, "Extraction returned no nodes") :: !local_errors
               with exn ->
                 (* Local error catch — domain continues processing other files *)
-                results_arr.(i) <- Failed { 
-                  file = file_path; 
-                  error = Stdlib.Printexc.to_string exn 
-                }
-            done
+                local_errors := (file_path, Stdlib.Printexc.to_string exn) :: !local_errors
+            done;
+            (!local_successes, !local_errors)
           )
         )
       in
       
       (* Aggregate results via Domain.join *)
-      Stdlib.Array.iter Domain.join domains;
+      let all_results = Stdlib.Array.to_list domains |> List.map ~f:Domain.join in
       
-      (* Partition results into successes and errors *)
-      let rec partition i successes errors =
-        if i >= n then (List.rev successes, List.rev errors)
-        else
-          match results_arr.(i) with
-          | Done result -> partition (i + 1) (result :: successes) errors
-          | Failed { file; error } -> 
-            partition (i + 1) successes ((file, error) :: errors)
+      (* Combine all domain results *)
+      let rec collect (results_list : ('a list * (string * string) list) list) 
+                     (successes : 'a list) (errors : (string * string) list) =
+        match results_list with
+        | [] -> (List.rev successes, List.rev errors)
+        | (s, e) :: rest -> collect rest (List.rev_append s successes) (List.rev_append e errors)
       in
-      partition 0 [] []
+      collect all_results [] []
         
     with exn ->
       (* Domain pool creation failed — fallback to sequential *)

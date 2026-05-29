@@ -331,8 +331,9 @@ let grammar_path () =
     if Stdlib.Sys.file_exists so_path then Ok so_path
     else begin
       (* Fall back to nix store - use maxdepth 3 to find parsers in subdirs *)
+      (* SECURITY: Hardcode 'gleam' pattern in grep - no user input flows here *)
       let discovered = try
-        let cmd = Stdlib.Printf.sprintf "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-%s' | head -1" "gleam" in
+        let cmd = "find /nix/store -maxdepth 3 -name parser -type f -executable 2>/dev/null | grep -i 'tree-sitter-gleam' | head -1" in
         let ic = Unix.open_process_in cmd in
         let line = try Some (Stdlib.input_line ic) with Stdlib.End_of_file -> None in
         let _ = Unix.close_process_in ic in
@@ -360,16 +361,15 @@ let extract file_path =
   (* Pass grammar directly for .so files, dirname for nix store parser dirs *)
   let lib_path = if Stdlib.Filename.check_suffix grammar ".so" then grammar
     else Stdlib.Filename.dirname grammar in
-  let cmd = Stdlib.Printf.sprintf
-    "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null"
-    lib_path file_path in
-  let (out, inp, err) = Unix.open_process_full cmd (Unix.environment ()) in
-  let buf = Stdlib.Buffer.create 8192 in
-  (try while true do Stdlib.Buffer.add_channel buf out 4096 done
-   with Stdlib.End_of_file -> ());
-  let ok = match Unix.close_process_full (out, inp, err) with
-    | Unix.WEXITED 0 -> true
-    | Unix.WEXITED 1 -> Stdlib.Buffer.length buf > 0  (* tree-sitter returns 1 for partial parse errors but still emits XML *)
+  (* SECURITY: Use quoted arguments with Sys.command to avoid shell injection *)
+  let lib_path_escaped = Stdlib.Filename.quote lib_path in
+  let file_path_escaped = Stdlib.Filename.quote file_path in
+  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name gleam -x %s 2>/dev/null"
+    lib_path_escaped file_path_escaped in
+  let exit_code = Stdlib.Sys.command cmd in
+  let ok = match exit_code with
+    | 0 -> true
+    | 1 -> Stdlib.Buffer.length buf > 0  (* tree-sitter returns 1 for partial parse errors but still emits XML *)
     | _ -> false in
   if not ok then Error (`Msg (Stdlib.Printf.sprintf "tree-sitter failed for %s" file_path))
   else begin

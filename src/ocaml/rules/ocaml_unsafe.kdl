@@ -1,0 +1,69 @@
+// OCaml Unsafe Operations Detection Rule
+// Detects unsafe type system bypasses and deserialization vulnerabilities
+// Obj.magic, Marshal.from_string can lead to type confusion and RCE (CWE-502)
+
+rule "OCamlUnsafeOperations" severity="High" {
+    sinks {
+        sink "Obj.magic" arg=0 {
+            fix "Avoid Obj.magic - use typed conversions or sum types for type safety"
+        }
+        sink "Obj.repr" arg=0 {
+            fix "Obj.repr bypasses type system - use typed data structures instead"
+        }
+        sink "Obj.set" arg=0 {
+            fix "Obj.set modifies internal object structure - avoid runtime manipulation"
+        }
+        sink "Obj.obj" arg=0 {
+            fix "Obj.obj creates arbitrary values - use type-safe constructors"
+        }
+        sink "Marshal.from_string" arg=0 {
+            sanitizer "Digest.SHA256.hexdigest"
+            sanitizer "hmac"
+            fix "Marshal.from_string deserializes arbitrary OCaml values - use JSON or type-safe serialization (Yojson, sexplib) to prevent RCE"
+        }
+        sink "Marshal.from_channel" arg=0 {
+            sanitizer "Digest.SHA256.hexdigest"
+            fix "Marshal deserialization is unsafe with untrusted data"
+        }
+        sink "Marshal.input_value" arg=0 {
+            fix "Marshal.input_value can execute arbitrary code - use safe deserialization"
+        }
+        sink "deriving" arg=0 {
+            pattern "unsafe_yojson"
+            fix "unsafe_yojson bypasses validation - use safe_yojson or explicit validation"
+        }
+    }
+    sources {
+        source "In_channel.read_all"
+        source "Stdlib.read_line"
+        source "request"
+        source "body"
+        source "params"
+        source "user_input"
+    }
+    message "Unsafe OCaml operation {sink} detected. These operations bypass the type system and can lead to:\n\n- Type confusion attacks (CWE-843)\n- Arbitrary memory access (CWE-125)\n- Remote code execution via malicious Marshal data (CWE-502)\n\nVulnerable patterns:\n  let unsafe_cast x = (Obj.magic x : int)  (* Type confusion *)\n  let data = Marshal.from_string (read_file path) 0  (* RCE if file is attacker-controlled *)\n\nSafe patterns:\n  (* Use typed conversions or sum types *)\n  let safe_unpack json = Yojson.Safe.from_string json  (* Type-safe *)\n  let typed_convert (x : A.t) : B.t = match x with ...  (* Explicit *)\n\nFor Marshal: Only deserialize data from trusted sources, or use HMAC verification:\n  let verified_data = if check_hmac (Marshal.from_string data 0) then ..."
+}
+
+rule "OCamlMarshalDeserialization" severity="Critical" {
+    sinks {
+        sink "Marshal.from_string" arg=0 {
+            fix "Never deserialize untrusted data with Marshal - use JSON with AoC validation"
+        }
+        sink "Marshal.from_channel" arg=0 {
+            fix "Use type-safe serialization for external data"
+        }
+        sink "Marshal.input_value" arg=0 {
+            fix "input_value is inherently unsafe with network input"
+        }
+    }
+    sources {
+        source "In_channel.read_all"
+        source "request"
+        source "body"
+        source "params"
+        source "user_input"
+        source "file_path"
+        source "Sys.getenv"
+    }
+    message "CRITICAL: Marshal deserialization with potentially untrusted input. Marshal is NOT a safe serialization format for external data. An attacker can craft malicious OCaml data that executes arbitrary code upon deserialization.\n\nCVE-2013-4162 and similar vulnerabilities exist in all OCaml Marshal operations.\n\nRequired fixes:\n1. Never use Marshal with user-controlled input\n2. Replace with JSON + explicit type parsing (Yojson, Atdgen)\n3. If Marshal is required, add HMAC verification before deserializing"
+}

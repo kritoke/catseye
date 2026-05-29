@@ -1,0 +1,48 @@
+// OCaml Race Condition Detection Rule
+// Detects PID-based temp file patterns vulnerable to symlink attacks (CWE-377, CWE-378)
+// Matches patterns found in orchestrator.ml:46
+
+rule "RaceConditionTempFile" severity="High" {
+    sinks {
+        sink "Printf.sprintf" {
+            pattern "getpid"
+            pattern "Unix.getpid"
+            fix "Use Filename.open_temp_file or cryptographic random suffix instead of PID"
+        }
+        sink "In_channel.read_all" arg=0 {
+            sanitizer "Filename.realpath"
+            sanitizer "Secure_random.string"
+            fix "Validate temp file path is within expected directory before reading"
+        }
+        sink "Out_channel.write" arg=0 {
+            sanitizer "Secure_random.string"
+            fix "Use Filename.open_temp_file for atomic temp file creation"
+        }
+        sink "Core.Out_channel.write" arg=0 {
+            sanitizer "Secure_random.string"
+            fix "Use Core.In_channel.with_file or Filename.open_temp_file"
+        }
+        sink "Core.In_channel.read_all" arg=0 {
+            sanitizer "Secure_random.string"
+            fix "Validate temp file path before reading"
+        }
+        sink "Stdlib.Buffer.add_channel" arg=1 {
+            fix "Use secure temp file with random name, not PID-based"
+        }
+    }
+    message "PID-based temp file path detected. Using Unix.getpid() creates predictable paths vulnerable to symlink attacks (CWE-377: Creation of Temporary File With Insecure Permissions, CWE-378: Creation of Temporary File Insecurely).\n\nVulnerable pattern (orchestrator.ml:46):\n  let tmp_file = Printf.sprintf \"/tmp/catseye-extract-%d.out\" (Unix.getpid ()) in\n  let content = Core.In_channel.read_all tmp_file\n\nAn attacker can:\n1. Monitor for new processes\n2. Create a symlink at /tmp/catseye-extract-{pid}.out before the process accesses it\n3. Gain read/write access to arbitrary files\n\nSafe pattern:\n  let (tmp_file, oc) = Filename.open_temp_file ~perms:0o600 \"catseye-extract-\" \".out\" in\n  (* Use tmp_file safely - file is created atomically with secure permissions *)"
+}
+
+rule "InsecureTempFilePermissions" severity="Medium" {
+    sinks {
+        sink "open_out" arg=0 {
+            sanitizer "perms:0o600"
+            fix "Use Filename.open_temp_file with restrictive permissions (0o600)"
+        }
+        sink "Stdlib.open_out" arg=0 {
+            sanitizer "perms:0o600"
+            fix "Specify restrictive permissions to prevent unauthorized access"
+        }
+    }
+    message "Temp file created without secure permissions. Files in /tmp are world-readable by default. Use Filename.open_temp_file with perms:0o600 or create files in a secure directory."
+}
