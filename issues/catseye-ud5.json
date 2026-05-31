@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-05-31T21:18:00Z",
+  "description": "## Problem\n\nCatseye flags JSON.parse and YAML parsing as InsecureDeserialization without distinguishing trusted sources (config files, authenticated API responses) from untrusted user input.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 106 findings in api_base_controller.cr -- parsing trusted API responses\n- 38 findings in config/loader.cr -- parsing server-side YAML config (36 FP, 2 real)\n- 54 findings in admin_controller.cr -- authenticated admin endpoints\n- 123 findings across controllers for JSON.parse on response bodies\n- 1 genuine InsecureDeserialization finding among 100+ FPs\n\n## Example\n\n```crystal\n# Config file parsing -- server-side, not user input\nConfig.from_yaml(content)       # flagged\nvalidate_yaml_structure(content) # flagged\n\n# Trusted API response\nJSON.parse(response.body)  # flagged\n```\n\n## Expected Behavior\n\nThe rule should differentiate:\n1. High risk: Parsing user-supplied strings (request params, form data, query strings)\n2. Low risk: Parsing config files, trusted API responses, authenticated endpoint data\n3. Still flag genuinely dangerous deserialization (1 real finding was correct)\n\n## Suggested Fix\n\n1. Check the data source before flagging: is it from a file read of a known config path? Internal API response?\n2. Require evidence that parsed data originates from user input before flagging.\n3. Consider a trust-level system: user input (untrusted) \u003e config/API response (semi-trusted) \u003e hardcoded (trusted).",
+  "id": "catseye-ud5",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "InsecureDeserialization: trust boundary awareness for JSON/YAML parsing",
+  "type": "task",
+  "updated_at": "2026-05-31T21:18:00Z"
+}
