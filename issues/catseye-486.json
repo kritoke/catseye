@@ -5,10 +5,15 @@
   "created": "2026-05-31T21:18:00Z",
   "description": "## Problem\n\nCatseye propagates taint through cryptographic hash functions (SHA256, HMAC, etc.), treating the hash output as still tainted. This causes mass false positives when hashes are used for safe filenames, cache keys, and identifiers.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01), 134 findings in favicon_storage.cr alone:\n- URL -\u003e SHA256 hash -\u003e filename -\u003e filepath flagged as PathTraversal\n- URL -\u003e hash -\u003e cache key operations flagged as CommandInjection\n- 24 findings in color_extractor.cr for cache operations on hash-derived keys\n- 11 findings in storage/cache_utils.cr\n- 12 findings in storage/feed_cache.cr\n\n## Example\n\n```crystal\nhash = favicon_hash_for_url(url)      # URL taint -\u003e hash still tainted\nfilename = favicon_filename(hash, ext) # tainted -\u003e safe name like abc123.png\nfilepath = File.join(favicon_dir, filename) # flagged as PathTraversal\n```\n\n## Expected Behavior\n\nSHA256 and other cryptographic hash functions should be recognized as sanitizers that break taint chains. The output of a one-way hash is not controllable by the input beyond collision resistance.\n\n## Affected Rules\n- PathTraversal (126 findings)\n- CommandInjection (123 findings)\n- ScentLeakage (partial)\n\n## Suggested Fix\n\nAdd crypto hash functions (OpenSSL::Digest, SHA256, SHA1, MD5, Digest.new, etc.) to the sanitizer/sink recognition list so taint stops at hash boundaries.",
   "id": "catseye-486",
-  "labels": [],
+  "labels": [
+    "crystal",
+    "false-positive",
+    "priority:high",
+    "taint-engine"
+  ],
   "priority": 1,
   "status": "open",
   "title": "Taint sanitization: recognize cryptographic hash functions as taint sinks",
   "type": "task",
-  "updated_at": "2026-05-31T21:18:00Z"
+  "updated_at": "2026-05-31T21:18:06Z"
 }
