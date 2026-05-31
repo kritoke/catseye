@@ -2,6 +2,7 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-05-31T21:55:00Z",
   "created": "2026-05-31T21:18:00Z",
   "description": "## Problem\n\nThe PrototypePollution rule fires on Crystal code that parses JSON. Crystal does not have prototype-based inheritance -- the PrototypePollution vulnerability class does not exist in Crystal.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 123 PrototypePollution findings, all false positives\n- Crystal uses structs and classes, not prototypes\n- JSON.parse in Crystal returns a typed union, not a mutable prototype chain\n\n## Expected Behavior\n\nThe PrototypePollution rule should only activate for languages where prototype pollution is a real vulnerability (JavaScript, TypeScript). It should be suppressed entirely for Crystal.\n\n## Suggested Fix\n\n1. Add a language filter to the PrototypePollution rule.\n2. Disable for Crystal (and any other non-prototype-based languages).\n3. Consider a broader language-awareness system where rules declare which languages they apply to.",
   "id": "catseye-1dw",
@@ -12,8 +13,8 @@
     "rules"
   ],
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "PrototypePollution rule: make language-aware (not applicable to Crystal)",
   "type": "task",
-  "updated_at": "2026-05-31T21:21:37Z"
+  "updated_at": "2026-05-31T21:55:00Z"
 }
