@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-05-31T21:18:00Z",
+  "description": "## Problem\n\nCatseye flags all parameters on authenticated endpoints as potentially dangerous, ignoring that authentication and authorization checks provide a trust boundary.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 54 findings in admin_controller.cr -- all on authenticated admin actions\n- 42 findings in feed_pagination_controller.cr -- pagination parameters\n- 28 findings in feeds_controller.cr -- server-side config operations\n- 31 findings in cluster_controller.cr -- internal data operations\n- 27 findings in tabs_controller.cr, 24 in timeline_controller.cr, 19 in content_controller.cr\n- 17 findings in config_controller.cr -- server-side config\n\nAll these controllers have before_action / authentication guards that are not recognized.\n\n## Example\n\n```crystal\n# Admin controller with authentication\nbefore_action :require_admin!\n\ndef update\n  params[\"action\"]  # flagged as dangerous\n  params[\"limit\"]   # flagged as dangerous\nend\n```\n\n## Expected Behavior\n\n1. Parameters from authenticated endpoints are lower risk than public endpoints.\n2. Pagination parameters (page, limit, offset) are typically safe.\n3. Internal controllers (not exposed to external routes) should have reduced sensitivity.\n\n## Suggested Fix\n\n1. Recognize common authentication patterns (before_action :require_auth, before_filter, guard macros) as trust boundaries.\n2. Add a severity discount for findings on authenticated/guarded endpoints -- still flag real issues but at reduced confidence.\n3. Consider pagination parameters as low-risk by default (integer-like, bounded).\n4. Lower priority than taint-engine fixes but would eliminate significant noise.",
+  "id": "catseye-7z0",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "Admin/authenticated context: reduce false positives on guarded endpoints",
+  "type": "task",
+  "updated_at": "2026-05-31T21:18:00Z"
+}
