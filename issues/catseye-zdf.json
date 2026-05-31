@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-486"
+  ],
   "created": "2026-05-31T21:18:00Z",
   "description": "## Problem\n\nWhen file paths are constructed using hash-derived components (SHA256 of URL -\u003e filename -\u003e filepath), Catseye flags them as PathTraversal even though hash output is bounded and cannot contain traversal sequences like ../\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 126 PathTraversal findings\n- favicon_storage.cr (134 findings) -- SHA256(url) -\u003e safe filename\n- static_controller.cr (39 findings) -- static file paths from config\n- asset_controller.cr (36 findings) -- asset paths from config\n- cache_utils.cr (11 findings) -- cache paths from hashes\n\n## Example\n\n```crystal\nhash = OpenSSL::Digest.new(\"SHA256\").update(url).hexdigest  # produces hex string\nfilename = \"\\#{hash[0..16]}.png\"  # bounded, no ../ possible\nfilepath = File.join(favicon_dir, filename)  # flagged as PathTraversal\n```\n\n## Expected Behavior\n\nWhen a path component is derived from a cryptographic hash, the PathTraversal rule should recognize it as safe because:\n1. Hash output is a fixed-length hex/base64 string\n2. It cannot contain ../ or other traversal sequences\n3. The input does not control the output in a traversal-relevant way\n\n## Suggested Fix\n\n1. Track hash-derived values as safe for path construction.\n2. Consider that Digest.*, OpenSSL::Digest.*, hash, hexdigest, base64 outputs are bounded.\n3. When all path components are either literals, config values, or hash-derived, suppress PathTraversal.",
   "id": "catseye-zdf",
@@ -15,5 +17,5 @@
   "status": "open",
   "title": "PathTraversal rule: recognize hash-derived path components as safe",
   "type": "task",
-  "updated_at": "2026-05-31T21:18:06Z"
+  "updated_at": "2026-05-31T21:18:12Z"
 }
