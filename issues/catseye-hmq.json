@@ -5,10 +5,15 @@
   "created": "2026-05-31T21:18:00Z",
   "description": "## Problem\n\nThe ScentLeakage rule treats any variable carrying a URL or identifier as potentially sensitive (scent) without distinguishing actual secrets (API keys, tokens, passwords) from public data (feed URLs, API endpoints, config paths).\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 137 ScentLeakage findings, all on public feed URLs from config files\n- Feed URLs are public data served to clients, not secrets\n\n## Example\n\n```crystal\n# Flagged as scent leakage but these are just public feed URLs\nQuickHeadlines::Services::StoryService.get_timeline(allowed_feed_urls)\n```\n\n## Expected Behavior\n\nThe ScentLeakage rule should only flag data that is plausibly secret: API keys, tokens, passwords, private keys, credentials. Public URLs, endpoints, and identifiers should not trigger scent warnings.\n\n## Suggested Fix\n\n1. Narrow scent detection to known secret patterns (env vars with KEY/SECRET/TOKEN/PASSWORD, hardcoded credentials, etc.)\n2. Do not flag URL-type data as scent by default -- URLs are inherently public identifiers.\n3. Consider an allowlist of variable patterns that are known non-secrets (*_url, *_path, *_uri, feed_*, config_*).",
   "id": "catseye-hmq",
-  "labels": [],
+  "labels": [
+    "crystal",
+    "false-positive",
+    "priority:high",
+    "rules"
+  ],
   "priority": 1,
   "status": "open",
   "title": "ScentLeakage rule: distinguish public data from actual secrets",
   "type": "task",
-  "updated_at": "2026-05-31T21:18:00Z"
+  "updated_at": "2026-05-31T21:18:06Z"
 }
