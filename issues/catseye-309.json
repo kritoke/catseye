@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-486"
+  ],
   "created": "2026-05-31T21:18:00Z",
   "description": "## Problem\n\nCatseye flags CommandInjection when data flows through multiple safe transformations (URL -\u003e validation -\u003e hash -\u003e filename -\u003e path). Each individual step is safe, but taint propagates through the entire chain.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 123 CommandInjection findings\n- All involve data that passed through validation + hash + string operations before reaching a file/system call\n- Related to the crypto-hash taint issue but distinct: even without hashes, multi-step safe transformations should be recognized\n\n## Example\n\n```crystal\nurl = params[\"url\"]                          # tainted\nurl = validate_and_normalize(url)             # still tainted\nhash = OpenSSL::Digest.new(\"SHA256\").update(url).hexdigest  # still tainted\nFile.write(File.join(dir, \"\\#{hash}.png\"), data)  # flagged as CommandInjection\n```\n\n## Expected Behavior\n\nWhen data passes through a chain of safe transformations (validation -\u003e sanitization -\u003e encoding -\u003e hashing), the end result should not be flagged as CommandInjection.\n\n## Suggested Fix\n\n1. Combine with crypto-hash sanitizer fix -- hash functions break taint.\n2. Recognize File.join as safe path construction (not a command execution vector).\n3. Track the depth and nature of transformations: if all intermediate steps are safe operations, suppress the finding.\n4. May overlap significantly with hash-sanitizer and validation-sanitizer tickets -- coordinate fixes.",
   "id": "catseye-309",
@@ -15,5 +17,5 @@
   "status": "open",
   "title": "CommandInjection: track safe transformation chains",
   "type": "task",
-  "updated_at": "2026-05-31T21:18:06Z"
+  "updated_at": "2026-05-31T21:18:12Z"
 }
