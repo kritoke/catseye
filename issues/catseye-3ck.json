@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-05-31T21:18:00Z",
+  "description": "## Problem\n\nCatseye does not recognize validation/guard functions as taint breakers. When a URL or input is validated before use, taint still propagates past the validation check, causing false positives.\n\n## Evidence\n\nFrom quickheadlines scan (2026-06-01):\n- 76 findings in proxy_controller.cr -- URLs validated via validate_proxy_url before use\n- 106 findings in api_base_controller.cr -- pre-validated URLs still flagged\n- 123 SSRF findings -- all on pre-validated URLs\n- 123 OpenRedirect findings -- all on sanitized URLs\n- 37 findings in url_normalizer.cr -- pre-validated URLs\n\n## Example\n\n```crystal\nraise BadRequest.new(\"Missing url\") if url.nil? || url.strip.empty?\nraise HTTPException.new(403, \"Disallowed\") unless validate_proxy_url(url)\n# validation complete, URL is safe below\nURI.parse(url)  # still flagged as SSRF\n```\n\n## Expected Behavior\n\nFunctions matching validate_*, check_*, verify_*, and guard clauses that raise on failure should break taint chains. After a successful validation, the data should be considered sanitized.\n\n## Affected Rules\n- SSRF (123 findings)\n- OpenRedirect (123 findings)\n\n## Suggested Fix\n\n1. Recognize validate_* function calls as sanitizers when they raise/return false on invalid input.\n2. Recognize guard patterns: raise ... unless validate(x) and if validate(x) should clear taint on x in the true/success branch.\n3. Consider a configurable list of project-specific sanitizer function names.",
+  "id": "catseye-3ck",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Taint sanitization: recognize validation functions as taint breakers",
+  "type": "task",
+  "updated_at": "2026-05-31T21:18:00Z"
+}
