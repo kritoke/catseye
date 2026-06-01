@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-01T10:57:14Z",
+  "description": "## Problem\n\nReach has a Jason plugin that classifies maps passed to Jason.encode!/2 as external payload contracts. Catseye should detect when tainted data is serialized via Jason.encode! and sent over HTTP — this is a data exfiltration vector.\n\n## Evidence\n\nFrom reach:\n- reach/lib/reach/plugins/poison.ex: Poison effect classifier\n- reach/lib/reach/visualize.ex: Jason.encode!(graph) — sends internal data over HTTP\n- Multiple modules use @derive Jason.Encoder for external data contracts\n\n## Expected Behavior\n\nJason.encode!/Poison.encode! with tainted data flowing into HTTP responses should be flagged as potential data exfiltration. This is a lower-priority concern than SSRF/CommandInjection but worth tracking.\n\n## Suggested Fix\n\nThis is more of a taint-tracking improvement than a rule addition. The SSRF rules already detect HTTP client calls. The missing piece is tracking that Jason.encode!(tainted_data) flowing into HTTP response bodies. Consider adding Jason.encode!/Jason.decode! as transform sinks that preserve taint.",
+  "id": "catseye-ldt",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: add Jason/Poison encode/decode as SSRF sink boundary",
+  "type": "task",
+  "updated_at": "2026-06-01T10:57:14Z"
+}
