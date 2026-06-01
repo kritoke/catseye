@@ -840,6 +840,15 @@ let run (config : t) : int =
       in
       let claws_findings = Elixir_claws.analyze json_data in
       let extractor_findings = sink_findings @ claws_findings in
+      (* Filter Elixir findings to only include files that were actually discovered
+         (excludes deps/, _build/, and other excluded directories) *)
+      let source_paths = Stdlib.Hashtbl.create (List.length sources) in
+      Stdlib.List.iter (fun (s : source_file) ->
+        Stdlib.Hashtbl.replace source_paths s.path true
+      ) sources;
+      let extractor_findings = List.filter ~f:(fun (f : Finding.t) ->
+        Stdlib.Hashtbl.mem source_paths f.Finding.file
+      ) extractor_findings in
       if config.format = Terminal && extractor_findings <> [] then begin
         Format.printf "\n  → Elixir AST analysis:\n\n";
         List.iter ~f:(print_finding config) extractor_findings;

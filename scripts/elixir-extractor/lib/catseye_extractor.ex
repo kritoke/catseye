@@ -112,15 +112,30 @@ defmodule CatseyeExtractor do
   defp extract_functions(ast) do
     find_defs(ast, [])
     |> Enum.reverse()
+    |> Enum.reject(&is_nil/1)
   end
 
-  defp find_defs({:def, _, [{name, _, args}, body]}, acc) do
+  defp find_defs({:def, _, [{:when, _, [{name, _, args}, _guard]}, body]}, acc)
+       when is_atom(name) do
     [extract_function_body(name, args, body) | acc]
   end
 
-  defp find_defs({:defp, _, [{name, _, args}, body]}, acc) do
+  defp find_defs({:defp, _, [{:when, _, [{name, _, args}, _guard]}, body]}, acc)
+       when is_atom(name) do
     [extract_function_body(name, args, body) | acc]
   end
+
+  defp find_defs({:def, _, [{name, _, args}, body]}, acc) when is_atom(name) do
+    [extract_function_body(name, args, body) | acc]
+  end
+
+  defp find_defs({:defp, _, [{name, _, args}, body]}, acc) when is_atom(name) do
+    [extract_function_body(name, args, body) | acc]
+  end
+
+  # Skip defs where name is not a simple atom (e.g. unquote blocks, macro-generated)
+  defp find_defs({:def, _, _}, acc), do: acc
+  defp find_defs({:defp, _, _}, acc), do: acc
 
   defp find_defs(tuple, acc) when is_tuple(tuple) do
     tuple
@@ -134,7 +149,8 @@ defmodule CatseyeExtractor do
 
   defp find_defs(_, acc), do: acc
 
-  defp extract_function_body(name, args, body) do
+  # extract_function_body: atom name (normal case) must come BEFORE the catch-all
+  defp extract_function_body(name, args, body) when is_atom(name) do
     params = extract_params(args)
     calls = extract_calls(body)
     sinks = Enum.filter(calls, &is_sink?/1)
@@ -152,6 +168,9 @@ defmodule CatseyeExtractor do
     }
   end
 
+  # Skip macro-generated defs where name is not a simple atom (e.g. unquote blocks)
+  defp extract_function_body(_name, _args, _body), do: nil
+
   defp extract_params(nil), do: []
 
   defp extract_params(args) when is_list(args) do
@@ -167,11 +186,9 @@ defmodule CatseyeExtractor do
   defp extract_params(_), do: []
 
   defp extract_calls(ast) do
-    calls = find_calls(ast, [])
-    # Deduplicate by name
-    calls
+    find_calls(ast, [])
     |> Enum.reverse()
-    |> Enum.uniq_by(& &1.name)
+    |> Enum.reject(fn call -> call.name == "__block__" or call.name == "__aliases__" end)
   end
 
   defp find_calls({{:., meta, [{:__aliases__, _, parts}, fn_name]}, _, args}, acc) do
@@ -184,7 +201,8 @@ defmodule CatseyeExtractor do
 
     full_name = if module_name == "", do: to_string(fn_name), else: "#{module_name}.#{fn_name}"
     call = %{name: full_name, line: meta[:line] || 0, args: extract_call_args(args)}
-    [call | acc]
+    # Recurse into args (e.g., fn blocks passed as arguments)
+    Enum.reduce(args, [call | acc], &find_calls/2)
   end
 
   defp find_calls({{:., meta, [{:., _, [outer_mod, inner_name]}, fn_name]}, _, args}, acc) do
@@ -192,20 +210,33 @@ defmodule CatseyeExtractor do
     outer_str = to_string(outer_mod) |> String.replace("Elixir.", "")
     full_name = "#{outer_str}.#{inner_name}.#{fn_name}"
     call = %{name: full_name, line: meta[:line] || 0, args: extract_call_args(args)}
-    [call | acc]
+    Enum.reduce(args, [call | acc], &find_calls/2)
   end
 
   defp find_calls({{:., meta, [mod, fn_name]}, _, args}, acc)
        when is_atom(mod) and is_atom(fn_name) do
     full_name = "#{mod}.#{fn_name}" |> String.replace("Elixir.", "")
     call = %{name: full_name, line: meta[:line] || 0, args: extract_call_args(args)}
-    [call | acc]
+    Enum.reduce(args, [call | acc], &find_calls/2)
   end
 
+  # Recurse into keyword list bodies (e.g., [do: body], [do: ..., else: ...])
+  # These are [{:key, value}, ...] tuples, not function calls
+  defp find_calls({key, value}, acc) when is_atom(key) do
+    find_calls(value, acc)
+  end
+
+  # Skip Elixir control-flow pseudo-calls — recurse into args
+  @control_flow ~w(__block__ case try if cond with receive fn)a
+  defp find_calls({fun, _meta, args}, acc) when is_atom(fun) and is_list(args) and fun in @control_flow do
+    Enum.reduce(args, acc, &find_calls/2)
+  end
+
+  # Actual function call — capture it and recurse into args
   defp find_calls({fun, meta, args}, acc) when is_atom(fun) and is_list(args) do
     clean_name = to_string(fun) |> String.replace("Elixir.", "")
     call = %{name: clean_name, line: meta[:line] || 0, args: extract_call_args(args)}
-    [call | acc]
+    Enum.reduce(args, [call | acc], &find_calls/2)
   end
 
   defp find_calls(tuple, acc) when is_tuple(tuple) do
@@ -298,6 +329,7 @@ defmodule CatseyeExtractor do
 
   defp find_sources(_, acc), do: acc
 
+  defp extract_line({:do, body}), do: extract_line(body)
   defp extract_line({_, meta, _}) when is_list(meta), do: meta[:line] || 0
   defp extract_line(_), do: 0
 
