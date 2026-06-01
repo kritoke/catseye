@@ -41,7 +41,7 @@ jobs:
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           eval $(opam env)
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
           # Build Elixir extractor escript
@@ -118,7 +118,7 @@ jobs:
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
           eval $(opam env)
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
           # Build Elixir extractor escript
@@ -169,7 +169,7 @@ jobs:
       - name: Build
         run: |
           eval $(opam env)
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
           # Build Elixir extractor escript
