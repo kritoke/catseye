@@ -129,6 +129,7 @@ install prefix="$HOME/.local": build
     @echo "Installing to {{prefix}} ..."
     @install -d {{prefix}}/bin
     @install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
+    @install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye
     @install -m 755 bin/catseye_extractor {{prefix}}/bin/catseye-extractor 2>/dev/null || true
     @install -d {{prefix}}/lib/catseye/rules
     @install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/
