@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [
     "catseye-scl"
@@ -13,8 +13,8 @@
     "taint-engine"
   ],
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Elixir extractor: output individual arg names instead of list summaries",
   "type": "task",
-  "updated_at": "2026-06-01T12:12:51Z"
+  "updated_at": "2026-06-01T17:25:39Z"
 }
