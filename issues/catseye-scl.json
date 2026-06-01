@@ -16,11 +16,15 @@
     {
       "text": "Partial fix landed:\n- Taint engine now propagates through \u003c\u003e (string concat)\n- Elixir mapper creates proper EAssignment nodes for = operator\n- Elixir function params seeded as taint sources for .ex/.exs files\n- Temp Assign nodes created for operator calls\n\nRemaining blocker: Elixir extractor flattens list args into summaries like '[4 items]' which hides individual variables. System.cmd('git', ['diff', path]) reports path inside '[3 items]' — the taint engine can't see it. Need extractor to output individual arg names.",
       "timestamp": "2026-06-01T12:12:19Z"
+    },
+    {
+      "text": "catseye-2zy blocker resolved. Remaining gap: module attributes (@pi_bin) are not taint sources — the extractor treats them as '@' calls, not variables. This is a separate issue from taint propagation.",
+      "timestamp": "2026-06-01T17:35:04Z"
     }
   ],
   "priority": 2,
   "status": "in_progress",
   "title": "Elixir: taint propagation for System.cmd args via string interpolation",
   "type": "task",
-  "updated_at": "2026-06-01T12:12:51Z"
+  "updated_at": "2026-06-01T17:35:04Z"
 }
