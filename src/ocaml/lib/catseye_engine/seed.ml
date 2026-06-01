@@ -136,9 +136,37 @@ let seed_from_taint_flags (nodes : Security_node.t list) (db : Db.t) : Db.t =
   )
   |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db
 
+(* Seed Elixir module attributes (@name) as taint sources.
+   Module attributes can hold user-configured values (API keys, URLs, etc.)
+   so they should be treated as potential taint sources. *)
+let seed_elixir_module_attrs (nodes : Security_node.t list) (db : Db.t) : Db.t =
+  nodes
+  |> Stdlib.List.filter (fun n ->
+    n.Security_node.node_type = Security_node.Assign
+    && String.length n.Security_node.name > 0
+    && n.Security_node.name.[0] = '@'
+    && (let len = String.length n.Security_node.file in
+        len > 3 && (Stdlib.String.sub n.Security_node.file (len - 3) 3 = ".ex"
+                    || Stdlib.String.sub n.Security_node.file (len - 4) 4 = ".exs"))
+  )
+  |> Stdlib.List.map (fun n ->
+    { Db.var_name = n.Security_node.name
+    ; Db.file = n.Security_node.file
+    ; Db.line = n.Security_node.line
+    ; Db.description = n.Security_node.name ^ " is a module attribute (potential config value)"
+    ; Db.source_var = ""
+    ; Db.field = None
+    ; Db.status = Db.Tainted { source = ""
+                              ; field = None
+                              ; origin = Db.Known_source n.Security_node.name }
+    }
+  )
+  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db
+
 let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let db' = seed_from_params nodes extra_sources db in
   let db'' = seed_from_taint_flags nodes db' in
+  let db''' = seed_elixir_module_attrs nodes db'' in
   (* Seed from scent metadata: assignments carrying scent=true are also tainted *)
   nodes
   |> Stdlib.List.filter (fun n ->
@@ -166,4 +194,4 @@ let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t
                         ; origin = Known_source ("scent:" ^ n.Security_node.name) }
     }
   )
-  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db''
+  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db'''

@@ -47,7 +47,10 @@ defmodule CatseyeExtractor do
     "Code.eval_string",
     "Code.eval",
     "Code.eval_quoted",
-    "Kernel.eval"
+    "Kernel.eval",
+    "System.cmd",
+    ":os.cmd",
+    "Port.open"
   ]
 
   @doc """

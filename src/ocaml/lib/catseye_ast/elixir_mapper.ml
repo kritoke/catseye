@@ -54,8 +54,16 @@ let build_call_list (fn_calls : Yojson.Safe.t list) : expr list =
       in
       let fn_expr = { expr_value = EVar name; expr_location = range line } in
       let call_expr = { expr_value = EApp (fn_expr, arg_exprs); expr_location = range line } in
+      (* Module attribute access: @pi_bin → EVar "@pi_bin" so taint engine sees it as a variable *)
+      if name = "@" && List.length arg_exprs >= 1 then begin
+        let attr_name = match List.hd arg_exprs with
+          | Some { expr_value = EVar v; _ } -> "@" ^ v
+          | _ -> "@"
+        in
+        [{ expr_value = EVar attr_name; expr_location = range line }]
+      end
       (* Special handling for assignment operator *)
-      if name = "=" && List.length arg_exprs >= 2 then begin
+      else if name = "=" && List.length arg_exprs >= 2 then begin
         let lhs = List.nth_exn arg_exprs 0 in
         let rhs = List.nth_exn arg_exprs 1 in
         [{ expr_value = EAssignment (lhs, rhs); expr_location = range line }]

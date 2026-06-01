@@ -81,47 +81,59 @@ let parse_module_json json_str =
     | _ -> { mod_file = ""; mod_language = "elixir"; mod_name = None; mod_functions = [] }
   with _ -> { mod_file = ""; mod_language = "elixir"; mod_name = None; mod_functions = [] }
 
-(* Determine severity based on sink type *)
+(* ── Sink classification ────────────────────────────────────────────── *)
+
+(* Single data table: each row is (prefix, severity, rule, category, suggestion).
+   Order matters — longer/more-specific prefixes must come before shorter ones
+   that would otherwise shadow them (e.g. "System.cmd" before "System."). *)
+
+type sink_class = {
+  severity : string;
+  rule     : string;
+  category : string;
+  suggestion : string;
+}
+
+let sink_table : (string * sink_class) list = [
+  ("HTTPoison", { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  ("Ecto",      { severity = "Critical"; rule = "SQLi";             category = "database (SQLi)";           suggestion = "Use parameterized queries or Ecto.Changeset for input validation." });
+  ("Phoenix",   { severity = "High";     rule = "XSS";              category = "HTML rendering (XSS)";      suggestion = "Ensure raw content is properly sanitized before rendering." });
+  ("Tesla",     { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  ("Req.",      { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  ("Code.",     { severity = "Critical"; rule = "CodeExec";         category = "code execution";            suggestion = "Avoid dynamic code execution. Consider using alternative approaches." });
+  ("System.cmd",{ severity = "Critical"; rule = "CommandInjection"; category = "command execution";         suggestion = "Validate and sanitize arguments before passing to System.cmd. Use explicit arg lists instead of shell strings." });
+  (":os.cmd",   { severity = "Critical"; rule = "CommandInjection"; category = "command execution";         suggestion = "Avoid :os.cmd with user input. Prefer System.cmd with explicit arg lists." });
+  ("Port.open", { severity = "High";     rule = "CommandInjection"; category = "port/command execution";     suggestion = "Validate port command arguments. Avoid passing user-controlled data to Port.open." });
+]
+
+let default_sink = {
+  severity   = "Medium";
+  rule       = "Security";
+  category   = "unknown";
+  suggestion = "Review input handling for this sink.";
+}
+
+(** Find the first row whose prefix matches the beginning of [name]. *)
+let classify_sink (name : string) : sink_class =
+  List.find_map ~f:(fun (prefix, cls) ->
+    if Stdlib.String.length name >= String.length prefix
+       && Stdlib.String.sub name 0 (String.length prefix) = prefix
+    then Some cls
+    else None
+  ) sink_table
+  |> Option.value ~default:default_sink
+
 let determine_severity (name : string) : string =
-  if String.length name >= 10 && Stdlib.String.sub name 0 10 = "HTTPoison" then "High"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Ecto" then "Critical"
-  else if String.length name >= 8 && Stdlib.String.sub name 0 8 = "Phoenix" then "High"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Tesla" then "High"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Req." then "High"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Code." then "Critical"
-  else "Medium"
+  (classify_sink name).severity
 
-(* Get rule name based on sink *)
 let get_rule_name (name : string) : string =
-  if String.length name >= 10 && Stdlib.String.sub name 0 10 = "HTTPoison" then "SSRF"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Ecto" then "SQLi"
-  else if String.length name >= 8 && Stdlib.String.sub name 0 8 = "Phoenix" then "XSS"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Tesla" then "SSRF"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Req." then "SSRF"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Code." then "CodeExec"
-  else "Security"
+  (classify_sink name).rule
 
-(* Get category for message *)
 let get_category (name : string) : string =
-  if String.length name >= 10 && Stdlib.String.sub name 0 10 = "HTTPoison" then "HTTP client (SSRF)"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Ecto" then "database (SQLi)"
-  else if String.length name >= 8 && Stdlib.String.sub name 0 8 = "Phoenix" then "HTML rendering (XSS)"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Tesla" then "HTTP client (SSRF)"
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Req." then "HTTP client (SSRF)"
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Code." then "code execution"
-  else "unknown"
+  (classify_sink name).category
 
-(* Get suggestion text *)
 let get_suggestion (name : string) : string =
-  if String.length name >= 10 && Stdlib.String.sub name 0 10 = "HTTPoison" then
-    "Consider validating the URL against a allowlist of permitted domains."
-  else if String.length name >= 4 && Stdlib.String.sub name 0 4 = "Ecto" then
-    "Use parameterized queries or Ecto.Changeset for input validation."
-  else if String.length name >= 8 && Stdlib.String.sub name 0 8 = "Phoenix" then
-    "Ensure raw content is properly sanitized before rendering."
-  else if String.length name >= 5 && Stdlib.String.sub name 0 5 = "Code." then
-    "Avoid dynamic code execution. Consider using alternative approaches."
-  else "Review input handling for this sink."
+  (classify_sink name).suggestion
 
 (* Helper to format sink call into a finding message *)
 let format_sink_message (category : string) (fn_name : string) (fn_arity : int) : string =
