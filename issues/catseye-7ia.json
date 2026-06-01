@@ -5,10 +5,14 @@
   "created": "2026-06-01T10:57:29Z",
   "description": "## Problem\n\nReach uses EEx.Engine for HEEx template processing. EEx.eval_string/2 evaluates arbitrary Elixir code from strings — this is a code execution vector. Also missing: IO.write/IO.puts with tainted data (output sinks for data exfiltration).\n\n## Evidence\n\nFrom reach:\n- reach/lib/reach/plugins/live_view/heex_engine.ex: @behaviour EEx.Engine\n- reach/lib/reach/plugins/live_view/heex/parser.ex: EEx.SyntaxError handling\n\nFrom ex_dna:\n- ex_dna/lib/ex_dna/reporter/console.ex: IO.puts for output\n\n## Expected Behavior\n\n- EEx.eval_string should be flagged as CodeExecution\n- EEx.eval_file should be flagged as CodeExecution\n- IO.write/IO.puts with tainted data should be flagged as data exfiltration\n\n## Suggested Fix\n\nAdd to rules/elixir-sinks.kdl:\n- sink \"EEx.eval_string\" arg=0 { fix \"Avoid evaluating user input as EEx templates\" }\n- sink \"EEx.eval_file\" arg=0 { fix \"Avoid evaluating user-controlled files as EEx templates\" }\n\nIO.write/IO.puts are lower priority — they're output sinks, not security sinks.",
   "id": "catseye-7ia",
-  "labels": [],
+  "labels": [
+    "code-execution",
+    "elixir",
+    "rules"
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: add EEx.eval_string and IO.write as security sinks",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:29Z"
+  "updated_at": "2026-06-01T10:57:53Z"
 }
