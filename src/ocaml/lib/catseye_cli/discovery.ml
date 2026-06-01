@@ -106,6 +106,58 @@ let parse_shard_yml (dir : string) : (string * string list) =
     with _ -> ("", [])
   end
 
+(* ── Smart auto-exclusion ──────────────────────────────────────────────
+
+   Before walking the tree, probe for directory-level markers that indicate
+   dependency installations, build artifacts, or generated code. These are
+   added to the exclude list automatically so the user doesn't have to.
+
+   Detection strategy (fast stat-based, no recursion):
+     1. Check for known directory names at the top level (node_modules, _build, etc.)
+     2. Check for project manifest files (shard.yml, mix.exs, package.json, Cargo.toml)
+        that tell us what kind of project this is and what dirs to expect.
+     3. Check for .git to confirm it's a project root.
+
+   The result is merged with the user-provided exclude list.
+*)
+
+let auto_exclude_dirs (root : string) (base_exclude : string list) : string list =
+  let extra = ref [] in
+  (* Always exclude these common artifact dirs if they exist *)
+  let known_artifact_dirs = [
+    "node_modules"; "dist"; ".svelte-kit"; ".next"; "build";
+    "_build"; "_opam"; "_deps";
+    ".dart_tool"; ".pub-cache"; ".pub";
+    "__pycache__"; ".tox"; ".mypy_cache"; ".pytest_cache";
+    "target";  (* Rust/Java *)
+    "_site"; ".jekyll-cache";  (* Ruby static *)
+    ".cache";
+  ] in
+  (* Also exclude hidden dirs that are tool-specific *)
+  let known_hidden = [
+    ".git"; ".hg"; ".svn";
+    ".direnv";
+    ".pi"; ".opencode"; ".pi-lens"; ".atl"; ".catseye";
+    ".vscode"; ".idea";
+    ".sass-cache"; ".babel_cache";
+  ] in
+  let check_and_add name =
+    let full = Stdlib.Filename.concat root name in
+    if Stdlib.Sys.file_exists full && Stdlib.Sys.is_directory full then
+      extra := name :: !extra
+  in
+  List.iter ~f:check_and_add known_artifact_dirs;
+  List.iter ~f:check_and_add known_hidden;
+  (* Merge with base exclude, deduplicate *)
+  let combined = !extra @ base_exclude in
+  let rec dedup acc = function
+    | [] -> List.rev acc
+    | x :: rest ->
+      if List.mem acc ~equal:String.equal x then dedup acc rest
+      else dedup (x :: acc) rest
+  in
+  dedup [] combined
+
 let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "shard.yml") in
@@ -118,6 +170,9 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(
         if project_name <> "" then project_name :: dep_names else dep_names
     end
   in
+  
+  (* Smart auto-exclusion: detect artifact dirs at the root level *)
+  let exclude = auto_exclude_dirs dir exclude in
   
   let results = ref [] in
   let should_skip entry =

@@ -828,8 +828,16 @@ let run (config : t) : int =
           findings
         end else []
       in
-      (* Step 4f: Elixir AST extraction + Claws (sink/source detection + code smells) *)
-      let (sink_findings, json_data) = Elixir_extractor.extract_with_data config.target_dir in
+      (* Step 4f: Elixir AST extraction + Claws (sink/source detection + code smells)
+         Only run if this is actually an Elixir project — avoid launching BEAM
+         on non-Elixir projects just because mix happens to be on PATH. *)
+      let has_elixir_sources = List.exists ~f:(fun (s : source_file) -> s.lang = "elixir") sources in
+      let (sink_findings, json_data) =
+        if has_elixir_sources || Elixir_tools.is_mix_project config.target_dir then
+          Elixir_extractor.extract_with_data config.target_dir
+        else
+          ([], [])
+      in
       let claws_findings = Elixir_claws.analyze json_data in
       let extractor_findings = sink_findings @ claws_findings in
       if config.format = Terminal && extractor_findings <> [] then begin
