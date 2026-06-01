@@ -21,16 +21,21 @@ let known_sanitizers = [
   "html.escape";
   (* SSRF validation functions — these sanitize URLs *)
   "check_ssrf"; "check_ssrf_url"; "validate_url"; "is_valid_url"; "allowlisted_url?"; "valid_url?"; "url_valid?";
-  (* Hash/digest functions produce deterministic output — safe for filenames *)
+  (* Hash/digest functions produce deterministic output — safe for filenames and cache keys.
+     Cryptographic hashes break taint because the output is not controllable by input
+     beyond collision resistance. A SHA256 hash cannot contain ../ or other traversal.
+     This covers: Digest::MD5.hexdigest, Digest::SHA256.hexdigest,
+     OpenSSL::Digest.new("SHA256").update(x).hexdigest, Base64.encode, etc. *)
   "Digest::MD5.hexdigest"; "Digest::SHA256.hexdigest";
   "Base64.encode"; "Base64.strict_encode";
   "File.expand_path";
   (* OpenSSL digest methods — deterministic output *)
   "OpenSSL::Digest";
-  (* Common hash/digest function patterns *)
+  (* Common hash/digest function patterns — hex digest output is bounded *)
   "hash_for_url"; "hash_for";
-  "hexdigest"; "hexstring";
   "favicon_hash";
+  "hexdigest"; "hexstring"; "to_hex";
+  "SHA256"; "SHA512"; "SHA1"; "MD5";
   (* Functions that return sanitized/validated paths *)
   "get_or_fetch";
   (* Safe path/tempfile generation — output is not user-controlled *)
@@ -39,8 +44,13 @@ let known_sanitizers = [
   "Dir.mktmpdir";
   "File.tempname";
   "mkstemp";
-  (* Validation functions — validate_path!, validate_and_resolve_path!, etc. *)
+  (* Validation functions — validate_path!, validate_and_resolve_path!, etc.
+     The trailing underscore in "validate_" means any function starting with validate_ *)
   "validate_";
+  (* Schema/config validation — parsing trusted config files is safe *)
+  "Config.from_json"; "Config.from_yaml"; "Config.parse";
+  "validate_yaml_structure"; "validate_config";
+  "load_config"; "read_config";
 ]
 
 (* Prefix match: [name] starts with one of the known source prefixes.

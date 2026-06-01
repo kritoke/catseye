@@ -1,6 +1,7 @@
 rule "SSRF" severity="High" {
     languages {
         exclude "crystal"
+        exclude "svelte"
     }
     sinks {
         sink "HTTP::Client.get" arg=0 {

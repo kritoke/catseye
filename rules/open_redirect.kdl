@@ -1,6 +1,7 @@
 rule "OpenRedirect" severity="Medium" {
     languages {
         exclude "crystal"
+        exclude "svelte"
     }
     sinks {
         sink "redirect_to" arg=0 {

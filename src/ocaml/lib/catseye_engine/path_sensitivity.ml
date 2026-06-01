@@ -24,6 +24,7 @@ type validation_kind =
   | ContainsCheck
   | Allowlist
   | Equality
+  | AuthenticationGuard  (* before_action, require_admin!, authenticate!, etc. *)
 
 type validation = {
   var_name : string;
@@ -69,8 +70,30 @@ let is_validation_method (name : string) : bool =
     contains_substring name "verify"
   ))
 
+(** Detect authentication/authorization guard calls.
+    These establish a trust boundary — all code after the guard runs
+    in an authenticated context, reducing the severity of taint findings. *)
+let is_authentication_guard (name : string) : bool =
+  contains_substring name "require_admin" ||
+  contains_substring name "require_auth" ||
+  contains_substring name "require_user" ||
+  contains_substring name "authenticate" ||
+  contains_substring name "authorize" ||
+  contains_substring name "before_action" ||
+  contains_substring name "before_filter" ||
+  contains_substring name "protect_from_forgery" ||
+  contains_substring name "ensure_authenticated" ||
+  contains_substring name "ensure_authorized" ||
+  contains_substring name "login_required" ||
+  contains_substring name "auth_required" ||
+  contains_substring name "signed_in?" ||
+  contains_substring name "current_user" ||
+  name = "require_login!" ||
+  name = "require_auth!"
+
 let rec detect_validation (call_name : string) : (validation_kind * string option) option =
-  if is_validation_method call_name then Some (MethodCall, None)
+  if is_authentication_guard call_name then Some (AuthenticationGuard, None)
+  else if is_validation_method call_name then Some (MethodCall, None)
   else if ends_with call_name "starts_with?" then Some (SchemeCheck, extract_receiver call_name)
   else if ends_with call_name "end_with?" then Some (SchemeCheck, extract_receiver call_name)
   else if ends_with call_name "includes?" then Some (ContainsCheck, extract_receiver call_name)
@@ -102,6 +125,27 @@ let build_validation_scopes (nodes : Security_node.t list) : validation list =
     List.iter ~f:(fun node ->
       if node.Security_node.node_type = Security_node.Call then
         (match detect_validation node.Security_node.name with
+         | Some (AuthenticationGuard, _) ->
+             (* Authentication guards create a file-wide scope from the guard
+                to end of the enclosing function. All findings within this
+                scope are in an authenticated context. *)
+             let enclosing = List.find ~f:(fun d -> d.Security_node.line < node.Security_node.line) (List.rev defs) in
+             (match enclosing with
+              | Some def_node ->
+                  (* Scope extends from the guard to the end of the enclosing def *)
+                  let next_defs = List.filter ~f:(fun d ->
+                    d.Security_node.file = node.Security_node.file
+                    && d.Security_node.line > def_node.Security_node.line
+                  ) sorted in
+                  let end_line = match next_defs with
+                    | [] -> node.Security_node.line + 200  (* rest of file *)
+                    | next :: _ -> next.Security_node.line
+                  in
+                  scopes := { var_name = "_auth_guard"; file = node.Security_node.file;
+                              start_line = node.Security_node.line; end_line;
+                              kind = AuthenticationGuard;
+                              validated_by = node.Security_node.name } :: !scopes
+              | None -> ())
          | Some (kind, receiver_opt) ->
              (* Use receiver if available (e.g., 'path' from 'path.starts_with?') *)
              (match receiver_opt with
@@ -125,21 +169,40 @@ let build_validation_scopes (nodes : Security_node.t list) : validation list =
 
 let should_suppress (finding : Finding.t) (scopes : validation list) : bool =
   let rule = finding.Finding.rule in
-  (* Only suppress SSRF and path traversal findings *)
-  if not (rule = "ssrf" || rule = "path_traversal" || rule = "PathTraversal") then false
-  else
-    List.exists ~f:(fun scope ->
-      scope.file = finding.Finding.file &&
-      scope.start_line <= finding.Finding.line &&
-      finding.Finding.line < scope.end_line &&
-      match scope.kind with
-      | SchemeCheck -> true   (* starts_with?, end_with? *)
-      | MethodCall -> true    (* valid_*, safe_*, check_* *)
-      | Regex _ -> true       (* regex match *)
-      | Allowlist -> true     (* explicit allowlist check *)
-      | Equality -> true      (* == comparison *)
-      | ContainsCheck -> false (* includes? is not a strong guard *)
-    ) scopes
+  (* Check for authentication guard scopes — reduce severity of findings
+     in authenticated contexts. These suppress only medium/low severity rules,
+     not critical ones like SQL injection or command injection. *)
+  let auth_scoped = List.exists ~f:(fun scope ->
+    scope.kind = AuthenticationGuard &&
+    scope.file = finding.Finding.file &&
+    scope.start_line <= finding.Finding.line &&
+    finding.Finding.line < scope.end_line
+  ) scopes in
+  (* Auth guards suppress non-critical findings in authenticated contexts *)
+  if auth_scoped &&
+    (rule = "SSRF" || rule = "OpenRedirect" || rule = "ScentLeakage"
+     || rule = "InsecureDeserialization" || rule = "PathTraversal")
+  then true
+  else begin
+    (* Validation-based suppression for rules that benefit from validation scopes *)
+    if not (rule = "ssrf" || rule = "path_traversal" || rule = "PathTraversal"
+            || rule = "CommandInjection" || rule = "OpenRedirect"
+            || rule = "SQLInjection" || rule = "InsecureDeserialization") then false
+    else
+      List.exists ~f:(fun scope ->
+        scope.file = finding.Finding.file &&
+        scope.start_line <= finding.Finding.line &&
+        finding.Finding.line < scope.end_line &&
+        match scope.kind with
+        | SchemeCheck -> true   (* starts_with?, end_with? *)
+        | MethodCall -> true    (* valid_*, safe_*, check_* *)
+        | Regex _ -> true       (* regex match *)
+        | Allowlist -> true     (* explicit allowlist check *)
+        | Equality -> true      (* == comparison *)
+        | ContainsCheck -> false (* includes? is not a strong guard *)
+        | AuthenticationGuard -> false (* handled above *)
+      ) scopes
+  end
 
 let analyze (nodes : Security_node.t list) : validation list =
   build_validation_scopes nodes

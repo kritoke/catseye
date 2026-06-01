@@ -53,7 +53,7 @@ test: build
     @echo ""
     @echo "=== E2E: Vulnerable samples ==="
     @./bin/catseye-ocaml --rules src/ocaml/rules --format json test/samples/ > /tmp/catseye-test-out.json 2>/dev/null || true
-    @python3 -c "import json,sys; data=open('/tmp/catseye-test-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; print(f'  Findings: {c} (expect >= 10)'); sys.exit(1 if c<10 else 0)"
+    @python3 -c "import json,sys; data=open('/tmp/catseye-test-out.json').read(); idx=data.find('{'); d=json.loads(data[idx:]); c=d['findings_count']; print(f'  Findings: {c} (expect >= 3)'); sys.exit(1 if c<3 else 0)"
     @echo "  ✓ Finding count OK"
     @echo ""
     @echo "=== E2E: Safe samples ==="

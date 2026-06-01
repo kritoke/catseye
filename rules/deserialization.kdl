@@ -1,4 +1,11 @@
 rule "InsecureDeserialization" severity="High" {
+    languages {
+        exclude "crystal"
+        exclude "svelte"
+        exclude "gleam"
+        exclude "rust"
+        exclude "ocaml"
+    }
     sinks {
         sink "JSON.parse" {
             // Safe if input was validated through schema validation or input checking
@@ -8,9 +15,21 @@ rule "InsecureDeserialization" severity="High" {
             sanitizer "check_json"
             sanitizer "validate_json"
             sanitizer "JSON::Schema.new"
+            // Trusted data sources: config files, internal API responses
+            sanitizer "Config.from_json"
+            sanitizer "Config.from_yaml"
+            sanitizer "Config.parse"
+            sanitizer "validate_yaml_structure"
+            sanitizer "validate_config"
+            sanitizer "load_config"
+            sanitizer "read_config"
             fix "JSON.parse(schema.validate({arg0}))"
         }
         sink "YAML.parse" {
+            sanitizer "validate_yaml_structure"
+            sanitizer "validate_config"
+            sanitizer "load_config"
+            sanitizer "read_config"
             fix "YAML.parse(schema.validate({arg0}))"
         }
         sink "XML.parse" {
@@ -34,6 +53,8 @@ rule "InsecureDeserialization" severity="High" {
         source "request"
         source "body"
         source "user_input"
+        source "req.body"
+        source "query"
     }
     message "Potential insecure deserialization via {sink}. Deserializing untrusted data can lead to RCE."
 }

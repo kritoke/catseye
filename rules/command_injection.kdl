@@ -1,30 +1,54 @@
 rule "CommandInjection" severity="Critical" {
     languages {
         exclude "crystal"
+        exclude "svelte"
     }
     sinks {
         sink "system" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
+            sanitizer "escape"
+            sanitizer "Shellwords.escape"
+            sanitizer "Shellwords.shellescape"
             fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
         }
         sink "Process.run" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
+            sanitizer "escape"
+            sanitizer "Shellwords.escape"
+            sanitizer "Shellwords.shellescape"
             fix "Use Process.run([\"command\", {arg0}]) with array args instead of shell string"
         }
         sink "os.command" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
+            sanitizer "escape"
             fix "Use array-form command execution to avoid shell injection"
         }
         sink "os.cmd" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
+            sanitizer "escape"
             fix "Use array-form command execution to avoid shell injection"
         }
         sink "shell.cmd" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
             fix "Use array-form command execution to avoid shell injection"
         }
         sink "cmd.run" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
             fix "Use array-form command execution to avoid shell injection"
         }
         sink ":os.cmd" arg=0 {
+            sanitizer "validate_"
             fix "Use :os.cmd/2 with a charlist, not a string with interpolation"
         }
         sink "erlexec.Shell" arg=0 {
+            sanitizer "validate_"
+            sanitizer "sanitize"
             fix "Validate and sanitize command arguments"
         }
     }
@@ -44,6 +68,10 @@ rule "CommandInjection" severity="Critical" {
 }
 
 rule "EnvInjection" severity="High" {
+    languages {
+        exclude "crystal"
+        exclude "svelte"
+    }
     sinks {
         sink "ENV[]=" {
             fix "Whitelist allowed env var names before setting: ENV[allowed_key] = validated_value"

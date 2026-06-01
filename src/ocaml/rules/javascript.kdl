@@ -226,6 +226,12 @@ rule "PrototypePollution" severity="High" {
     languages {
         include "javascript"
         include "typescript"
+        exclude "crystal"
+        exclude "svelte"
+        exclude "gleam"
+        exclude "rust"
+        exclude "ocaml"
+        exclude "elixir"
     }
     sinks {
         sink "$merge" arg=0 {

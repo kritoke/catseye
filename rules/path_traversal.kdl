@@ -1,6 +1,7 @@
 rule "PathTraversal" severity="High" {
     languages {
         exclude "crystal"
+        exclude "svelte"
     }
     sinks {
         sink "File.read" arg=0 {
@@ -9,39 +10,60 @@ rule "PathTraversal" severity="High" {
             sanitizer "Path.posix"
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
+            sanitizer "Base64.encode"
             sanitizer "File.expand_path"
+            sanitizer "validate_"
             fix "File.read(File.expand_path({arg0}))"
         }
         sink "File.write" arg=0 {
             sanitizer "Path.basename"
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
+            sanitizer "Base64.encode"
             sanitizer "File.expand_path"
+            sanitizer "validate_"
             fix "File.write(File.expand_path({arg0}))"
         }
         sink "File.delete" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
             sanitizer "File.expand_path"
+            sanitizer "validate_"
             fix "File.delete(File.expand_path({arg0}))"
         }
         sink "File.open" arg=0 {
             sanitizer "Digest::MD5.hexdigest"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
             sanitizer "File.expand_path"
+            sanitizer "validate_"
             fix "File.open(File.expand_path({arg0}))"
         }
         sink "Dir.glob" arg=0 {
+            sanitizer "validate_"
             fix "Validate path components before globbing: Dir.glob(validate_path({arg0}))"
         }
         sink "Dir.entries" arg=0 {
+            sanitizer "validate_"
             fix "Validate path before listing: Dir.entries(validate_path({arg0}))"
         }
         sink "simplifile.read" arg=0 {
+            sanitizer "validate_"
             fix "Validate path before reading"
         }
         sink "simplifile.write" arg=0 {
+            sanitizer "validate_"
             fix "Validate path before writing"
         }
         sink "simplifile.delete" arg=0 {
+            sanitizer "validate_"
             fix "Validate path before deleting"
         }
     }
@@ -59,16 +81,25 @@ rule "PathTraversal" severity="High" {
 rule "PathTraversal" severity="Medium" {
     languages {
         exclude "crystal"
+        exclude "svelte"
     }
     sinks {
         sink "File.join" {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
+            sanitizer "Base64.encode"
+            sanitizer "validate_"
             fix "Validate path components before joining"
         }
         sink "Path.join" {
             sanitizer "Digest::MD5.hexdigest"
             sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
+            sanitizer "hexdigest"
+            sanitizer "Base64.encode"
+            sanitizer "validate_"
             fix "Validate path components before joining"
         }
     }

@@ -223,6 +223,11 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
     (rules : rule_def list) (state : taint_state) (dom_ctx : dom_ctx)
     : Catseye_types.Finding.t list =
   Stdlib.List.concat_map (fun (rule : rule_def) ->
+    (* 0. Language filter: skip rules that don't apply to this language *)
+    if rule.conditions.include_languages <> [] &&
+       not (Stdlib.List.mem lang rule.conditions.include_languages) then []
+    else if Stdlib.List.mem lang rule.conditions.exclude_languages then []
+    else
     Stdlib.List.concat_map (fun (sink : sink_def) ->
       (* Guard clauses — flat, not nested *)
       (* 1. Does the function name match the sink pattern? *)

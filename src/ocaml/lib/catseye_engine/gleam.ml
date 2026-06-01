@@ -364,16 +364,28 @@ let extract file_path =
   (* SECURITY: Use quoted arguments with Sys.command to avoid shell injection *)
   let lib_path_escaped = Stdlib.Filename.quote lib_path in
   let file_path_escaped = Stdlib.Filename.quote file_path in
-  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name gleam -x %s 2>/dev/null"
-    lib_path_escaped file_path_escaped in
+  (* Write tree-sitter XML output to a temp file to capture it *)
+  let tmp_file, tmp_oc = Stdlib.Filename.open_temp_file ~perms:0o600 "catseye-gleam-" ".xml" in
+  Stdlib.output_string tmp_oc "";  (* just create the file *)
+  Stdlib.close_out tmp_oc;
+  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name gleam -x %s > %s 2>/dev/null"
+    lib_path_escaped file_path_escaped (Stdlib.Filename.quote tmp_file) in
   let exit_code = Stdlib.Sys.command cmd in
   let ok = match exit_code with
     | 0 -> true
-    | 1 -> Stdlib.Buffer.length buf > 0  (* tree-sitter returns 1 for partial parse errors but still emits XML *)
+    | 1 -> true  (* tree-sitter returns 1 for partial parse errors but still emits XML *)
     | _ -> false in
-  if not ok then Error (`Msg (Stdlib.Printf.sprintf "tree-sitter failed for %s" file_path))
-  else begin
-    let doc = parse_xml (Stdlib.Buffer.contents buf) in
+  if not ok then begin
+    Stdlib.Sys.remove tmp_file;
+    Error (`Msg (Stdlib.Printf.sprintf "tree-sitter failed for %s" file_path))
+  end else begin
+    let ic = Stdlib.open_in tmp_file in
+    let len = Stdlib.in_channel_length ic in
+    let content = Stdlib.Bytes.create len in
+    Stdlib.really_input ic content 0 len;
+    Stdlib.close_in ic;
+    Stdlib.Sys.remove tmp_file;
+    let doc = parse_xml (Stdlib.Bytes.to_string content) in
     (* Find source_file by recursive descent *)
     let rec find_sf = function
       | [] -> []

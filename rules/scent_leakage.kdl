@@ -6,24 +6,32 @@ rule "ScentLeakage" severity="Critical" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Logger.warn" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Logger.error" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Logger.debug" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Logger.notice" {
@@ -35,24 +43,32 @@ rule "ScentLeakage" severity="Critical" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Log.warn" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Log.error" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Log.debug" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid logging sensitive data — redact or mask before logging"
         }
         sink "Log.notice" {
@@ -65,6 +81,8 @@ rule "ScentLeakage" severity="Critical" {
             sanitizer "check_ssrf"
             sanitizer "validate_url"
             sanitizer "allowlisted_url?"
+            sanitizer "Digest::SHA256.hexdigest"
+            sanitizer "OpenSSL::Digest"
             fix "Avoid printing sensitive data — redact or mask before output"
         }
         sink "pp!" {
@@ -114,10 +132,10 @@ rule "ScentLeakage" severity="Critical" {
         source "secret"
         source "api_key"
         source "credential"
-        source "email"
-        source "ssn"
-        source "credit_card"
-        source "session_id"
+        source "private_key"
+        source "access_token"
+        source "refresh_token"
+        source "auth_key"
     }
     message "Scent Leakage: sensitive data may reach {sink} via scented variable(s): {tainted_vars}."
 }
