@@ -5,10 +5,14 @@
   "created": "2026-06-01T10:59:48Z",
   "description": "## Problem\n\nReach uses :erlang.apply/3 in its HEEx parser to dynamically invoke parser modules. Module.concat is used extensively for creating module names from AST parts. Both are dynamic code execution vectors.\n\n## Evidence\n\nFrom reach:\n- reach/lib/reach/plugins/live_view/heex/parser.ex:46: :erlang.apply(@parser, :parse, [source, parser_opts])\n- reach/lib/reach/frontend/elixir.ex: Module.concat(parts) for dynamic module resolution\n- reach/lib/reach/macro_fact.ex: Module.concat(parts) for macro analysis\n\n## Expected Behavior\n\n- :erlang.apply should be flagged as dynamic code execution\n- Module.concat with non-literal args should be flagged as atom table exhaustion risk\n\n## Suggested Fix\n\nAdd to rules/elixir-sinks.kdl Elixir-Code-Execution:\n- sink \":erlang.apply\" arg=0 { fix \"Avoid dynamic function application with untrusted input\" }\n- sink \"Module.concat\" arg=0 { sanitizer \"Module.safe_concat?\" }\n\nNote: Module.concat with atom-only args is safe. Only flag when args come from string conversion.",
   "id": "catseye-ahd",
-  "labels": [],
+  "labels": [
+    "code-execution",
+    "elixir",
+    "rules"
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: add :erlang.apply and Module.concat as dynamic code execution sinks",
   "type": "task",
-  "updated_at": "2026-06-01T10:59:48Z"
+  "updated_at": "2026-06-01T11:00:02Z"
 }
