@@ -1,4 +1,7 @@
-rule "Elixir-SSRF" severity="High" languages="elixir" {
+rule "Elixir-SSRF" severity="High" {
+    languages {
+        include "elixir"
+    }
     // Elixir HTTP clients: HTTPoison, Tesla, Req, Mint
     sinks {
         sink "HTTPoison.get" arg=0 {
@@ -117,7 +120,10 @@ rule "Elixir-SSRF" severity="High" languages="elixir" {
     message "Potential SSRF via {sink} with user-controlled URL from request"
 }
 
-rule "Elixir-SQL-Injection" severity="High" languages="elixir" {
+rule "Elixir-SQL-Injection" severity="High" {
+    languages {
+        include "elixir"
+    }
     // Ecto database queries
     sinks {
         sink "Ecto.Repo.all" arg=0 {
@@ -160,7 +166,10 @@ rule "Elixir-SQL-Injection" severity="High" languages="elixir" {
     message "Potential SQL injection via {sink}"
 }
 
-rule "Elixir-Code-Execution" severity="Critical" languages="elixir" {
+rule "Elixir-Code-Execution" severity="Critical" {
+    languages {
+        include "elixir"
+    }
     // Code execution vulnerabilities
     sinks {
         sink "Code.eval_string" arg=0 {
@@ -192,7 +201,10 @@ rule "Elixir-Code-Execution" severity="Critical" languages="elixir" {
     message "Potential arbitrary code execution via {sink}"
 }
 
-rule "Elixir-XSS" severity="High" languages="elixir" {
+rule "Elixir-XSS" severity="High" {
+    languages {
+        include "elixir"
+    }
     // Cross-site scripting in Phoenix
     sinks {
         sink "Phoenix.HTML.Safe.to_string" arg=0 {
@@ -224,7 +236,10 @@ rule "Elixir-XSS" severity="High" languages="elixir" {
     message "Potential XSS via {sink} - user input may not be escaped"
 }
 
-rule "Elixir-Config-Secrets" severity="Critical" languages="elixir" {
+rule "Elixir-Config-Secrets" severity="Critical" {
+    languages {
+        include "elixir"
+    }
     // Hardcoded secrets in config
     sinks {
         sink "config :secret" value="secret_key_base"
@@ -239,7 +254,10 @@ rule "Elixir-Config-Secrets" severity="Critical" languages="elixir" {
     message "Potential hardcoded secret in {sink}"
 }
 
-rule "Elixir-Command-Injection" severity="Critical" languages="elixir" {
+rule "Elixir-Command-Injection" severity="Critical" {
+    languages {
+        include "elixir"
+    }
     // OS command execution vulnerabilities
     sinks {
         sink "System.cmd" arg=1 {

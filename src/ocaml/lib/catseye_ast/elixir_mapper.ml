@@ -29,8 +29,22 @@ let range line = { start = pos line; end_ = pos line }
 let build_call_list (fn_calls : Yojson.Safe.t list) : expr list =
   List.map fn_calls ~f:(function
     | `Assoc cf ->
-      { expr_value = EVar (json_string (match assoc "name" cf with Some v -> v | _ -> `String ""));
-        expr_location = range (json_int (match assoc "line" cf with Some v -> v | _ -> `Int 0)) }
+      let name = json_string (match assoc "name" cf with Some v -> v | _ -> `String "") in
+      let line = json_int (match assoc "line" cf with Some v -> v | _ -> `Int 0) in
+      let args_json = (match assoc "args" cf with Some (`List as_list) -> as_list | _ -> []) in
+      let arg_exprs = List.filter_map args_json ~f:(function
+        | `Assoc af ->
+          let arg_name = json_string (match assoc "name" af with Some v -> v | _ -> `String "") in
+          let arg_type = json_string (match assoc "type" af with Some v -> v | _ -> `String "var") in
+          (match arg_type with
+           | "literal" -> Some { expr_value = ELiteral (LString arg_name); expr_location = range line }
+           | _ -> Some { expr_value = EVar arg_name; expr_location = range line })
+        | `String s -> Some { expr_value = EVar s; expr_location = range line }
+        | _ -> None)
+      in
+      (* Use EApp so to_security_node creates Call nodes for sink matching *)
+      let fn_expr = { expr_value = EVar name; expr_location = range line } in
+      { expr_value = EApp (fn_expr, arg_exprs); expr_location = range line }
     | _ -> { expr_value = EUnit; expr_location = range 0 })
 
 (* ── Build function item from a JSON function entry ─────────────── *)
