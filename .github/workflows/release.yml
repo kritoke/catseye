@@ -29,6 +29,12 @@ jobs:
           chmod +x /tmp/opam
           sudo mv /tmp/opam /usr/local/bin/opam
 
+      - name: Install Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.18"
+
       - name: Build
         run: |
           export OPAMROOT=/home/runner/.opam
@@ -38,6 +44,13 @@ jobs:
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          # Build Elixir extractor escript
+          cd ../../scripts/elixir-extractor
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          MIX_ENV=prod mix escript.build
+          cp catseye_extractor ../../bin/catseye_extractor
 
       - name: Create grammar installer
         run: |
@@ -93,6 +106,12 @@ jobs:
           chmod +x /tmp/opam
           sudo mv /tmp/opam /usr/local/bin/opam
 
+      - name: Install Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.18"
+
       - name: Build
         run: |
           export OPAMROOT=/home/runner/.opam
@@ -102,6 +121,13 @@ jobs:
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          # Build Elixir extractor escript
+          cd ../../scripts/elixir-extractor
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          MIX_ENV=prod mix escript.build
+          cp catseye_extractor ../../bin/catseye_extractor
 
       - name: Package
         run: |
@@ -134,12 +160,25 @@ jobs:
           brew install opam
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
 
+      - name: Install Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.18"
+
       - name: Build
         run: |
           eval $(opam env)
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
           mkdir -p ../../bin && cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+          # Build Elixir extractor escript
+          cd ../../scripts/elixir-extractor
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          MIX_ENV=prod mix escript.build
+          cp catseye_extractor ../../bin/catseye_extractor
 
       - name: Package
         run: tar -czf ${{ matrix.artifact }}.tar.gz bin/

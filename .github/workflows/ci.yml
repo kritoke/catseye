@@ -28,6 +28,12 @@ jobs:
           sudo mv /tmp/opam /usr/local/bin/opam
           npm install -g tree-sitter-cli
 
+      - name: Install Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.18"
+
       - name: Build and test
         run: |
           export OPAMROOT=/home/runner/.opam
@@ -45,6 +51,14 @@ jobs:
           dune build
           mkdir -p ../../bin
           cp _build/default/bin/main.exe ../../bin/catseye-ocaml
+
+          # Build Elixir extractor escript
+          cd ../../scripts/elixir-extractor
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          MIX_ENV=prod mix escript.build
+          cp catseye_extractor ../../bin/catseye_extractor
 
       - name: Run tests
         run: |

@@ -2,7 +2,7 @@
 
 **Multi-language static security analysis with taint tracking, code smell detection, and AI antipattern linting.**
 
-Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust** — with language-specific security rules and antipattern databases for each.
+Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust, and Elixir** — with language-specific security rules and antipattern databases for each.
 
 > **v0.4.4** - OCaml idiomatic rules, updated Crystal/Gleam/Svelte detectors, OCaml verbose-option detection
 
@@ -87,6 +87,7 @@ just scan-json path/to/project/src
 | Language   | Extensions                 | Security Rules |        AI Lint        |   Code Smells   | Extractor                      |
 | ---------- | -------------------------- | :------------: | :-------------------: | :-------------: | ------------------------------ |
 | Crystal    | `.cr`                      |  ✅ 12 rules   |    ✅ 45 detectors    | ✅ 16 detectors | Crystal extractor + AST bridge |
+| Elixir     | `.ex` `.exs` `.heex`       |  ✅ 6 categories |          —          | ✅ 16 detectors | Elixir escript extractor + AST bridge |
 | Gleam      | `.gleam`                   |  ✅ 12 rules   |    ✅ 36 detectors    | ✅ 16 detectors | tree-sitter                    |
 | JavaScript | `.js` `.jsx` `.mjs` `.cjs` |  ✅ 10 rules   | ✅ 60+ hallucinations | ✅ 16 detectors | tree-sitter                    |
 | TypeScript | `.ts` `.tsx`               |  ✅ 10 rules   | ✅ (shares JS rules)  | ✅ 16 detectors | tree-sitter                    |
@@ -103,7 +104,7 @@ catseye [options] <directory>
   -o, --output <path>        write results to file
   -r, --rules <path>         rules directory (default: ~/.local/lib/catseye/rules/)
   --config <path>            config file path (default: .catseye.toml in target or parents)
-  --lang <lang>              all (default), or comma-separated: crystal,gleam,javascript,typescript,svelte,ocaml,rust
+  --lang <lang>              all (default), or comma-separated: crystal,elixir,gleam,javascript,typescript,svelte,ocaml,rust
   --no-color                 disable colored output
   --no-cache                 disable extraction cache
   --clear-cache              clear cache and run full scan
@@ -297,6 +298,7 @@ What it doesn't do:
 Source files
     │
     ├─ Crystal (.cr) ──→ Crystal extractor (AST → JSON) ─┐
+    ├─ Elixir (.ex) ──→ Elixir escript extractor (AST → JSON) ─┤
     ├─ Gleam (.gleam) ─→ tree-sitter (CST → XML → AST) ─┤
     ├─ JS/TS (.js .ts) ─→ tree-sitter (CST → XML → AST) ┤
     ├─ Svelte (.svelte) ─→ tree-sitter two-pass ─────────┤
@@ -446,6 +448,7 @@ catseye/
 │   │   │   ├── catseye_il/              # IL types, CFG builder (ocamlgraph), dominator analysis
 │   │   │   ├── catseye_ast/             # Unified AST + language mappers + plugin registry
 │   │   │   │   ├── crystal_mapper.ml         # Crystal JSON → AST
+│   │   │   │   ├── elixir_mapper.ml          # Elixir JSON → AST
 │   │   │   │   ├── gleam_mapper.ml           # Gleam tree-sitter → AST
 │   │   │   │   ├── javascript_mapper.ml      # JS tree-sitter → AST
 │   │   │   │   ├── typescript_mapper.ml      # TS (extends JS mapper)
@@ -469,6 +472,7 @@ catseye/
 │   │       ├── javascript.kdl                 # JS/TS security rules
 │   │       └── gleam/*.kdl                    # Gleam security rules
 │   └── extractor/extractor.cr           # Crystal AST extractor
+├── scripts/elixir-extractor/           # Elixir AST extractor (escript)
 ├── test/samples/                        # Test corpus (Crystal, JS, Svelte)
 ├── flake.nix                            # Nix dev shell (all grammars)
 └── justfile                             # Build tasks
