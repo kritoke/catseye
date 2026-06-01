@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-01T12:12:38Z",
+  "description": "The Elixir extractor flattens list arguments into summaries like '[4 items]' which hides tainted variables from the taint engine. System.cmd('git', ['diff', path]) reports path inside '[3 items]'. This blocks CommandInjection detection.",
+  "id": "catseye-2zy",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Elixir extractor: output individual arg names instead of list summaries",
+  "type": "task",
+  "updated_at": "2026-06-01T12:12:38Z"
+}
