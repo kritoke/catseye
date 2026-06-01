@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-01T18:16:36Z",
   "created": "2026-06-01T10:56:31Z",
   "description": "## Problem\n\nBoth ex_dna and reach use Code.string_to_quoted/2 and Code.compile_file/1 for AST parsing. These are code execution vectors if the input is attacker-controlled — arbitrary Elixir code can be injected via the source string.\n\n## Evidence\n\nFrom reach:\n- reach/lib/reach/frontend/elixir.ex: Code.string_to_quoted(source, ...)\n- reach/lib/reach/smell/checks/idiom_mismatch.ex: Code.string_to_quoted!()\n- reach/lib/reach/project.ex: Code.compile_file(mix_file)\n- reach/lib/reach/plugins/live_view/heex/parser.ex: Code.string_to_quoted!()\n\nFrom ex_dna:\n- ex_dna/lib/ex_dna/detection/pipeline.ex: Code.string_to_quoted(source, ...)\n- ex_dna/lib/ex_dna/refactor/behaviour_suggestion.ex: Code.string_to_quoted(source, ...)\n\n## Expected Behavior\n\nCode.string_to_quoted, Code.string_to_quoted!, Code.compile_file, Code.compile_string should be flagged as code execution sinks in the Elixir-Code-Execution rule.\n\n## Suggested Fix\n\nAdd to rules/elixir-sinks.kdl Elixir-Code-Execution rule:\n- sink \"Code.string_to_quoted\" arg=0\n- sink \"Code.string_to_quoted!\" arg=0\n- sink \"Code.compile_file\" arg=0\n- sink \"Code.compile_string\" arg=0\n- sink \"Code.eval_quoted\" arg=0\n\nAlso add :erlang.binary_to_term as a deserialization sink (unsafe deserialization of BEAM terms).",
   "id": "catseye-ad5",
@@ -11,8 +12,8 @@
     "rules"
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Elixir: add Code.string_to_quoted and Code.compile_string as code execution sinks",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:53Z"
+  "updated_at": "2026-06-01T18:16:36Z"
 }
