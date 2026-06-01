@@ -92,7 +92,7 @@ export default function (pi: ExtensionAPI) {
     name: "catseye_scan",
     label: "Catseye Security Scan",
     description:
-      "Run Catseye static security scanner on the project. Detects SSRF, injection (SQL/command/path/LDAP), open redirects, hardcoded secrets, weak crypto, missing timeouts, ReDoS, and more via taint analysis on Crystal and Gleam code. Also detects code smells (complexity, god objects, deep nesting, long parameter lists) and AI antipatterns (hallucinated methods, hardcoded URLs). Returns structured findings with taint flow traces.",
+      "Run Catseye static security scanner on the project. Detects SSRF, injection (SQL/command/path/LDAP), open redirects, hardcoded secrets, weak crypto, missing timeouts, ReDoS, and more via taint analysis on Crystal, Elixir, Gleam, JavaScript, TypeScript, Svelte, OCaml, and Rust code. Also detects code smells (complexity, god objects, deep nesting, long parameter lists) and AI antipatterns (hallucinated methods, hardcoded URLs). Returns structured findings with taint flow traces.",
     promptSnippet: "Scan for security vulnerabilities and code smells",
     promptGuidelines: [
       "Use catseye_scan when the user asks to scan for security issues, code quality, or antipatterns.",
@@ -159,6 +159,7 @@ export default function (pi: ExtensionAPI) {
       if (params.cfg) args.push("--cfg");
       if (params.ai_lint !== false) args.push("--ai-lint");
       if (params.claws !== false) args.push("--claws");
+      args.push("--elixir");
       args.push(target);
 
       // Use spawnSync (no shell) to avoid shell overhead and SIGPIPE issues.
