@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-01T18:14:39Z",
+  "description": "",
+  "id": "catseye-y6y",
+  "labels": [
+    "refactor"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Refactor: replace repetitive if-else chains with data-driven lookup tables",
+  "type": "task",
+  "updated_at": "2026-06-01T18:14:39Z"
+}
