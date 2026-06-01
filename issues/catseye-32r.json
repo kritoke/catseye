@@ -5,10 +5,14 @@
   "created": "2026-06-01T10:57:40Z",
   "description": "## Problem\n\nReach detects manual Path.basename/URI.parse bypasses (String.split(\"/\") |\u003e List.last instead of Path.basename). These are security-relevant because hand-rolled path parsing often misses edge cases like path traversal sequences.\n\n## Evidence\n\nFrom reach/lib/reach/evidence/standard_library_bypass/path_uri.ex:\n- manual_path_basename: String.split(\"/\") |\u003e List.last instead of Path.basename\n- manual_path_extension: String.split(\".\") |\u003e List.last instead of Path.extname\n- manual_uri_path_split: String.split(\"?\") |\u003e List.first instead of URI.parse\n- manual_query_parsing: String.split(\"\u0026\") instead of URI.decode_query\n- manual_uri_scheme_split: String.split(\"://\") instead of URI.parse\n\n## Expected Behavior\n\nThese patterns should be detected as security code smells — hand-rolled path/URL parsing is a common source of path traversal and SSRF vulnerabilities.\n\n## Suggested Fix\n\nThis is a code smell check, not a taint-based security rule. Consider adding to the AI linter or Claws:\n- Detect String.split(\"/\") |\u003e List.last → suggest Path.basename\n- Detect String.split(\".\") |\u003e List.last → suggest Path.extname\n- Detect String.split(\"?\") |\u003e List.first → suggest URI.parse\n\nThis is lower priority than the taint-engine fixes but would catch real security anti-patterns.",
   "id": "catseye-32r",
-  "labels": [],
+  "labels": [
+    "code-smell",
+    "elixir",
+    "security"
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect manual Path/URI bypasses as security code smells",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:40Z"
+  "updated_at": "2026-06-01T10:57:54Z"
 }
