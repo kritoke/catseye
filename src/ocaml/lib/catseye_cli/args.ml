@@ -29,7 +29,10 @@ let get_exe_dir () : string =
 (* ── Help text ───────────────────────────────────────────────────────── *)
 
 let help_text = {|
-catseye - Security analysis tool for Crystal and Gleam
+catseye - Multi-language static security analysis with taint tracking
+
+Supported languages: Crystal, Elixir, Gleam, JavaScript, TypeScript,
+                     Svelte, OCaml, Rust
 
 Usage:
   catseye [OPTIONS] PATH
@@ -40,12 +43,18 @@ General options:
 
 Analysis options:
   --format FMT                Output format: terminal (default), json, sarif, markdown, dot
-  --lang LANGS                Language filter: all (default), crystal, gleam, or comma-separated
+  --lang LANGS                Language filter: all (default), or comma-separated:
+                              crystal, elixir, gleam, javascript, typescript, svelte, ocaml, rust
   --rules PATH                Rules directory (default: rules/)
-  --ai-lint                   Enable AI-powered linting
-  --ast-bridge                Enable AST bridge for JS/TS/Svelte
+  --cfg                       Enable CFG-based taint engine (more sensitive, branch-aware)
+  --no-cfg                    Use flat taint engine (default)
+  --ai-lint                   Enable AI antipattern detection
+  --claws                     Enable code smell detection
   --no-color                  Disable colored output
   --include-deps              Include dependency analysis
+
+Elixir options:
+  --elixir                    Enable Elixir analysis (extractor + sink detection)
 
 Performance options:
   --parallel N                Number of parallel workers (default: auto)
@@ -59,22 +68,24 @@ Output options:
   --cache-dir PATH            Cache directory (default: .catseye)
   --no-cache                  Disable extraction cache
   --clear-cache               Clear cache before running
+  --suppress TAGS             Suppress findings by comma-separated rule tags
 
 Supply chain options:
   --predator-vision           Enable reachability heatmap
-  --elixir                    Enable Elixir analysis
-  --suppress TAGS             Suppress findings by comma-separated tags
+  --crows-nest                Enable supply chain audit (Crystal/Gleam)
 
-Cache options:
-  --no-cfg                    Skip CFG-based analysis
+Other options:
+  --ast-bridge                Enable AST bridge for JS/TS/Svelte
   --no-cfg-use                Don't use cached CFG data
   --no-recurse                Don't recurse into subdirectories
-  --claws                     Enable code smell (Claws) analysis
 
 Examples:
-  catseye --lang crystal ./src
-  catseye --format json --output results.json .
-  catseye --predator-vision --ai-lint
+  catseye ./src                              Scan with defaults
+  catseye --cfg --claws --ai-lint ./src      Full analysis
+  catseye --elixir ./my_elixir_app           Elixir security scan
+  catseye --format json --output out.json .  JSON output
+  catseye --lang elixir,javascript ./src     Scan only Elixir + JS
+  catseye --predator-vision --crows-nest    Supply chain + reachability
 |}
 
 (* ── Simple argument parsing ─────────────────────────────────────────── *)
