@@ -179,8 +179,15 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     walk_expr e1 file lang @ [assign_node] @ walk_expr e2 file lang
   | EAssignment (e1, e2) ->
     let name = expr_full_name e1 in
+    (* Track the RHS call name so the taint engine can propagate through it *)
+    let rhs_name = expr_full_name e2 in
+    let assign_args =
+      if rhs_name <> "" then
+        [make_arg ~arg_type:Security_node.ArgCall ~value:rhs_name]
+      else []
+    in
     let assign_node = make_node
-      ~node_type:Security_node.Assign ~name ~args:[]
+      ~node_type:Security_node.Assign ~name ~args:assign_args
       ~line:e.expr_location.start.line ~file ~language:lang in
     walk_expr e1 file lang @ walk_expr e2 file lang @ [assign_node]
   | EBinOp (e1, _op, e2) ->

@@ -64,11 +64,23 @@ else if n.Security_node.node_type = Security_node.Call && n.Security_node.taint 
       is_source ~extra:extra_sources a.Security_node.value
     ) def.Security_node.args in
     let has_tainted = Stdlib.Hashtbl.mem has_tainted_assign (def.Security_node.file, def.Security_node.line) in
-    has_source_param || has_tainted
+    (* For Elixir files, treat all function params as potential taint sources
+       since we can't know at extraction time which ones are user-controlled *)
+    let is_elixir =
+      let len = String.length def.Security_node.file in
+      len > 3 && (Stdlib.String.sub def.Security_node.file (len - 3) 3 = ".ex"
+                  || Stdlib.String.sub def.Security_node.file (len - 4) 4 = ".exs")
+    in
+    has_source_param || has_tainted || is_elixir
   )
   |> Stdlib.List.concat_map (fun def ->
     def.Security_node.args
-    |> Stdlib.List.filter (fun a -> is_source ~extra:extra_sources a.Security_node.value)
+    |> Stdlib.List.filter (fun a ->
+      is_source ~extra:extra_sources a.Security_node.value
+      || (let len = String.length def.Security_node.file in
+          len > 3 && (Stdlib.String.sub def.Security_node.file (len - 3) 3 = ".ex"
+                      || Stdlib.String.sub def.Security_node.file (len - 4) 4 = ".exs"))
+    )
     |> Stdlib.List.map (fun a ->
       { var_name = a.Security_node.value
       ; file = def.Security_node.file

@@ -143,6 +143,7 @@ let string_taint_methods = [
   "tr"; "tr!"; "delete"; "delete!";
   "prepend"; "concat";
   "encode"; "decode";
+  "<>"; "+"; "Kernel.to_string";  (* string concatenation preserves taint *)
 ]
 
 let is_string_taint_method (method_name : string) : bool =
@@ -362,52 +363,41 @@ let propagate_string_ops (nodes : Security_node.t list) (db : Db.t)
       (* Check if this is a method call on a variable *)
       match node.Security_node.args with
       | [{ arg_type = Security_node.ArgCall; value = _; field = "" }] ->
-          (* Look up the call node to get the full method name *)
           let key = node.Security_node.file ^ ":" ^ Int.to_string node.Security_node.line in
           (match Stdlib.Hashtbl.find_opt call_at key with
            | Some call_node ->
                let receiver_opt = get_call_receiver call_node in
                let method_opt = extract_method_name call_node.Security_node.name in
-               (match receiver_opt, method_opt with
-                | Some receiver, Some method_name when is_string_taint_method method_name ->
-                    (* Check if receiver is tainted at variable level *)
-                    let is_tainted = Db.is_tainted_in_file !taint_db_ref receiver node.Security_node.file in
-                    if is_tainted then
-                      let var_name = node.Security_node.name in
-                      let file = node.Security_node.file in
-                      (* Mark the assign target as tainted *)
-                      let record = {
-                        Db.var_name = var_name;
-                        Db.file = file;
-                        Db.line = node.Security_node.line;
-                        Db.description = var_name ^ " tainted via string operation on " ^ receiver;
-                        Db.source_var = receiver;
-                        Db.field = None;
-                        Db.status = Db.Tainted {
-                          source = receiver;
-                          field = None;
-                          origin = Db.From_var receiver
-                        }
-                      } in
-                      taint_db_ref := Db.add_record !taint_db_ref record;
-                      (* Also mark all string property fields as tainted *)
-                      Stdlib.List.iter (fun prop ->
-                        let prop_record = {
-                          Db.var_name = var_name;
-                          Db.file = file;
-                          Db.line = node.Security_node.line;
-                          Db.description = var_name ^ "." ^ prop ^ " tainted via " ^ method_name;
-                          Db.source_var = receiver;
-                          Db.field = Some prop;
-                          Db.status = Db.Tainted {
-                            source = receiver;
-                            field = Some prop;
-                            origin = Db.From_var receiver
-                          }
-                        } in
-                        taint_db_ref := Db.add_record !taint_db_ref prop_record
-                      ) ["length"; "size"; "empty"; "bytesize"]
-                | _ -> ())
+               let should_propagate = match receiver_opt, method_opt with
+                 | Some receiver, Some method_name when is_string_taint_method method_name ->
+                     Some receiver
+                 | _ when is_string_taint_method call_node.Security_node.name ->
+                     let has_tainted_arg = Stdlib.List.exists (fun a ->
+                       a.Security_node.arg_type = Security_node.ArgVar
+                       && Db.is_tainted_in_file !taint_db_ref a.Security_node.value node.Security_node.file
+                     ) call_node.Security_node.args in
+                     if has_tainted_arg then Some "" else None
+                 | _ -> None
+               in
+               (match should_propagate with
+                | Some receiver ->
+                    let var_name = node.Security_node.name in
+                    let file = node.Security_node.file in
+                    let record = {
+                      Db.var_name = var_name;
+                      Db.file = file;
+                      Db.line = node.Security_node.line;
+                      Db.description = var_name ^ " tainted via " ^ call_node.Security_node.name;
+                      Db.source_var = receiver;
+                      Db.field = None;
+                      Db.status = Db.Tainted {
+                        source = receiver;
+                        field = None;
+                        origin = Db.From_var receiver
+                      }
+                    } in
+                    taint_db_ref := Db.add_record !taint_db_ref record
+                | None -> ())
            | None -> ())
       | _ -> ()
   ) nodes;

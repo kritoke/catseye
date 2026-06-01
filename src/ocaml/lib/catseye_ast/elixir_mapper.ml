@@ -26,8 +26,18 @@ let range line = { start = pos line; end_ = pos line }
 
 (* ── Build expressions from escript JSON call list ───────────────── *)
 
+(* Counter for generating unique temp variable names *)
+let temp_counter = ref 0
+
+let fresh_temp () =
+  Int.incr temp_counter;
+  Printf.sprintf "__elixir_tmp_%d" !temp_counter
+
 let build_call_list (fn_calls : Yojson.Safe.t list) : expr list =
-  List.map fn_calls ~f:(function
+  (* Each call becomes an EApp. Calls that produce values used by other calls
+     get wrapped in a temp Assign so the taint engine can track data flow.
+     E.g. "<>" (base, "...HEAD") → __elixir_tmp_1 = base <> "...HEAD" *)
+  List.concat_map fn_calls ~f:(function
     | `Assoc cf ->
       let name = json_string (match assoc "name" cf with Some v -> v | _ -> `String "") in
       let line = json_int (match assoc "line" cf with Some v -> v | _ -> `Int 0) in
@@ -42,10 +52,29 @@ let build_call_list (fn_calls : Yojson.Safe.t list) : expr list =
         | `String s -> Some { expr_value = EVar s; expr_location = range line }
         | _ -> None)
       in
-      (* Use EApp so to_security_node creates Call nodes for sink matching *)
       let fn_expr = { expr_value = EVar name; expr_location = range line } in
-      { expr_value = EApp (fn_expr, arg_exprs); expr_location = range line }
-    | _ -> { expr_value = EUnit; expr_location = range 0 })
+      let call_expr = { expr_value = EApp (fn_expr, arg_exprs); expr_location = range line } in
+      (* Special handling for assignment operator *)
+      if name = "=" && List.length arg_exprs >= 2 then begin
+        let lhs = List.nth_exn arg_exprs 0 in
+        let rhs = List.nth_exn arg_exprs 1 in
+        [{ expr_value = EAssignment (lhs, rhs); expr_location = range line }]
+      end
+      (* Only wrap operators and string ops in temp Assign — not regular calls like System.cmd *)
+      else
+      let is_operator =
+        List.exists ["<>"; "+"; "-"; "*"; "/"; "++"; "--"] ~f:(fun p -> name = p)
+        || name = "Kernel.to_string"
+        || name = "<<>>"  (* binary construction *)
+      in
+      if is_operator && arg_exprs <> [] then begin
+        let temp = fresh_temp () in
+        let temp_var = { expr_value = EVar temp; expr_location = range line } in
+        let assign_expr = { expr_value = EAssignment (temp_var, call_expr); expr_location = range line } in
+        [assign_expr]
+      end else
+        [call_expr]
+    | _ -> [{ expr_value = EUnit; expr_location = range 0 }])
 
 (* ── Build function item from a JSON function entry ─────────────── *)
 

@@ -228,7 +228,8 @@ defmodule CatseyeExtractor do
 
   # Skip Elixir control-flow pseudo-calls — recurse into args
   @control_flow ~w(__block__ case try if cond with receive fn)a
-  defp find_calls({fun, _meta, args}, acc) when is_atom(fun) and is_list(args) and fun in @control_flow do
+  defp find_calls({fun, _meta, args}, acc)
+       when is_atom(fun) and is_list(args) and fun in @control_flow do
     Enum.reduce(args, acc, &find_calls/2)
   end
 
