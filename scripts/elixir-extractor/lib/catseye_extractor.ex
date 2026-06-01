@@ -252,8 +252,13 @@ defmodule CatseyeExtractor do
 
   defp extract_call_args(args) when is_list(args) do
     args
-    |> Enum.map(&macro_to_string/1)
-    |> Enum.take(5)
+    |> Enum.flat_map(fn
+      # Flatten list literals so individual elements become separate args
+      # E.g., System.cmd("git", ["diff", path]) → args=["git", "diff", "path"]
+      l when is_list(l) -> Enum.map(l, &macro_to_string/1)
+      other -> [macro_to_string(other)]
+    end)
+    |> Enum.take(10)
   end
 
   defp extract_call_args(_), do: []

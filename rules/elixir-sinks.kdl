@@ -260,11 +260,11 @@ rule "Elixir-Command-Injection" severity="Critical" {
     }
     // OS command execution vulnerabilities
     sinks {
-        sink "System.cmd" arg=1 {
+        sink "System.cmd" {
             sanitizer "System.cmd(\"echo\", [sanitized_args])"
             fix "Use explicit arguments instead of string interpolation"
         }
-        sink ":os.cmd" arg=1 {
+        sink ":os.cmd" {
             fix "Avoid :os.cmd with user input"
         }
         sink "Port.open" arg=1 {
