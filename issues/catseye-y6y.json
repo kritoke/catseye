@@ -8,9 +8,15 @@
   "labels": [
     "refactor"
   ],
+  "comments": [
+    {
+      "text": "Pattern: repeated prefix-matching if-else chains across multiple functions with the same set of prefixes (HTTPoison, Ecto, Phoenix, Tesla, Req., Code., System.cmd, :os.cmd, Port.open).\n\nJust did this for elixir_extractor.ml (determine_severity, get_rule_name, get_category, get_suggestion → sink_table + classify_sink). Look for similar patterns in:\n\n1. src/ocaml/lib/catseye_engine/constants.ml — known_sources, known_sanitizers lists\n2. src/ocaml/lib/catseye_engine/path_sensitivity.ml — validation/auth guard detection\n3. src/ocaml/lib/catseye_engine/propagate.ml — string_taint_methods, operator handling\n4. src/ocaml/lib/catseye_il/cfg_taint.ml — check_call_sinks, language filter chains\n5. KDL rule files in rules/ — repeated language filter blocks\n6. scripts/elixir-extractor/lib/catseye_extractor.ex — @ssrf_sinks, @sql_sinks, @xss_sinks, @code_exec_sinks lists (could be a single data structure)\n\nGoal: each cluster of related if-else/contains checks becomes a single data table + one lookup function. New sinks/categories only need a new table row.",
+      "timestamp": "2026-06-01T18:14:48Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Refactor: replace repetitive if-else chains with data-driven lookup tables",
   "type": "task",
-  "updated_at": "2026-06-01T18:14:39Z"
+  "updated_at": "2026-06-01T18:14:48Z"
 }
