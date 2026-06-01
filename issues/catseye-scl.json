@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-01T10:57:02Z",
+  "description": "## Problem\n\nThe Elixir extractor finds System.cmd calls (e.g. in reach/lib/reach/check/changed.ex) but catseye doesn't flag them as CommandInjection. The issue is likely that tainted data flows into System.cmd via string interpolation (\"#{base}...HEAD\") but the taint engine doesn't track this.\n\n## Evidence\n\nFrom reach/lib/reach/check/changed.ex:\n  defp changed_files(base) do\n    case System.cmd(\"git\", [\"diff\", \"--name-only\", base \u003c\u003e \"...HEAD\"], stderr_to_stdout: true) do\n  end\n\nThe extractor correctly identifies System.cmd at line 56, but catseye doesn't report CommandInjection because:\n1.  is a function parameter (potential taint source)\n2.  creates a string via interpolation\n3. The interpolated string flows into System.cmd's args list\n4. The taint engine doesn't track through string interpolation to args\n\n## Expected Behavior\n\nWhen a function parameter flows into System.cmd args via string concatenation/interpolation, it should be flagged as CommandInjection.\n\n## Suggested Fix\n\n1. Improve Elixir taint propagation to track through \u003c\u003e (string concatenation) and #{} (interpolation)\n2. Ensure the Elixir mapper creates proper arg nodes so the taint engine can trace data flow\n3. Consider adding \"base\"-like param names as taint sources when they flow into System.cmd",
+  "id": "catseye-scl",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: taint propagation for System.cmd args via string interpolation",
+  "type": "task",
+  "updated_at": "2026-06-01T10:57:02Z"
+}
