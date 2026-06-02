@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:33:38Z",
+  "description": "",
+  "id": "catseye-3zc",
+  "labels": [
+    "false-positive"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "FP: UnboundedRead false positive on framework-bounded request body reads",
+  "type": "task",
+  "updated_at": "2026-06-02T10:33:38Z"
+}
