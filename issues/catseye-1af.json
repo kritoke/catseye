@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:33:20Z",
+  "description": "",
+  "id": "catseye-1af",
+  "labels": [
+    "false-positive"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "FP: ReDoS false positive on regex with (\u0026|$) stop anchor",
+  "type": "task",
+  "updated_at": "2026-06-02T10:33:20Z"
+}
