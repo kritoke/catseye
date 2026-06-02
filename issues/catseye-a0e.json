@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:39:30Z",
+  "description": "",
+  "id": "catseye-a0e",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect Shell.escape/1 bypass and string concatenation in shell args",
+  "type": "task",
+  "updated_at": "2026-06-02T10:39:30Z"
+}
