@@ -8,9 +8,15 @@
   "labels": [
     "enhancement"
   ],
+  "comments": [
+    {
+      "text": "From facet_pi security audit Finding 1 (High): file_edit.ex:19 uses Path.expand(path, workspace) directly without calling Facet.PathSanitizer.sanitize/2. All other native tools call the sanitizer. Catseye already flags PathTraversal on File.read/write here via Sobelow, but misses the SPECIFIC pattern: a function in a project that has a PathSanitizer module calling Path.expand instead of the sanitizer. This is a cross-function validation gap. Detection approach: if the project defines a module with 'sanitize' in the name that wraps Path operations, flag any Path.expand/Path.join calls in other modules that don't route through the sanitizer.",
+      "timestamp": "2026-06-02T10:58:40Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect Path.expand used without PathSanitizer in projects that define a sanitizer module",
   "type": "task",
-  "updated_at": "2026-06-02T10:58:25Z"
+  "updated_at": "2026-06-02T10:58:40Z"
 }
