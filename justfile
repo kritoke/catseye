@@ -120,31 +120,31 @@ FACET_DB := "$HOME/.facet-pi/feedback.db"
 
 # Show feedback summary (counts by type)
 feedback db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py summary
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs summary
 
 # Show all scan results
 feedback-scans db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py scans
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs scans
 
 # Show user-flagged false positives
 feedback-fp db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py fp
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs fp
 
 # Show missed issues (things Catseye didn't catch)
 feedback-missed db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py missed
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs missed
 
 # Show new findings manually reported by users
 feedback-new db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py new
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs new
 
 # Export all feedback as JSON (for AI consumption)
 feedback-json db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py json
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs json
 
 # Export feedback filtered by type as JSON
 feedback-type type db=FACET_DB:
-    @FACET_DB="{{db}}" python3 scripts/feedback.py json {{type}}
+    @FACET_DB="{{db}}" elixir scripts/feedback.exs json {{type}}
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
