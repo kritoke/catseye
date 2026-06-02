@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-02T10:55:21Z",
   "created": "2026-06-01T10:56:51Z",
   "description": "## Problem\n\nReach detects :erlang.binary_to_term (unsafe deserialization) and String.to_atom (atom table exhaustion) as security issues. Catseye should detect these too.\n\n## Evidence\n\nFrom reach:\n- reach/lib/reach/smell/checks/unsafe_binary_to_term.ex: detects :erlang.binary_to_term without [:safe]\n- reach/lib/reach/smell/checks/unsafe_atom.ex: detects String.to_atom/1 on dynamic input\n\nFrom facet_pi:\n- reach/plugins/quickbeam/javascript_frontend.ex uses String.to_atom extensively\n\n## Expected Behavior\n\n- :erlang.binary_to_term should be flagged as InsecureDeserialization (BEAM term deserialization can lead to RCE)\n- String.to_atom should be flagged as a resource exhaustion risk (atom table is limited)\n\n## Suggested Fix\n\n1. Add to rules/elixir-sinks.kdl or create new Elixir-UnsafeDeserialization rule:\n   - sink \":erlang.binary_to_term\" arg=0 { sanitizer \":safe\" }\n\n2. Add to rules/elixir-sinks.kdl or create new Elixir-AtomExhaustion rule:\n   - sink \"String.to_atom\" arg=0 { sanitizer \"String.to_existing_atom\" }\n   - sink \"Module.concat\" arg=0 { sanitizer \"Module.safe_concat?\" }",
   "id": "catseye-ie4",
@@ -11,8 +12,8 @@
     "rules"
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Elixir: add :erlang.binary_to_term and String.to_atom as security sinks",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:53Z"
+  "updated_at": "2026-06-02T10:55:21Z"
 }
