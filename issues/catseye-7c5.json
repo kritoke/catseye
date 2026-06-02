@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Code.require_file / Code.eval_file with dynamic paths.' We already detect Code.eval_string but miss Code.eval_file/1-2 and Code.require_file/1-2. These load and execute Elixir code from a file path — if the path is tainted, an attacker can trigger arbitrary code execution by pointing to a malicious file. Add to @code_exec_sinks in the extractor. Severity: Critical.",
+      "timestamp": "2026-06-02T10:39:16Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect Code.eval_file and Code.require_file with dynamic paths",
   "type": "task",
-  "updated_at": "2026-06-02T10:39:02Z"
+  "updated_at": "2026-06-02T10:39:16Z"
 }
