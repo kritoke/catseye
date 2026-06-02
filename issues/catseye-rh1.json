@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Shared mutable state — Application.put_env/3 from input, ETS/DETS, :persistent_term, environment variables, Logger backends. One input poisoning what another sees.' Flag Application.put_env/3, System.put_env/2, :ets.insert/2, :persistent_term.put/2 when called with tainted values. Severity: Medium.",
+      "timestamp": "2026-06-02T10:39:02Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect shared mutable state poisoning (Application.put_env, ETS from tainted input)",
   "type": "task",
-  "updated_at": "2026-06-02T10:38:53Z"
+  "updated_at": "2026-06-02T10:39:02Z"
 }
