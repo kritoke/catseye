@@ -8,9 +8,15 @@
   "labels": [
     "enhancement"
   ],
+  "comments": [
+    {
+      "text": "From facet_pi security audit Finding 2 (Medium): conversations.ex:386 @allowed_update_keys includes 'messages' =\u003e :messages, letting a client replace the entire message array, bypassing schema validation and ContextSanitizer. This is an authorization/logic gap — Catseye can't detect this via taint analysis. Possible detection: code smell rule that flags maps named 'allowed_keys' or 'permitted_fields' that include sensitive field names like 'messages', 'password', 'role', 'permissions', 'admin'. This is a low-confidence heuristic but catches a common API design mistake.",
+      "timestamp": "2026-06-02T10:59:35Z"
+    }
+  ],
   "priority": 3,
   "status": "open",
   "title": "Elixir: detect dangerous keys in allowed-update/whitelist maps (messages, password, permissions)",
   "type": "task",
-  "updated_at": "2026-06-02T10:59:19Z"
+  "updated_at": "2026-06-02T10:59:35Z"
 }
