@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:34:02Z",
+  "description": "",
+  "id": "catseye-t0w",
+  "labels": [
+    "enhancement"
+  ],
+  "priority": 3,
+  "status": "open",
+  "title": "Quickheadlines: add MissingTimeout suppression for Athena framework HTTP calls",
+  "type": "task",
+  "updated_at": "2026-06-02T10:34:02Z"
+}
