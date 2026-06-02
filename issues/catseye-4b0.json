@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:38:29Z",
+  "description": "",
+  "id": "catseye-4b0",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect TLS verification disabled (verify: :verify_none)",
+  "type": "task",
+  "updated_at": "2026-06-02T10:38:29Z"
+}
