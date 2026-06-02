@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:39:43Z",
+  "description": "",
+  "id": "catseye-2an",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect atom table exhaustion via String.to_atom on user input",
+  "type": "task",
+  "updated_at": "2026-06-02T10:39:43Z"
+}
