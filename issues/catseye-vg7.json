@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:38:41Z",
+  "description": "",
+  "id": "catseye-vg7",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect timing-unsafe comparison on secrets (== instead of secure_compare)",
+  "type": "task",
+  "updated_at": "2026-06-02T10:38:41Z"
+}
