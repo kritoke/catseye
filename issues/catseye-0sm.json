@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-02T10:55:21Z",
   "created": "2026-06-01T10:56:39Z",
   "description": "## Problem\n\nReach's Req library depends on Finch for HTTP requests. Finch is a common Elixir HTTP client that should be flagged as an SSRF sink. Also missing: :httpc (Erlang stdlib HTTP client).\n\n## Evidence\n\nFrom facet_pi deps:\n- req/lib/req/finch.ex uses Finch for actual HTTP requests\n- Finch.start_link, Finch.request, Finch.build_request are the actual HTTP execution calls\n\nFrom reach:\n- reach uses Req.get for HTTP calls (already detected)\n\n## Expected Behavior\n\nFinch.request, Finch.build_request, :httpc.request should be flagged as SSRF sinks.\n\n## Suggested Fix\n\nAdd to rules/elixir-sinks.kdl Elixir-SSRF rule:\n- sink \"Finch.request\" arg=1\n- sink \"Finch.build_request\" arg=1\n- sink \":httpc.request\" arg=0",
   "id": "catseye-0sm",
@@ -11,8 +12,8 @@
     "ssrf"
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Elixir: add Finch and :httpc as HTTP client SSRF sinks",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:53Z"
+  "updated_at": "2026-06-02T10:55:21Z"
 }
