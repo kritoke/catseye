@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:39:16Z",
+  "description": "",
+  "id": "catseye-slj",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect Plug.Crypto.non_executable_binary_to_term misuse (should use :safe option)",
+  "type": "task",
+  "updated_at": "2026-06-02T10:39:16Z"
+}
