@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Resource consumption — atom leaks (String.to_atom/1 on input).' String.to_atom/1 creates atoms that are never garbage collected. If called with unbounded user input, it can exhaust the atom table (default 1M atoms) and crash the BEAM. Flag String.to_atom/1 when called with tainted data. Suggest String.to_existing_atom/1. Severity: Medium. Note: partially overlaps catseye-ie4 but this is specifically about DoS, not deserialisation.",
+      "timestamp": "2026-06-02T10:40:00Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect atom table exhaustion via String.to_atom on user input",
   "type": "task",
-  "updated_at": "2026-06-02T10:39:43Z"
+  "updated_at": "2026-06-02T10:40:00Z"
 }
