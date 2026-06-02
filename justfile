@@ -21,6 +21,7 @@ build:
     cd src/ocaml && dune exec -- tools/generate_rules/main.exe rules lib/catseye_rules/default_rules.ml
     @echo "  Compiling OCaml..."
     cd src/ocaml && dune build && cp -f _build/default/bin/main.exe /workspaces/catseye/bin/catseye-ocaml
+    cp -f src/ocaml/_build/default/tools/feedback/feedback.exe /workspaces/catseye/bin/catseye-feedback
     @echo "  Building Elixir escript..."
     cd /workspaces/catseye/scripts/elixir-extractor && MIX_ENV=prod mix escript.build 2>/dev/null && cp -f catseye_extractor /workspaces/catseye/bin/ || true
     @echo "✓ Built → bin/"
@@ -120,31 +121,31 @@ FACET_DB := "$HOME/.facet-pi/feedback.db"
 
 # Show feedback summary (counts by type)
 feedback db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs summary
+    @./bin/catseye-feedback -d "{{db}}" summary
 
 # Show all scan results
 feedback-scans db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs scans
+    @./bin/catseye-feedback -d "{{db}}" scans
 
 # Show user-flagged false positives
 feedback-fp db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs fp
+    @./bin/catseye-feedback -d "{{db}}" fp
 
 # Show missed issues (things Catseye didn't catch)
 feedback-missed db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs missed
+    @./bin/catseye-feedback -d "{{db}}" missed
 
 # Show new findings manually reported by users
 feedback-new db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs new
+    @./bin/catseye-feedback -d "{{db}}" new
 
 # Export all feedback as JSON (for AI consumption)
 feedback-json db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs json
+    @./bin/catseye-feedback -d "{{db}}" json
 
 # Export feedback filtered by type as JSON
 feedback-type type db=FACET_DB:
-    @FACET_DB="{{db}}" elixir scripts/feedback.exs json {{type}}
+    @./bin/catseye-feedback -d "{{db}}" json {{type}}
 
 # ── Utilities ─────────────────────────────────────────────────────────
 
@@ -164,6 +165,7 @@ install prefix="$HOME/.local": build
     @install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye-ocaml
     @install -m 755 bin/catseye-ocaml {{prefix}}/bin/catseye
     @install -m 755 bin/catseye_extractor {{prefix}}/bin/catseye-extractor 2>/dev/null || true
+    @install -m 755 bin/catseye-feedback {{prefix}}/bin/catseye-feedback 2>/dev/null || true
     @install -d {{prefix}}/lib/catseye/rules
     @install -m 644 src/ocaml/rules/*.kdl {{prefix}}/lib/catseye/rules/
     @install -d {{prefix}}/lib/catseye/extractor

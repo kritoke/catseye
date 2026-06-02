@@ -1,0 +1,5 @@
+(executable
+ (name feedback)
+ (public_name catseye-feedback)
+ (package catseye)
+ (libraries sqlite3 yojson))
