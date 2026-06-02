@@ -8,9 +8,15 @@
   "labels": [
     "false-positive"
   ],
+  "comments": [
+    {
+      "text": "Two instances: api_base_controller.cr:216 and header_color_controller.cr:12 — both use read_body_safe to parse JSON. Body sizes are bounded by Athena framework's default request size limits. The UnboundedRead rule should recognize framework-provided request body readers as bounded, or at minimum not flag helper methods that wrap framework-bounded I/O.",
+      "timestamp": "2026-06-02T10:33:50Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "FP: UnboundedRead false positive on framework-bounded request body reads",
   "type": "task",
-  "updated_at": "2026-06-02T10:33:38Z"
+  "updated_at": "2026-06-02T10:33:50Z"
 }
