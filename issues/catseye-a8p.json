@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Network — clients that follow redirects, accept URLs from input.' We detect SSRF via HTTP client calls but don't flag redirect-following as an escalation factor. Hackney, Tesla, and Req all support follow_redirects. When a tainted URL is passed with follow_redirects: true, an attacker can redirect to internal services. Flag as higher severity when follow_redirects is enabled. Severity: Medium escalation of existing SSRF. Note: related to catseye-0sm.",
+      "timestamp": "2026-06-02T10:40:13Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect redirect-following SSRF (HTTP clients with follow_redirects: true on tainted URLs)",
   "type": "task",
-  "updated_at": "2026-06-02T10:40:00Z"
+  "updated_at": "2026-06-02T10:40:13Z"
 }
