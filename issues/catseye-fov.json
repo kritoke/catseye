@@ -8,9 +8,15 @@
   "labels": [
     "false-positive"
   ],
+  "comments": [
+    {
+      "text": "api_base_controller.cr:67 — rescue ArgumentError; false. Catseye reads the 'false' keyword as an unbounded read. The rescue clause is a standard error handler for invalid auth tokens, not a file read. The taint engine should not flag rescue clause return values as reads.",
+      "timestamp": "2026-06-02T10:33:13Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "FP: SilentErrorSwallow false positive on rescue ArgumentError → false",
   "type": "task",
-  "updated_at": "2026-06-02T10:32:59Z"
+  "updated_at": "2026-06-02T10:33:13Z"
 }
