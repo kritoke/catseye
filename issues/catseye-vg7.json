@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Cryptography — == on secrets instead of Plug.Crypto.secure_compare/2.' Timing attacks allow extracting secrets byte-by-byte when using == for comparison. Flag == comparisons where one operand is a known secret source (password, token, api_key, secret, hmac). Suggest Plug.Crypto.secure_compare/2 or :crypto.hash_equals/2. Severity: Medium.",
+      "timestamp": "2026-06-02T10:38:53Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect timing-unsafe comparison on secrets (== instead of secure_compare)",
   "type": "task",
-  "updated_at": "2026-06-02T10:38:41Z"
+  "updated_at": "2026-06-02T10:38:53Z"
 }
