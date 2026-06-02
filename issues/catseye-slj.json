@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Deserialisation — Plug.Crypto.non_executable_binary_to_term/2 misuse.' This function is a wrapper around :erlang.binary_to_term but has its own safe mode. Flag calls without proper validation of the decoded term structure. Related to catseye-ie4 which covers :erlang.binary_to_term. Severity: High.",
+      "timestamp": "2026-06-02T10:39:30Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect Plug.Crypto.non_executable_binary_to_term misuse (should use :safe option)",
   "type": "task",
-  "updated_at": "2026-06-02T10:39:16Z"
+  "updated_at": "2026-06-02T10:39:30Z"
 }
