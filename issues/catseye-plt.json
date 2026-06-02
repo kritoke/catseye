@@ -8,9 +8,15 @@
   "labels": [
     "enhancement"
   ],
+  "comments": [
+    {
+      "text": "From facet_pi security audit Finding 3 (Low): path_sanitizer.ex resolve_symlink_parts/3 recurses without a depth counter. A symlink loop would stack-overflow and disable ALL file tools. Catseye detects LongFunction (35 calls) but misses the actual recursion risk. Detection approach: flag recursive Elixir functions (function name appears in own body) that don't have a depth parameter or when clause guard. This is a code smell / security hygiene rule, similar to how Claws detects other patterns.",
+      "timestamp": "2026-06-02T10:59:06Z"
+    }
+  ],
   "priority": 3,
   "status": "open",
   "title": "Elixir: detect unbounded recursion — recursive functions without depth guards",
   "type": "task",
-  "updated_at": "2026-06-02T10:58:53Z"
+  "updated_at": "2026-06-02T10:59:06Z"
 }
