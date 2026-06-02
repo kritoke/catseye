@@ -13,6 +13,7 @@ defmodule CatseyeExtractor do
     "HTTPoison.patch",
     "HTTPoison.head",
     "HTTPoison.options",
+    "HTTPoison.request",
     "Tesla.get",
     "Tesla.post",
     "Tesla.put",
@@ -23,7 +24,10 @@ defmodule CatseyeExtractor do
     "Req.put",
     "Req.delete",
     "Req.patch",
-    "Mint.HTTP.connect"
+    "Req.request",
+    "Mint.HTTP.connect",
+    "Finch.request",
+    ":httpc.request"
   ]
 
   @sql_sinks [
@@ -47,10 +51,37 @@ defmodule CatseyeExtractor do
     "Code.eval_string",
     "Code.eval",
     "Code.eval_quoted",
+    "Code.eval_file",
+    "Code.require_file",
+    "Code.compile_string",
     "Kernel.eval",
+    "EEx.eval_string",
     "System.cmd",
     ":os.cmd",
-    "Port.open"
+    "Port.open",
+    ":erlang.apply",
+    "Module.concat",
+    "Porcelain.shell",
+    "Porcelain.exec"
+  ]
+
+  @deser_sinks [
+    ":erlang.binary_to_term",
+    "Plug.Crypto.non_executable_binary_to_term",
+    ":erl_tar.extract",
+    ":zip.extract",
+    ":zip.unzip"
+  ]
+
+  @state_sinks [
+    "Application.put_env",
+    "System.put_env",
+    ":ets.insert",
+    ":persistent_term.put"
+  ]
+
+  @atom_leak_sinks [
+    "String.to_atom"
   ]
 
   @doc """
@@ -349,6 +380,9 @@ defmodule CatseyeExtractor do
     Enum.any?(@ssrf_sinks, &String.contains?(clean_name, &1)) ||
       Enum.any?(@sql_sinks, &String.contains?(clean_name, &1)) ||
       Enum.any?(@xss_sinks, &String.contains?(clean_name, &1)) ||
-      Enum.any?(@code_exec_sinks, &String.contains?(clean_name, &1))
+      Enum.any?(@code_exec_sinks, &String.contains?(clean_name, &1)) ||
+      Enum.any?(@deser_sinks, &String.contains?(clean_name, &1)) ||
+      Enum.any?(@state_sinks, &String.contains?(clean_name, &1)) ||
+      Enum.any?(@atom_leak_sinks, &String.contains?(clean_name, &1))
   end
 end

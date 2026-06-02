@@ -95,15 +95,39 @@ type sink_class = {
 }
 
 let sink_table : (string * sink_class) list = [
+  (* SSRF — HTTP clients *)
   ("HTTPoison", { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
-  ("Ecto",      { severity = "Critical"; rule = "SQLi";             category = "database (SQLi)";           suggestion = "Use parameterized queries or Ecto.Changeset for input validation." });
-  ("Phoenix",   { severity = "High";     rule = "XSS";              category = "HTML rendering (XSS)";      suggestion = "Ensure raw content is properly sanitized before rendering." });
   ("Tesla",     { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
   ("Req.",      { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  ("Finch",     { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  (":httpc",    { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  ("Mint.HTTP", { severity = "High";     rule = "SSRF";             category = "HTTP client (SSRF)";        suggestion = "Consider validating the URL against an allowlist of permitted domains." });
+  (* SQLi *)
+  ("Ecto",      { severity = "Critical"; rule = "SQLi";             category = "database (SQLi)";           suggestion = "Use parameterized queries or Ecto.Changeset for input validation." });
+  (* XSS *)
+  ("Phoenix",   { severity = "High";     rule = "XSS";              category = "HTML rendering (XSS)";      suggestion = "Ensure raw content is properly sanitized before rendering." });
+  (* Code execution *)
   ("Code.",     { severity = "Critical"; rule = "CodeExec";         category = "code execution";            suggestion = "Avoid dynamic code execution. Consider using alternative approaches." });
+  ("EEx.eval",  { severity = "Critical"; rule = "CodeExec";         category = "template code execution";   suggestion = "Avoid EEx.eval_string with user-controlled input. Use compile-time templates instead." });
+  (* Command execution *)
   ("System.cmd",{ severity = "Critical"; rule = "CommandInjection"; category = "command execution";         suggestion = "Validate and sanitize arguments before passing to System.cmd. Use explicit arg lists instead of shell strings." });
   (":os.cmd",   { severity = "Critical"; rule = "CommandInjection"; category = "command execution";         suggestion = "Avoid :os.cmd with user input. Prefer System.cmd with explicit arg lists." });
   ("Port.open", { severity = "High";     rule = "CommandInjection"; category = "port/command execution";     suggestion = "Validate port command arguments. Avoid passing user-controlled data to Port.open." });
+  (":erlang.apply", { severity = "Critical"; rule = "CodeExec";    category = "dynamic dispatch";          suggestion = "Avoid :erlang.apply with computed function names. Use direct calls or Module.safe_concat." });
+  ("Module.concat", { severity = "High";     rule = "CodeExec";    category = "dynamic dispatch";          suggestion = "Avoid Module.concat with user input. Use Module.safe_concat for validation." });
+  (* Deserialization *)
+  (":erlang.binary_to_term", { severity = "Critical"; rule = "Deserialization"; category = "unsafe deserialization"; suggestion = "Use :erlang.binary_to_term(bin, [:safe]) or Plug.Crypto.non_executable_binary_to_term/2." });
+  ("Plug.Crypto.non_executable_binary_to_term", { severity = "High"; rule = "Deserialization"; category = "deserialization"; suggestion = "Validate decoded term structure after calling this function." });
+  (* Archive extraction / zip-slip *)
+  (":erl_tar",  { severity = "High";     rule = "PathTraversal";    category = "archive extraction (zip-slip)"; suggestion = "Validate archive entry names before extracting. Reject paths containing ../" });
+  (":zip.extract", { severity = "High";  rule = "PathTraversal";    category = "archive extraction (zip-slip)"; suggestion = "Validate archive entry names before extracting. Reject paths containing ../" });
+  (":zip.unzip", { severity = "High";    rule = "PathTraversal";    category = "archive extraction (zip-slip)"; suggestion = "Validate archive entry names before extracting. Reject paths containing ../" });
+  (* Shared mutable state *)
+  ("Application.put_env", { severity = "Medium"; rule = "StatePoisoning"; category = "shared mutable state";  suggestion = "Avoid writing user-controlled data to Application env. Use ETS or process state instead." });
+  ("System.put_env", { severity = "Medium";      rule = "StatePoisoning"; category = "shared mutable state";  suggestion = "Avoid setting env vars from user input." });
+  (":ets.insert", { severity = "Medium";         rule = "StatePoisoning"; category = "shared mutable state";  suggestion = "Validate data before inserting into shared ETS tables." });
+  (* Atom table exhaustion *)
+  ("String.to_atom", { severity = "Medium";       rule = "ResourceExhaustion"; category = "atom table leak"; suggestion = "Use String.to_existing_atom/1 to avoid creating new atoms from user input." });
 ]
 
 let default_sink = {
