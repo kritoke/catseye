@@ -8,9 +8,15 @@
   "labels": [
     "false-positive"
   ],
+  "comments": [
+    {
+      "text": "url_normalizer.cr:106 — Regex.new with (\u0026|$) anchor boundary. Catseye flags nested quantifiers but the (\u0026|$) creates a natural stop point that prevents unbounded backtracking. Query strings are typically short (under 2000 chars per HTTP spec). The ReDoS detector should recognize anchored alternation patterns as safe.",
+      "timestamp": "2026-06-02T10:33:29Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "FP: ReDoS false positive on regex with (\u0026|$) stop anchor",
   "type": "task",
-  "updated_at": "2026-06-02T10:33:20Z"
+  "updated_at": "2026-06-02T10:33:29Z"
 }
