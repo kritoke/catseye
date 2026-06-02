@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:59:19Z",
+  "description": "",
+  "id": "catseye-hun",
+  "labels": [
+    "enhancement"
+  ],
+  "priority": 3,
+  "status": "open",
+  "title": "Elixir: detect dangerous keys in allowed-update/whitelist maps (messages, password, permissions)",
+  "type": "task",
+  "updated_at": "2026-06-02T10:59:19Z"
+}
