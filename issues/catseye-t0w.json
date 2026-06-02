@@ -8,9 +8,15 @@
   "labels": [
     "enhancement"
   ],
+  "comments": [
+    {
+      "text": "9 instances of MissingTimeout in quickheadlines scan. These are Athena framework HTTP::Client calls that may have framework-level timeout defaults. Evaluate whether to suppress per-project or add Athena-aware detection to Catseye.",
+      "timestamp": "2026-06-02T10:34:14Z"
+    }
+  ],
   "priority": 3,
   "status": "open",
   "title": "Quickheadlines: add MissingTimeout suppression for Athena framework HTTP calls",
   "type": "task",
-  "updated_at": "2026-06-02T10:34:02Z"
+  "updated_at": "2026-06-02T10:34:14Z"
 }
