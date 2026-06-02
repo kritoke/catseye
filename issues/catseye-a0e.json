@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Command execution — shelling out where args are built by concatenation rather than passed as a list.' We detect System.cmd/:os.cmd but don't flag when the args list is built via string concatenation (e.g., System.cmd(\"git\", [\"diff\", \"--\\#{path}\"])). The extractor should detect \u003c\u003e operator inside cmd arg construction and flag it as higher risk than list-based args. Severity: High.",
+      "timestamp": "2026-06-02T10:39:43Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect Shell.escape/1 bypass and string concatenation in shell args",
   "type": "task",
-  "updated_at": "2026-06-02T10:39:30Z"
+  "updated_at": "2026-06-02T10:39:43Z"
 }
