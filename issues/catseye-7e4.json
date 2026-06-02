@@ -8,9 +8,15 @@
   "labels": [
     "enhancement"
   ],
+  "comments": [
+    {
+      "text": "7 instances of TOCTOU in quickheadlines scan. Evaluate whether these are real race conditions or acceptable for single-process Crystal usage. If acceptable, add to .catseye.toml suppress list.",
+      "timestamp": "2026-06-02T10:34:39Z"
+    }
+  ],
   "priority": 3,
   "status": "open",
   "title": "Quickheadlines: TOCTOU findings — evaluate and fix or suppress",
   "type": "task",
-  "updated_at": "2026-06-02T10:34:28Z"
+  "updated_at": "2026-06-02T10:34:39Z"
 }
