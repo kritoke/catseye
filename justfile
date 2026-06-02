@@ -113,6 +113,39 @@ fmt:
 lint:
     cd src/ocaml && dune build @fmt
 
+# ── Feedback (Facet Pi) ──────────────────────────────────────────────
+
+# Default feedback DB location
+FACET_DB := "$HOME/.facet-pi/feedback.db"
+
+# Show feedback summary (counts by type)
+feedback db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py summary
+
+# Show all scan results
+feedback-scans db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py scans
+
+# Show user-flagged false positives
+feedback-fp db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py fp
+
+# Show missed issues (things Catseye didn't catch)
+feedback-missed db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py missed
+
+# Show new findings manually reported by users
+feedback-new db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py new
+
+# Export all feedback as JSON (for AI consumption)
+feedback-json db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py json
+
+# Export feedback filtered by type as JSON
+feedback-type type db=FACET_DB:
+    @FACET_DB="{{db}}" python3 scripts/feedback.py json {{type}}
+
 # ── Utilities ─────────────────────────────────────────────────────────
 
 # Run Crystal extractor on a single file (debug)
