@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:39:02Z",
+  "description": "",
+  "id": "catseye-7c5",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect Code.eval_file and Code.require_file with dynamic paths",
+  "type": "task",
+  "updated_at": "2026-06-02T10:39:02Z"
+}
