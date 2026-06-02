@@ -8,9 +8,15 @@
   "labels": [
     "security"
   ],
+  "comments": [
+    {
+      "text": "From audit prompt gist: 'Archive extraction — :erl_tar, :zip, any unpack where entry names become filesystem paths (zip-slip).' The extractor should flag :erl_tar.extract/2, :zip.extract/2, and :zip.unzip/2 when the destination path or entry names could be tainted. Zip-slip allows writing outside the target directory via ../ in archive entry names. Severity: High.",
+      "timestamp": "2026-06-02T10:38:29Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "Elixir: detect zip-slip via :erl_tar and :zip archive extraction with tainted entry names",
   "type": "task",
-  "updated_at": "2026-06-02T10:38:19Z"
+  "updated_at": "2026-06-02T10:38:29Z"
 }
