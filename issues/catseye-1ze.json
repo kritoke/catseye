@@ -1,0 +1,16 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-02T10:38:19Z",
+  "description": "",
+  "id": "catseye-1ze",
+  "labels": [
+    "security"
+  ],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect zip-slip via :erl_tar and :zip archive extraction with tainted entry names",
+  "type": "task",
+  "updated_at": "2026-06-02T10:38:19Z"
+}
