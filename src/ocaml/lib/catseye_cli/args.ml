@@ -35,7 +35,9 @@ Supported languages: Crystal, Elixir, Gleam, JavaScript, TypeScript,
                      Svelte, OCaml, Rust
 
 Usage:
-  catseye [OPTIONS] PATH
+  catseye [scan] [OPTIONS] PATH
+  catseye scan ./src            # 'scan' subcommand is optional
+  catseye ./src                 # equivalent
 
 General options:
   --help                      Show this help message
@@ -115,6 +117,14 @@ let parse_args () : Config.t =
   let _program = List.hd args |> Option.value ~default:"catseye" in
   let args = List.tl args |> Option.value ~default:[] in
   
+  (* Strip optional subcommand: 'scan', 'analyze', 'check' are no-ops for
+     compatibility with users who expect a subcommand-style CLI. *)
+  let args = match args with
+    | hd :: rest when List.mem ~equal:String.equal ["scan"; "analyze"; "analyse"; "check"] hd
+      -> rest
+    | _ -> args
+  in
+
   (* Show help if requested *)
   if has_flag "help" args || List.mem ~equal:String.equal args "-h" then begin
     print_endline help_text;
