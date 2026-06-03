@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.AvoidFunctionLevelElse - catches botched refactors that introduce else clauses at top level of function body. From jump_credo_checks/avoid_function_level_else.ex",
+  "id": "catseye-355",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect function-level else",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
