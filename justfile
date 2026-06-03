@@ -196,5 +196,31 @@ uninstall prefix="$HOME/.local":
     @rm -rf {{prefix}}/lib/catseye
     @echo "✓ Uninstalled from {{prefix}}"
 
+# Generate AI-ready report from feedback (for rule improvement)
+feedback-report db=FACET_DB:
+    @./bin/catseye-feedback -d "{{db}}" json
+
+# Feed false positives + missed issues into an improvement prompt
+# Usage: just feedback-ai | pi --mode rpc prompt
+feedback-ai db=FACET_DB:
+    @echo "## Catseye Feedback Report for Rule Improvement"
+    @echo ""
+    @echo "### False Positives (rules that are too noisy)"
+    @./bin/catseye-feedback -d "{{db}}" json false_positive
+    @echo ""
+    @echo "### Missed Issues (things Catseye did not detect)"
+    @./bin/catseye-feedback -d "{{db}}" json missed_issue
+    @echo ""
+    @echo "### New Findings (user-reported security issues Catseye should detect)"
+    @./bin/catseye-feedback -d "{{db}}" json new_finding
+    @echo ""
+    @echo "### Current Rule Set"
+    @ls rules/*.kdl 2>/dev/null || echo "No rules directory found"
+    @echo ""
+    @echo "### Instructions"
+    @echo "Based on the false positives above, propose rule refinements to reduce noise."
+    @echo "Based on the missed issues and new findings, propose new rules or rule modifications."
+    @echo "Output concrete KDL rule changes with explanations."
+
 list:
     @just --list
