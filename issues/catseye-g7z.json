@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.ConditionalAssertion - flags assertions that include or like assert foo == :bar or baz == :bop. From jump_credo_checks/conditional_assertion.ex",
+  "id": "catseye-g7z",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "Elixir: detect conditional assertions",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
