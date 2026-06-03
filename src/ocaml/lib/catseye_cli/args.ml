@@ -11,6 +11,7 @@ let format_of_string = function
   | "markdown" | "md" -> Config.Markdown
   | "dot" | "graphviz" -> Config.Dot
   | "terminal" | "text" -> Config.Terminal
+  | "ai-json" | "ai" -> Config.Json  (* AI format uses JSON internally *)
   | s -> failwith ("Unknown format: " ^ s)
 
 let lang_of_string = function
@@ -38,10 +39,15 @@ Usage:
   catseye [scan] [OPTIONS] PATH
   catseye scan ./src            # 'scan' subcommand is optional
   catseye ./src                 # equivalent
+  catseye --list-rules          # List all rules in AI-friendly JSON format
+  catseye --list-rules --lang elixir  # List Elixir rules only
 
 General options:
   --help                      Show this help message
   --version                   Show version
+  --list-rules                List all rules in AI-friendly JSON format
+  --lang LANG                 Filter rules by language (crystal, elixir, gleam, etc.)
+  --format FMT                Output format: terminal (default), json, sarif, markdown, dot, ai-json
 
 Analysis options:
   --format FMT                Output format: terminal (default), json, sarif, markdown, dot
@@ -88,6 +94,8 @@ Examples:
   catseye --format json --output out.json .  JSON output
   catseye --lang elixir,javascript ./src     Scan only Elixir + JS
   catseye --predator-vision --crows-nest    Supply chain + reachability
+  catseye --list-rules                       Export all rules as AI-friendly JSON
+  catseye --list-rules --lang crystal        Export Crystal rules only
 |}
 
 (* ── Simple argument parsing ─────────────────────────────────────────── *)
@@ -150,14 +158,17 @@ let parse_args () : Config.t =
   let consumed_values = match find_opt "cfg-max-blocks" args with Some v -> v :: consumed_values | None -> consumed_values in
   let consumed_values = match find_opt "cfg-timeout" args with Some v -> v :: consumed_values | None -> consumed_values in
   
-  (* Parse path - first non-flag argument, skipping flag values already consumed above *)
-  let non_consumed s =
-    not (String.is_prefix s ~prefix:"--") &&
-    not (Stdlib.List.mem s consumed_values) in
+  (* Check for list-rules mode (no path needed) *)
+  let list_rules = has_flag "list-rules" args in
+  
+  (* Parse path - only if not in list-rules mode *)
   let path = 
-    match List.find args ~f:non_consumed with
-    | Some p -> p
-    | None -> "."
+    if list_rules then "."  (* Placeholder path for list-rules mode *)
+    else (
+      match List.find args ~f:(fun s -> not (String.is_prefix s ~prefix:"--") && not (Stdlib.List.mem s consumed_values)) with
+      | Some p -> p
+      | None -> "."
+    )
   in
   
   (* Parse format *)
@@ -187,6 +198,7 @@ let parse_args () : Config.t =
   let no_cfg_use = has_flag "no-cfg-use" args in
   let no_recurse = has_flag "no-recurse" args in
   let claws = has_flag "claws" args in
+  let list_rules = has_flag "list-rules" args in
   
   (* Parse optional string values *)
   let output_path = find_opt "output" args in
@@ -194,6 +206,7 @@ let parse_args () : Config.t =
   let rules_dir = find_opt "rules" args in
   let cache_dir = find_opt "cache-dir" args in
   let suppress = find_opt "suppress" args in
+  let list_rules_lang = find_opt "lang" args in
   
   (* Parse integer values *)
   let parallelism = 
@@ -245,4 +258,6 @@ let parse_args () : Config.t =
     recurse = not no_recurse;
     claws;
     suppress = Option.map suppress ~f:(fun s -> String.split s ~on:',') |> Option.value ~default:[];
+    list_rules;
+    list_rules_lang;
   }

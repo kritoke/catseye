@@ -59,6 +59,9 @@ type t = {
   recurse : bool;  (* Recurse into subdirectories (default: true) *)
   elixir_enabled : bool;  (* Enable Elixir tool integration *)
   elixir_tools : string list;  (* Which Elixir tools to run *)
+  list_rules : bool;  (* List all rules in AI-friendly format *)
+  list_rules_format : output_format;  (* Output format for rules listing *)
+  list_rules_lang : string option;  (* Filter rules by language *)
 }
 
 let default = {
@@ -99,6 +102,9 @@ let default = {
   ai_suppress = Map.empty (module String);
   elixir_enabled = false;
   elixir_tools = ["sobelow"; "credo"; "reach"];
+  list_rules = false;
+  list_rules_format = Json;  (* AI format defaults to JSON *)
+  list_rules_lang = None;
 }
 
 (** Walk up from [dir] looking for .catseye.toml. *)

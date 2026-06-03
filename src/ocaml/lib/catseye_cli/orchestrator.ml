@@ -34,6 +34,38 @@ let severity_icon sev =
   | "medium" | "low" -> "⚠️  "
   | _ -> "ℹ️  "
 
+(* ── List Rules (AI-friendly export) ──────────────────────────────────── *)
+
+let run_list_rules (config : Config.t) : int =
+  (* Load rules from the rules directory *)
+  let rules_result = Catseye_rules.Loader.load_rules config.rules_dir in
+  match rules_result with
+  | Error (`Msg msg) ->
+    Format.eprintf "Error loading rules: %s\n" msg;
+    1
+  | Ok rules ->
+    (* Filter by language if specified *)
+    let filtered = match config.list_rules_lang with
+      | None -> rules
+      | Some lang ->
+        Catseye_rules.Ai_format.filter_by_language rules lang
+    in
+    (* Serialize to AI-friendly JSON *)
+    let json_output = Catseye_rules.Ai_format.rules_to_json filtered in
+    (* Output to file or stdout *)
+    if config.output_path <> "" then begin
+      let oc = Stdlib.open_out config.output_path in
+      Stdlib.output_string oc json_output;
+      Stdlib.output_string oc "\n";
+      Stdlib.close_out oc;
+      Format.printf "Rules exported to %s (%d rules)\n" 
+        config.output_path (List.length filtered)
+    end else begin
+      Stdio.Out_channel.output_string Stdio.stdout json_output;
+      Stdio.Out_channel.output_string Stdio.stdout "\n"
+    end;
+    0
+
 (* ── Extractors ─────────────────────────────────────────────────────── *)
 
 let run_crystal_extractor (extractor : string) (file_path : string) : (string, int) Result.t =
@@ -406,26 +438,32 @@ let convert_ai_finding ~lang (f : Ai_linter.Types.finding) =
 (* ── Main pipeline ──────────────────────────────────────────────────── *)
 
 let run (config : t) : int =
-  Random.self_init ();
-  let config = Config.load config in
+  (* Handle --list-rules mode early (no scanning needed) *)
+  if config.list_rules then
+    run_list_rules config
+  else begin
+    Random.self_init ();
+  
+    (* Normal scan mode - load config and run analysis *)
+    let config = Config.load config in
 
-  (* Step 0: Crow's Nest (runs in parallel with taint analysis conceptually) *)
-  let crows_nest_results = run_crows_nest config in
+    (* Step 0: Crow's Nest (runs in parallel with taint analysis conceptually) *)
+    let crows_nest_results = run_crows_nest config in
 
-  (* Step 1: Discover sources *)
-  let sources = time_phase "discovery" (fun () ->
-    discover_sources ~include_deps:config.include_deps ~lang_filter:config.lang_filter ~recurse:config.recurse config.target_dir config.exclude_dirs) in
-  if sources = [] then begin
-    (* Still print Crow's Nest if we have results *)
-    (match crows_nest_results with
-     | Some results when results <> [] ->
-       if config.format = Terminal then
-         Crowsnest_format.print_crows_nest config results
-     | _ -> ());
-    Format.printf "No source files found in %s\n" config.target_dir;
-    Stdlib.exit 0
-  end;
-  let cr_count = List.length (List.filter ~f:(fun s -> s.lang = "crystal") sources) in
+    (* Step 1: Discover sources *)
+    let sources = time_phase "discovery" (fun () ->
+      discover_sources ~include_deps:config.include_deps ~lang_filter:config.lang_filter ~recurse:config.recurse config.target_dir config.exclude_dirs) in
+    if sources = [] then begin
+      (* Still print Crow's Nest if we have results *)
+      (match crows_nest_results with
+       | Some results when results <> [] ->
+         if config.format = Terminal then
+           Crowsnest_format.print_crows_nest config results
+       | _ -> ());
+      Format.printf "No source files found in %s\n" config.target_dir;
+      Stdlib.exit 0
+    end;
+    let cr_count = List.length (List.filter ~f:(fun s -> s.lang = "crystal") sources) in
   let gleam_count = List.length (List.filter ~f:(fun s -> s.lang = "gleam") sources) in
   let js_count = List.length (List.filter ~f:(fun s -> s.lang = "javascript") sources) in
   let ts_count = List.length (List.filter ~f:(fun s -> s.lang = "typescript") sources) in
@@ -945,3 +983,6 @@ let run (config : t) : int =
       ~custom_patterns:config.extra_sources
       config.output_path;
     0
+  end
+  end
+end

@@ -1,5 +1,5 @@
 (library
  (name catseye_rules)
  (public_name catseye.rules)
- (modules types loader interpreter pipeline default_rules)
+ (modules types loader interpreter pipeline default_rules ai_format)
  (libraries base stdio catseye.types catseye.ast yojson kdl logs fmt rresult))
