@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T18:15:01Z",
+  "description": "Output rules as AI-friendly JSON for agent database",
+  "id": "catseye-2a2.1",
+  "labels": [],
+  "parent": "catseye-2a2",
+  "priority": 2,
+  "status": "open",
+  "title": "AI rules export",
+  "type": "task",
+  "updated_at": "2026-06-03T18:15:01Z"
+}
