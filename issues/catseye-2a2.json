@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T18:03:28Z",
+  "description": "Add --list-rules command to export rules as AI-friendly JSON for agent consumption. Includes: rule ID, name, severity, description, sinks with sanitizers and fix suggestions, sources, and message template. Filter by language with --lang.",
+  "id": "catseye-2a2",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "AI-friendly rules export",
+  "type": "task",
+  "updated_at": "2026-06-03T18:03:28Z"
+}
