@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.LiveViewFormCanBeRehydrated - forms with phx-submit need ID and phx-change handler for state recovery. From jump_credo_checks/live_view_form_can_be_rehydrated.ex",
+  "id": "catseye-h27",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect LiveView forms missing phx-change",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
