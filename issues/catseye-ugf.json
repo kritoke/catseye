@@ -2,6 +2,7 @@
   "assignee": "",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-03T18:01:13Z",
   "created": "2026-06-02T10:58:25Z",
   "description": "",
   "id": "catseye-ugf",
@@ -15,8 +16,8 @@
     }
   ],
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Elixir: detect Path.expand used without PathSanitizer in projects that define a sanitizer module",
   "type": "task",
-  "updated_at": "2026-06-02T10:58:40Z"
+  "updated_at": "2026-06-03T18:01:13Z"
 }
