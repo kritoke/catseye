@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.UseObanProWorker - Oban workers should use Oban.Pro.Worker not Oban.Worker. From jump_credo_checks/use_oban_pro_worker.ex",
+  "id": "catseye-otw",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect use Oban Pro Worker",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
