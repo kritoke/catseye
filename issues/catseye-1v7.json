@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.AvoidLoggerConfigureInTest - Logger.configure/1 in async tests affects global config for all processes. Causes flaky tests. From jump_credo_checks/avoid_logger_configure_in_test.ex",
+  "id": "catseye-1v7",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect Logger configure in async tests",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
