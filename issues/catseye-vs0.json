@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "erlang.binary_to_term/1 is vulnerable to arbitrary code execution. Add as a sink to Elixir-Code-Execution with sanitizer Plug.Crypto.non_executable_binary_to_term/2. From jump_credo_checks/forbidden_function.ex",
+  "id": "catseye-vs0",
+  "labels": [],
+  "priority": 1,
+  "status": "open",
+  "title": "Elixir: unsafe erlang binary to term deserialization",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
