@@ -147,6 +147,16 @@ feedback-json db=FACET_DB:
 feedback-type type db=FACET_DB:
     @./bin/catseye-feedback -d "{{db}}" json {{type}}
 
+# Import catseye scan results into feedback DB (from file or stdin)
+# Usage: just feedback-import results.json
+#    or: catseye scan --format json /path | just feedback-import
+feedback-import db=FACET_DB *args:
+    @./bin/catseye-feedback -d "{{db}}" import {{args}}
+
+# Scan and import in one step
+feedback-scan dir db=FACET_DB:
+    @./bin/catseye-ocaml --rules src/ocaml/rules --format json {{dir}} 2>/dev/null | ./bin/catseye-feedback -d "{{db}}" import
+
 # ── Utilities ─────────────────────────────────────────────────────────
 
 # Run Crystal extractor on a single file (debug)
