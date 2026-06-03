@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.TopLevelAliasImportRequire - alias/import/require should only be at module top level not inside functions. From jump_credo_checks/top_level_alias_import_require.ex",
+  "id": "catseye-wwc",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "Elixir: detect top-level alias import require violations",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
