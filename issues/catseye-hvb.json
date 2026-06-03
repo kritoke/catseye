@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.TooManyAssertions - flags tests with excessive assertions (default 20), indicating tests that conflate multiple concerns. From jump_credo_checks/too_many_assertions.ex",
+  "id": "catseye-hvb",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "Elixir: detect too many assertions",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
