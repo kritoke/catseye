@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-03T10:06:31Z",
+  "description": "Jump.CredoChecks.VacuousTest - ensures tests actually exercise production code, catching tests that only call stdlib. Detects LLM-generated tests. From jump_credo_checks/vacuous_test.ex",
+  "id": "catseye-guk",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Elixir: detect vacuous tests",
+  "type": "task",
+  "updated_at": "2026-06-03T10:06:31Z"
+}
