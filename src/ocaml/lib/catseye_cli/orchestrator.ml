@@ -844,12 +844,14 @@ let run (config : t) : int =
       let extractor_findings = sink_findings @ claws_findings in
       (* Filter Elixir findings to only include files that were actually discovered
          (excludes deps/, _build/, and other excluded directories) *)
-      let source_paths = Stdlib.Hashtbl.create (List.length sources) in
-      Stdlib.List.iter (fun (s : source_file) ->
-        Stdlib.Hashtbl.replace source_paths s.path true
-      ) sources;
       let extractor_findings = List.filter ~f:(fun (f : Finding.t) ->
-        Stdlib.Hashtbl.mem source_paths f.Finding.file
+        (* Filter out deps/, _build/, test/ — keep everything else.
+           The extractor uses absolute paths while discover_sources returns
+           relative paths, so direct Hashtbl lookup doesn't work reliably.
+           Instead, exclude known non-project directories. *)
+        not (String.is_substring ~substring:"/deps/" f.Finding.file
+             || String.is_substring ~substring:"/_build/" f.Finding.file
+             || String.is_substring ~substring:"/test/" f.Finding.file)
       ) extractor_findings in
       if config.format = Terminal && extractor_findings <> [] then begin
         Format.printf "\n  → Elixir AST analysis:\n\n";

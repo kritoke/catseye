@@ -2,4 +2,4 @@
  (name catseye_pipeline)
  (public_name catseye.pipeline)
  (modules version)
- (libraries base stdio core catseye.types))
+ (libraries base stdio catseye.types))
