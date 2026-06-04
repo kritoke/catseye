@@ -2,14 +2,15 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-04T11:01:54Z",
   "created": "2026-06-03T18:15:01Z",
   "description": "Output rules as AI-friendly JSON for agent database",
   "id": "catseye-2a2.1",
   "labels": [],
   "parent": "catseye-2a2",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "AI rules export",
   "type": "task",
-  "updated_at": "2026-06-03T18:15:04Z"
+  "updated_at": "2026-06-04T11:01:54Z"
 }
