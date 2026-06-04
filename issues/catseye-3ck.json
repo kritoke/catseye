@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [
     "catseye-309",
     "catseye-7z0",
@@ -16,8 +16,8 @@
     "taint-engine"
   ],
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "Taint sanitization: recognize validation functions as taint breakers",
   "type": "task",
-  "updated_at": "2026-05-31T21:18:12Z"
+  "updated_at": "2026-06-04T11:10:08Z"
 }
