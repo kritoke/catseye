@@ -11,7 +11,7 @@ let format_of_string = function
   | "markdown" | "md" -> Config.Markdown
   | "dot" | "graphviz" -> Config.Dot
   | "terminal" | "text" -> Config.Terminal
-  | "ai-json" | "ai" -> Config.Json  (* AI format uses JSON internally *)
+  | "ai-json" | "ai" -> Config.AiJson
   | s -> failwith ("Unknown format: " ^ s)
 
 let lang_of_string = function

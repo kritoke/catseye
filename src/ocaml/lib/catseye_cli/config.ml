@@ -16,6 +16,7 @@ type output_format =
   | Sarif
   | Markdown
   | Dot
+  | AiJson  (* AI-friendly JSON format for rules export *)
 
 type lang_filter =
   | All

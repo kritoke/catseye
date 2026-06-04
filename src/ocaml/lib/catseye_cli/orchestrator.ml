@@ -983,6 +983,23 @@ let run (config : t) : int =
       ~custom_patterns:config.extra_sources
       config.output_path;
     0
+  | AiJson ->
+    (* AiJson format for scan mode — output findings as structured JSON *)
+    let content = Yojson.Safe.pretty_to_string (
+      `Assoc [
+        ("version", `String version);
+        ("format", `String "ai-json");
+        ("findings_count", `Int (List.length all_findings));
+        ("findings", Finding.encode_many all_findings)
+      ]
+    ) in
+    if config.output_path <> "" then begin
+      let oc = Stdio.Out_channel.create config.output_path in
+      Stdio.Out_channel.output_string oc content;
+      Stdio.Out_channel.output_string oc "\n";
+      Stdio.Out_channel.close oc;
+      Format.printf "Results written to %s\n" config.output_path
+    end else
+      Stdio.Out_channel.output_string Stdio.stdout content;
+    if all_findings <> [] then 1 else 0
   end
-  end
-end

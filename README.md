@@ -80,6 +80,15 @@ just scan-full path/to/project/src
 
 # JSON output
 just scan-json path/to/project/src
+
+# Export all rules as AI-friendly JSON (for knowledge base population)
+catseye-ocaml --list-rules
+
+# Export rules for a specific language only
+catseye-ocaml --list-rules --lang elixir
+
+# Export to file
+catseye-ocaml --list-rules --lang javascript --output rules.json
 ```
 
 ## Language Support
@@ -100,11 +109,12 @@ just scan-json path/to/project/src
 ```
 catseye [options] <directory>
 
-  -f, --format <fmt>         terminal (default), json, sarif, markdown, dot
+  -f, --format <fmt>         terminal (default), json, sarif, markdown, dot, ai-json
   -o, --output <path>        write results to file
   -r, --rules <path>         rules directory (default: ~/.local/lib/catseye/rules/)
   --config <path>            config file path (default: .catseye.toml in target or parents)
   --lang <lang>              all (default), or comma-separated: crystal,elixir,gleam,javascript,typescript,svelte,ocaml,rust
+  --list-rules               export all rules in AI-friendly JSON format (use --lang to filter)
   --no-color                 disable colored output
   --no-cache                 disable extraction cache
   --clear-cache              clear cache and run full scan
