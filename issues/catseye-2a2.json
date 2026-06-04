@@ -2,13 +2,14 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-04T11:01:50Z",
   "created": "2026-06-03T18:03:28Z",
   "description": "Add --list-rules command to export rules as AI-friendly JSON for agent consumption. Includes: rule ID, name, severity, description, sinks with sanitizers and fix suggestions, sources, and message template. Filter by language with --lang.",
   "id": "catseye-2a2",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "AI-friendly rules export",
   "type": "task",
-  "updated_at": "2026-06-04T10:42:32Z"
+  "updated_at": "2026-06-04T11:01:50Z"
 }
