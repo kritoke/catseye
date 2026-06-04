@@ -172,6 +172,10 @@ rule "Elixir-Code-Execution" severity="Critical" {
     }
     // Code execution vulnerabilities
     sinks {
+        sink "erlang.binary_to_term" arg=0 {
+            sanitizer "Plug.Crypto.non_executable_binary_to_term"
+            fix "Use Plug.Crypto.non_executable_binary_to_term/2 with [:safe] option"
+        }
         sink "Code.eval_string" arg=0 {
             sanitizer "Code.eval_string(safe_string, ...)"
             fix "Avoid eval on user input"
@@ -295,4 +299,71 @@ rule "Elixir-Command-Injection" severity="Critical" {
         source "shell_cmd"
     }
     message "Potential command injection via {sink} - user input may allow arbitrary command execution"
+}
+
+rule "Elixir-Insecure-TLS" severity="High" {
+    languages {
+        include "elixir"
+    }
+    // TLS verification disabled — enables MITM attacks
+    sinks {
+        sink "verify: :verify_none"
+        sink "ssl: [verify: :verify_none]"
+        sink "hackney: [ssl_options: [verify: :verify_none]]"
+    }
+    message "TLS certificate verification is disabled — vulnerable to MITM attacks"
+}
+
+rule "Elixir-Timing-Attack" severity="Medium" {
+    languages {
+        include "elixir"
+    }
+    // Timing-unsafe comparison of secrets — vulnerable to timing attacks
+    sinks {
+        sink "==" {
+            sanitizer "Plug.Crypto.secure_compare"
+            sanitizer "Bcrypt.verify_pass"
+            sanitizer "Comeonin.Bcrypt.checkpw"
+            fix "Use Plug.Crypto.secure_compare/2 for constant-time comparison"
+        }
+    }
+    message "Timing-unsafe comparison — use Plug.Crypto.secure_compare/2"
+}
+
+rule "Elixir-Shell-Escape-Bypass" severity="Medium" {
+    languages {
+        include "elixir"
+    }
+    // Shell.escape bypass via string concatenation
+    sinks {
+        sink "System.cmd" {
+            sanitizer "System.cmd(\"echo\", [sanitized_args])"
+        }
+        sink ":os.cmd" {
+            fix "Avoid :os.cmd with user input"
+        }
+    }
+    message "Potential shell injection via string concatenation with shell args"
+}
+
+rule "Elixir-Unsafe-Redirect" severity="Medium" {
+    languages {
+        include "elixir"
+    }
+    // Redirect following SSRF
+    sinks {
+        sink "Tesla.Middleware.FollowRedirects" arg=0 {
+            fix "Avoid following redirects with untrusted URLs"
+        }
+        sink "Req.get" arg=0 {
+            sanitizer "follow_redirects: false"
+        }
+        sink "Req.post" arg=0 {
+            sanitizer "follow_redirects: false"
+        }
+        sink "HTTPoison.get" arg=0 {
+            sanitizer "follow_redirects: false"
+        }
+    }
+    message "Following redirects may lead to SSRF — ensure URL is validated before allowing redirects"
 }
