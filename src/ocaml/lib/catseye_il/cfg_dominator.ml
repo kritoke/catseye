@@ -37,6 +37,8 @@ let known_sanitizers =
   ; "url_validator"; "path_validator"
   ; "verify"; "authenticate"; "authorize"
   ; "File.expand_path"; "URI.parse"
+  (* Generic validation function patterns — matches validate_*, check_*, verify_* *)
+  ; "validate"; "check"; "guard"
   ]
 
 (** Check if a function name matches a known sanitizer pattern. *)

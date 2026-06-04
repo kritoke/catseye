@@ -21,6 +21,9 @@ let known_sanitizers = [
   "html.escape";
   (* SSRF validation functions — these sanitize URLs *)
   "check_ssrf"; "check_ssrf_url"; "validate_url"; "is_valid_url"; "allowlisted_url?"; "valid_url?"; "url_valid?";
+  (* Generic validation function patterns — matches validate_*, check_*, verify_*, guard_* functions.
+     When a validation function returns successfully, the data is considered sanitized. *)
+  "validate_"; "check_"; "verify_"; "guard_"; "validate"; "check"; "verify"; "guard";
   (* Hash/digest functions produce deterministic output — safe for filenames and cache keys.
      Cryptographic hashes break taint because the output is not controllable by input
      beyond collision resistance. A SHA256 hash cannot contain ../ or other traversal.
@@ -44,9 +47,6 @@ let known_sanitizers = [
   "Dir.mktmpdir";
   "File.tempname";
   "mkstemp";
-  (* Validation functions — validate_path!, validate_and_resolve_path!, etc.
-     The trailing underscore in "validate_" means any function starting with validate_ *)
-  "validate_";
   (* Schema/config validation — parsing trusted config files is safe *)
   "Config.from_json"; "Config.from_yaml"; "Config.parse";
   "validate_yaml_structure"; "validate_config";
