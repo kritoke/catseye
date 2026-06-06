@@ -46,10 +46,6 @@ rule "UnboundedRead" severity="Low" {
             sanitizer "File.size"
             fix "Limit read size: content = File.read(path, max_size); raise \"File too large\" unless content.size < max_size"
         }
-        sink "read" arg=0 {
-            sanitizer "size"
-            fix "Consider adding size limits to unbounded reads"
-        }
     }
     message "Unbounded read from {sink}. Consider adding size limits to prevent memory exhaustion."
 }
