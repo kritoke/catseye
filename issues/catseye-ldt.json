@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-06-01T10:57:14Z",
@@ -11,8 +11,8 @@
     "ssrf"
   ],
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "Elixir: add Jason/Poison encode/decode as SSRF sink boundary",
   "type": "task",
-  "updated_at": "2026-06-01T10:57:53Z"
+  "updated_at": "2026-06-06T21:28:18Z"
 }
