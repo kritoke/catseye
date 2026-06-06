@@ -7,9 +7,15 @@
   "description": "The CFG-based taint engine does not fire ReDoS findings on canonical vulnerable patterns when the regex is a literal (no string interpolation). Verified: test/samples/vulnerable_patterns.cr contains Regex.new('(a+)+') and Regex.new('([a-zA-Z]+)*'). CFG engine: 0 findings. Flat engine: 2 findings. Same divergence as the substring-match FP class, but the root cause is different — likely that the CFG engine's transfer_node for ILCall only flags Regex.new when the result is assigned to a tainted LVal (interpolation_tainted path on cfg_taint.ml:~90-100). For a standalone Regex.new literal call, there is no taint flow, so the call never reaches check_call_sinks. Likely fix: in transfer_node for ILCall, when the callee is a known taint-irrelevant sink shape (e.g. Regex.new with a literal arg), still route through check_call_sinks with a synthetic tainted-args=false state so the rule's check_args_contain condition can fire. Verify post-fix: scanning vulnerable_patterns.cr in CFG mode should produce \u003e= 2 ReDoS findings (matching flat engine). Pre-existing gap, not introduced by any prior fix.",
   "id": "catseye-gcl",
   "labels": [],
+  "comments": [
+    {
+      "text": "Status: partial — main fix NOT shipped. The single-line fix to cfg_taint.ml:291 (the early-return guard for pattern-only rules) is correct in principle and unblocks ReDoS in the CFG engine, but it also surfaces a separate divergence: the flat engine has a file-wide timeout-setter check (file_has_timeout_setters) that suppresses MissingTimeout findings when the same file contains read_timeout=/connect_timeout=/write_timeout= calls. The CFG engine lacks this check, so the line 291 fix introduces 3 NEW MissingTimeout FPs on test/samples/safe_timeouts.cr (net negative). Reverted.\n\nTwo pre-existing bugs must be fixed before this ticket can be fully resolved:\n1. Crystal hierarchical mapper's parse_top_level_exprs labels top-level constant assignments as IUnknown and drops them, so test/samples/vulnerable_patterns.cr's EVIL_REGEX = Regex.new(\"(a+)+\") never reaches the IL. (Engine fix at of_catseye_ast.ml walk_item is not enough; the mapper itself is the bottleneck for Crystal.)\n2. CFG engine lacks the file-wide timeout-setter check that the flat engine has in interpreter.ml:286-289. The proper fix ports that check to the CFG engine (e.g. walk all functions in the file for timeout-setter calls before emitting the early-return).\n\nOne small fix did ship as a separate commit: walk_item now processes IConstant items (commit f9fe1cf). This is a no-op for the existing test suite but helps future OCaml 'let _ = \u003cexpr\u003e' expressions reach the CFG engine.",
+      "timestamp": "2026-06-06T21:13:33Z"
+    }
+  ],
   "priority": 2,
   "status": "closed",
   "title": "CFG engine does not detect ReDoS in non-interpolated patterns",
   "type": "bug",
-  "updated_at": "2026-06-06T21:13:14Z"
+  "updated_at": "2026-06-06T21:13:33Z"
 }
