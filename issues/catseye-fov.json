@@ -6,6 +6,7 @@
     "catseye-thq"
   ],
   "blocks": [],
+  "closed_at": "2026-06-06T15:21:43Z",
   "created": "2026-06-02T10:32:59Z",
   "description": "",
   "id": "catseye-fov",
@@ -19,8 +20,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "FP: SilentErrorSwallow false positive on rescue ArgumentError → false",
   "type": "task",
-  "updated_at": "2026-06-06T15:17:45Z"
+  "updated_at": "2026-06-06T15:21:43Z"
 }
