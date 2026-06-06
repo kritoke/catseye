@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-06T15:17:34Z",
+  "description": "Follow-up to catseye-fov. The rule SilentErrorSwallow in src/ocaml/rules/ocaml_error_context.kdl is scoped to OCaml error handling patterns (try ... with _ -\u003e () end), but never actually fires. Root cause: the OCaml extractor (ocaml_mapper.ml:221-234) parses try_expression into an ETryCatchFinally AST node but does NOT emit a Call security node named 'try' or containing 'try' as a substring. So the rule's sink pattern 'try' (matched by interpreter.ml:matches_sink as substring) never matches any OCaml security node. Fix: either emit a security node from try_expression in to_security_node.ml or the OCaml mapper, or rewrite the rule to use a different match mechanism (e.g. AST-pattern-based). Verify by scanning a known OCaml try-with _ -\u003e () snippet and confirming the rule fires after the fix.",
+  "id": "catseye-q3u",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "OCaml side of SilentErrorSwallow is dead: rule never fires on its intended target",
+  "type": "bug",
+  "updated_at": "2026-06-06T15:17:34Z"
+}
