@@ -257,7 +257,14 @@ let rec walk_item (item : item) : il_function list =
     List.concat_map ~f:walk_item items
   | IModule (_, items) ->
     List.concat_map ~f:walk_item items
-  | IImport _ | ITypeAlias _ | ITypeDef _ | IConstant _
+  | IConstant (_, _, body) ->
+    (* Top-level `let _ = <expr>` / `FOO = <expr>` (no params) is dropped by the
+       default `walk_item`. Without this, calls inside top-level expressions
+       (e.g. `EVIL_REGEX = Regex.new("(a+)+")`) are never seen by the CFG
+       engine and rules never fire on them. *)
+    [let _ = () in
+     { fn_name = ""; fn_params = []; fn_body = translate_block_expr body; fn_pos = pos_of_item item }]
+  | IImport _ | ITypeAlias _ | ITypeDef _
   | IExternal _ | IUnknown _ -> []
 
 (* ── Main entry point ───────────────────────────────────────────────── *)
