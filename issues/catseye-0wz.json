@@ -1,8 +1,6 @@
 {
   "assignee": "",
-  "blocked_by": [
-    "catseye-ozj"
-  ],
+  "blocked_by": [],
   "blocks": [],
   "created": "2026-06-06T22:29:22Z",
   "description": "In `src/ocaml/lib/ai_linter/crystal_rules.ml`, inside `detect_long_method`, the local helper `count_nodes` is defined **twice** (lines 677 and 695). The first definition is more complete; the second shadows it.\n\n**First definition (line 677) — complete:**\nHandles EBlock, ELet, EIf, ECase, EApp, **ETryCatchFinally** (recursing into try_body, each rescue_body, ensure_body, else_body), and falls through to `1` for anything else.\n\n**Second definition (line 695) — incomplete:**\nHandles EBlock, EApp, EIf, ELet, ECase, and falls through to `1` for everything else. **It has no ETryCatchFinally case** — try/catch/ensure/else bodies are counted as a single node each instead of being walked.\n\n**Consequence:** Functions whose body is an EBlock that includes a try/catch will be undercounted. A 100-node function with heavy try/catch will look like ~10 nodes, bypassing the `max_nodes = 80` threshold. False negatives in long-method detection for code that actually exercises the rescue/ensure/else arms.\n\n**Fix:**\n- Delete the second definition (lines 695-707)\n- Keep the first, more complete version\n\nThis ticket is a child of catseye-ozj (the refactor epic) but can land independently.",
@@ -12,5 +10,5 @@
   "status": "open",
   "title": "BUG: count_nodes in detect_long_method defined twice — second version misses ETryCatchFinally",
   "type": "bug",
-  "updated_at": "2026-06-06T22:31:23Z"
+  "updated_at": "2026-06-06T22:32:01Z"
 }
