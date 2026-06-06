@@ -84,6 +84,13 @@ defmodule CatseyeExtractor do
     "String.to_atom"
   ]
 
+  @data_exfil_sinks [
+    "Jason.encode",
+    "Jason.decode",
+    "Poison.encode",
+    "Poison.decode"
+  ]
+
   @doc """
   Run the extractor on all .ex/.exs files in lib/
   """
@@ -383,6 +390,7 @@ defmodule CatseyeExtractor do
       Enum.any?(@code_exec_sinks, &String.contains?(clean_name, &1)) ||
       Enum.any?(@deser_sinks, &String.contains?(clean_name, &1)) ||
       Enum.any?(@state_sinks, &String.contains?(clean_name, &1)) ||
-      Enum.any?(@atom_leak_sinks, &String.contains?(clean_name, &1))
+      Enum.any?(@atom_leak_sinks, &String.contains?(clean_name, &1)) ||
+      Enum.any?(@data_exfil_sinks, &String.contains?(clean_name, &1))
   end
 end

@@ -128,6 +128,13 @@ let sink_table : (string * sink_class) list = [
   (":ets.insert", { severity = "Medium";         rule = "StatePoisoning"; category = "shared mutable state";  suggestion = "Validate data before inserting into shared ETS tables." });
   (* Atom table exhaustion *)
   ("String.to_atom", { severity = "Medium";       rule = "ResourceExhaustion"; category = "atom table leak"; suggestion = "Use String.to_existing_atom/1 to avoid creating new atoms from user input." });
+  (* Data exfiltration — JSON / Poison serializers that may reflect tainted
+     user input into HTTP responses. Prefix match means Jason.encode! and
+     Jason.decode! both fire; downstream send_resp would not be flagged
+     without a second rule. KDL path is dormant for Elixir today, so this
+     is the live path for this detection. *)
+  ("Jason", { severity = "High"; rule = "DataExfiltration"; category = "data serialization (exfil risk)"; suggestion = "Validate that data passed to Jason.encode!/decode! is not user-controlled input that could be reflected or exfiltrated." });
+  ("Poison", { severity = "High"; rule = "DataExfiltration"; category = "data serialization (exfil risk)"; suggestion = "Validate that data passed to Poison.encode!/decode! is not user-controlled input that could be reflected or exfiltrated." });
 ]
 
 let default_sink = {
