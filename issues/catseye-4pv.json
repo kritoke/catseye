@@ -1,7 +1,6 @@
 {
   "assignee": "",
   "blocked_by": [
-    "catseye-705",
     "catseye-ozj"
   ],
   "blocks": [],
@@ -13,5 +12,5 @@
   "status": "open",
   "title": "REFACTOR: move hallucinated method DB to crystal_hallucinations.ml",
   "type": "task",
-  "updated_at": "2026-06-06T22:31:33Z"
+  "updated_at": "2026-06-06T22:31:39Z"
 }
