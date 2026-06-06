@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-06T19:06:56Z",
+  "description": "After the recent ReDoS CFG-engine fix, the rule-arg substring check logic now exists in two places: src/ocaml/lib/catseye_rules/interpreter.ml:263-271 (operates on Security_node.arg list, flat engine) and src/ocaml/lib/catseye_il/cfg_taint.ml (operates on il_expr list via the new expr_string_value helper, CFG engine). Both implementations are ~10 lines and semantically identical (check_args_contain + check_args_missing), differing only in the arg type. Factor into a shared module — candidates: src/ocaml/lib/catseye_rules/rule_args.ml with a type-agnostic string_of_arg callback, or convert il_expr args to Security_node.arg before the check. The CFG engine has a TODO comment at the duplication site. This is a small mechanical refactor with no behavior change, safe to land at any time.",
+  "id": "catseye-3ht",
+  "labels": [],
+  "priority": 3,
+  "status": "open",
+  "title": "Factor args_contain_any into a shared module",
+  "type": "refactor",
+  "updated_at": "2026-06-06T19:06:56Z"
+}
