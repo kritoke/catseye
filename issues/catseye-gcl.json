@@ -2,13 +2,14 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-06T21:13:14Z",
   "created": "2026-06-06T19:06:56Z",
   "description": "The CFG-based taint engine does not fire ReDoS findings on canonical vulnerable patterns when the regex is a literal (no string interpolation). Verified: test/samples/vulnerable_patterns.cr contains Regex.new('(a+)+') and Regex.new('([a-zA-Z]+)*'). CFG engine: 0 findings. Flat engine: 2 findings. Same divergence as the substring-match FP class, but the root cause is different — likely that the CFG engine's transfer_node for ILCall only flags Regex.new when the result is assigned to a tainted LVal (interpolation_tainted path on cfg_taint.ml:~90-100). For a standalone Regex.new literal call, there is no taint flow, so the call never reaches check_call_sinks. Likely fix: in transfer_node for ILCall, when the callee is a known taint-irrelevant sink shape (e.g. Regex.new with a literal arg), still route through check_call_sinks with a synthetic tainted-args=false state so the rule's check_args_contain condition can fire. Verify post-fix: scanning vulnerable_patterns.cr in CFG mode should produce \u003e= 2 ReDoS findings (matching flat engine). Pre-existing gap, not introduced by any prior fix.",
   "id": "catseye-gcl",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "CFG engine does not detect ReDoS in non-interpolated patterns",
   "type": "bug",
-  "updated_at": "2026-06-06T20:57:52Z"
+  "updated_at": "2026-06-06T21:13:14Z"
 }
