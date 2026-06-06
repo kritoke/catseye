@@ -64,7 +64,7 @@ rule "TOCTOU" severity="Medium" {
             sanitizer "File.info?"
             fix "Check file exists before delete: raise \"Gone\" if !File.exists?(path)"
         }
-        sink "open" arg=0 {
+        sink "open" match="exact" arg=0 {
             sanitizer "File.info"
             fix "Use exclusive file locking or check-then-act pattern with locking"
         }

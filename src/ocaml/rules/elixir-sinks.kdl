@@ -211,17 +211,17 @@ rule "Elixir-XSS" severity="High" {
             sanitizer "Phoenix.HTML.html_escape"
             fix "Always escape user input: Phoenix.HTML.html_escape({arg0})"
         }
-        sink "raw" arg=0 {
+        sink "raw" match="exact" arg=0 {
             fix "Avoid raw() with user input"
         }
         sink "content_tag" arg=1 {
             sanitizer "Phoenix.HTML.html_escape"
             fix "Always escape content: content_tag(:div, html_escape({arg1}), ...)"
         }
-        sink "text" arg=1 {
+        sink "text" match="exact" arg=1 {
             fix "Use safe text content"
         }
-        sink "html" arg=0 {
+        sink "html" match="exact" arg=0 {
             fix "Avoid html/1 with user input"
         }
     }

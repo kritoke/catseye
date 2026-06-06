@@ -22,7 +22,7 @@ let arg_lit v = { Security_node.arg_type = Security_node.ArgLiteral; Security_no
 let _arg_call v = { Security_node.arg_type = Security_node.ArgCall; Security_node.value = v; Security_node.field = "" }
 
 let sink ?arg_pos pattern =
-  { pattern; sanitizers = []; requires_field = None; arg_pos; fix_template = None }
+  { pattern; match_mode = Substring; sanitizers = []; requires_field = None; arg_pos; fix_template = None }
 
 let check label condition =
   if condition then Printf.printf "  ✓ %s\n" label
@@ -35,42 +35,42 @@ let test_metavar_matching () =
 
   (* $client.get should match various receivers *)
   check "$client.get matches http.get"
-    (matches_sink ~pattern:"$client.get" ~name:"http.get");
+    (matches_sink ~pattern:"$client.get" ~name:"http.get" ~match_mode:Substring);
 
   check "$client.get matches client.get"
-    (matches_sink ~pattern:"$client.get" ~name:"client.get");
+    (matches_sink ~pattern:"$client.get" ~name:"client.get" ~match_mode:Substring);
 
   check "$client.get matches my_client.get"
-    (matches_sink ~pattern:"$client.get" ~name:"my_client.get");
+    (matches_sink ~pattern:"$client.get" ~name:"my_client.get" ~match_mode:Substring);
 
   check "$client.get matches conn.get"
-    (matches_sink ~pattern:"$client.get" ~name:"conn.get");
+    (matches_sink ~pattern:"$client.get" ~name:"conn.get" ~match_mode:Substring);
 
   check "$client.get matches connection.get"
-    (matches_sink ~pattern:"$client.get" ~name:"connection.get");
+    (matches_sink ~pattern:"$client.get" ~name:"connection.get" ~match_mode:Substring);
 
   (* Should NOT match different method *)
   check "$client.get does NOT match http.post"
-    (not (matches_sink ~pattern:"$client.get" ~name:"http.post"));
+    (not (matches_sink ~pattern:"$client.get" ~name:"http.post" ~match_mode:Substring));
 
   (* Should NOT match nested method that doesn't end in .get *)
   check "$client.get does NOT match http.get_body"
-    (not (matches_sink ~pattern:"$client.get" ~name:"http.get_body"));
+    (not (matches_sink ~pattern:"$client.get" ~name:"http.get_body" ~match_mode:Substring));
 
   (* Plain pattern without $ still works (backward compat) *)
   check "HTTP::Client.get matches via substring"
-    (matches_sink ~pattern:"HTTP::Client.get" ~name:"HTTP::Client.get");
+    (matches_sink ~pattern:"HTTP::Client.get" ~name:"HTTP::Client.get" ~match_mode:Substring);
 
   check "HTTP::Client.get substring matches longer name"
-    (matches_sink ~pattern:"HTTP::Client.get" ~name:"prefix.HTTP::Client.get.suffix");
+    (matches_sink ~pattern:"HTTP::Client.get" ~name:"prefix.HTTP::Client.get.suffix" ~match_mode:Substring);
 
   (* Edge: bare $fn matches anything *)
   check "$fn matches any name"
-    (matches_sink ~pattern:"$fn" ~name:"anything.at.all");
+    (matches_sink ~pattern:"$fn" ~name:"anything.at.all" ~match_mode:Substring);
 
   (* Edge: empty pattern *)
   check "empty pattern does not match"
-    (not (matches_sink ~pattern:"" ~name:"anything"))
+    (not (matches_sink ~pattern:"" ~name:"anything" ~match_mode:Substring))
 
 (* ── Test 2: Arg position matching ──────────────────────────────────── *)
 
@@ -277,6 +277,115 @@ let test_combined () =
   check "$client.get + arg=0: misses http.post(url)"
     (let findings = check_rule rule [node_wrong_method] ctx in List.length findings = 0)
 
+(* ── Test 5: Exact-match sinks (match="exact" opt-in) ──────────────── *)
+
+let test_5_exact_match () =
+  Printf.printf "\n=== Test 5: Exact-match sink (match=\"exact\") ===\n\n";
+
+  (* matches_sink directly with the new match_mode parameter *)
+
+  (* 1. Bare pattern with match="exact" only matches the exact name *)
+  check "exact 'try' matches 'try'"
+    (matches_sink ~pattern:"try" ~match_mode:Exact ~name:"try");
+  check "exact 'try' does NOT match 'retry_after'"
+    (not (matches_sink ~pattern:"try" ~match_mode:Exact ~name:"retry_after"));
+  check "exact 'try' does NOT match 'try_rescue'"
+    (not (matches_sink ~pattern:"try" ~match_mode:Exact ~name:"try_rescue"));
+  check "exact 'try' does NOT match 'factory'"
+    (not (matches_sink ~pattern:"try" ~match_mode:Exact ~name:"factory"));
+
+  (* 2. Bare pattern with match="substring" (or default) still substring-matches *)
+  check "substring 'try' matches 'try'"
+    (matches_sink ~pattern:"try" ~match_mode:Substring ~name:"try");
+  check "substring 'try' matches 'retry_after' (backward compat)"
+    (matches_sink ~pattern:"try" ~match_mode:Substring ~name:"retry_after");
+
+  (* 3. Substring is the KDL default when no match prop is specified (tested end-to-end in step 8 below) *)
+
+  (* 4. Fully qualified pattern with match="exact" only matches the exact qualified name *)
+  check "exact 'File.read' matches 'File.read'"
+    (matches_sink ~pattern:"File.read" ~match_mode:Exact ~name:"File.read");
+  check "exact 'File.read' does NOT match 'MyFile.read'"
+    (not (matches_sink ~pattern:"File.read" ~match_mode:Exact ~name:"MyFile.read"));
+
+  (* 5. Fully qualified pattern with match="substring" (default) is unchanged *)
+  check "substring 'File.read' matches 'File.read'"
+    (matches_sink ~pattern:"File.read" ~match_mode:Substring ~name:"File.read");
+  check "substring 'File.read' matches 'MyFile.read' (backward compat)"
+    (matches_sink ~pattern:"File.read" ~match_mode:Substring ~name:"MyFile.read");
+
+  (* 6. $var metavar is unaffected by match_mode *)
+  check "$var with match=Exact still matches via metavar"
+    (matches_sink ~pattern:"$client.get" ~match_mode:Exact ~name:"http.get");
+  check "$var with match=Substring still matches via metavar"
+    (matches_sink ~pattern:"$client.get" ~match_mode:Substring ~name:"http.get");
+
+  (* 7. End-to-end: KDL parse with match="exact" produces a sink with Exact match_mode *)
+  let kdl_exact = {|
+    rule "R" severity="Low" {
+      sinks {
+        sink "try" match="exact" arg=0 { pattern "_ -> ()" }
+      }
+    }
+  |} in
+  let rules_exact = match Catseye_rules.Loader.parse_string kdl_exact with
+    | Ok rs -> rs
+    | Error _ -> []
+  in
+  let rule_exact = List.hd rules_exact in
+  let sink_exact = List.hd rule_exact.Catseye_rules.Types.sinks in
+  check "KDL parse: match=\"exact\" sets Exact match_mode"
+    (sink_exact.Catseye_rules.Types.match_mode = Exact);
+  check "KDL parse: exact 'try' does NOT match 'retry_after' end-to-end"
+    (not (Catseye_rules.Interpreter.matches_sink
+            ~pattern:sink_exact.Catseye_rules.Types.pattern
+            ~match_mode:sink_exact.Catseye_rules.Types.match_mode
+            ~name:"retry_after"));
+  check "KDL parse: exact 'try' matches 'try' end-to-end"
+    (Catseye_rules.Interpreter.matches_sink
+       ~pattern:sink_exact.Catseye_rules.Types.pattern
+       ~match_mode:sink_exact.Catseye_rules.Types.match_mode
+       ~name:"try");
+
+  (* 8. End-to-end: KDL parse WITHOUT match="exact" defaults to Substring *)
+  let kdl_default = {|
+    rule "R" severity="Low" {
+      sinks {
+        sink "try" arg=0 { pattern "_ -> ()" }
+      }
+    }
+  |} in
+  let rules_default = match Catseye_rules.Loader.parse_string kdl_default with
+    | Ok rs -> rs
+    | Error _ -> []
+  in
+  let rule_default = List.hd rules_default in
+  let sink_default = List.hd rule_default.Catseye_rules.Types.sinks in
+  check "KDL parse: no match prop defaults to Substring"
+    (sink_default.Catseye_rules.Types.match_mode = Substring);
+  check "KDL parse: default 'try' still substring-matches 'retry_after'"
+    (Catseye_rules.Interpreter.matches_sink
+       ~pattern:sink_default.Catseye_rules.Types.pattern
+       ~match_mode:sink_default.Catseye_rules.Types.match_mode
+       ~name:"retry_after");
+
+  (* 9. Unknown match value falls back to Substring (defensive) *)
+  let kdl_unknown = {|
+    rule "R" severity="Low" {
+      sinks {
+        sink "try" match="regex" arg=0 { }
+      }
+    }
+  |} in
+  let rules_unknown = match Catseye_rules.Loader.parse_string kdl_unknown with
+    | Ok rs -> rs
+    | Error _ -> []
+  in
+  let rule_unknown = List.hd rules_unknown in
+  let sink_unknown = List.hd rule_unknown.Catseye_rules.Types.sinks in
+  check "KDL parse: unknown match value falls back to Substring"
+    (sink_unknown.Catseye_rules.Types.match_mode = Substring)
+
 (* ── Run all tests ──────────────────────────────────────────────────── *)
 
 let () =
@@ -285,4 +394,5 @@ let () =
   test_arg_pos ();
   test_kdl_parsing ();
   test_combined ();
+  test_5_exact_match ();
   Printf.printf "\n=== Done ===\n"

@@ -283,7 +283,7 @@ rule "EvalInjection" severity="Critical" {
         include "typescript"
     }
     sinks {
-        sink "eval" arg=0 {
+        sink "eval" match="exact" arg=0 {
             sanitizer "JSON.stringify"
         }
         sink "Function" arg=0 {

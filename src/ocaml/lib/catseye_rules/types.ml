@@ -2,8 +2,21 @@
 
 open Base
 
+(** How a sink pattern matches a call name.
+
+    - [Substring] (default): the call name contains the pattern as a substring.
+      Backward-compatible with the original [is_substring] behavior. Safe for
+      fully-qualified patterns like ["File.read"] and [$var] metavariables.
+    - [Exact]: the call name must equal the pattern exactly. Prevents substring
+      FPs on short patterns like ["read"] matching ["already_read"] or ["try"]
+      matching ["retry_after"]. *)
+type match_mode =
+  | Substring
+  | Exact
+
 type sink_def = {
   pattern : string;
+  match_mode : match_mode;
   sanitizers : string list;
   requires_field : string option;
   arg_pos : int option;  (** When [Some n], only flag if tainted data is in argument position n (0-indexed) *)

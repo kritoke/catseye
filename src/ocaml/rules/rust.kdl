@@ -6,7 +6,7 @@ rule "RustUnsafeBlock" severity="High" {
     languages { include "rust" }
     // Detect unsafe blocks that may need auditing
     sinks {
-        sink "unsafe" {
+        sink "unsafe" match="exact" {
             fix "Review unsafe block for memory safety issues. Document invariants."
         }
     }
@@ -96,17 +96,17 @@ rule "RustIntegerOverflow" severity="Medium" {
     languages { include "rust" }
     // Integer overflow in release mode (wraps silently)
     sinks {
-        sink "+" {
+        sink "+" match="exact" {
             sanitizer "checked_add"
             sanitizer "saturating_add"
             sanitizer "wrapping_add"
         }
-        sink "-" {
+        sink "-" match="exact" {
             sanitizer "checked_sub"
             sanitizer "saturating_sub"
             sanitizer "wrapping_sub"
         }
-        sink "*" {
+        sink "*" match="exact" {
             sanitizer "checked_mul"
             sanitizer "saturating_mul"
             sanitizer "wrapping_mul"
@@ -119,13 +119,13 @@ rule "RustPanicInLibrary" severity="Medium" {
     languages { include "rust" }
     // panic!, unwrap(), expect() in library code
     sinks {
-        sink "panic" {
+        sink "panic" match="exact" {
             fix "Return Result<T, E> instead of panicking"
         }
-        sink "unwrap" {
+        sink "unwrap" match="exact" {
             fix "Use ? operator or provide default value with unwrap_or()"
         }
-        sink "expect" {
+        sink "expect" match="exact" {
             fix "Return Result or use unwrap_or() with proper error message"
         }
     }
@@ -136,16 +136,16 @@ rule "RustHardcodedCredentials" severity="High" {
     languages { include "rust" }
     // Hardcoded passwords, API keys, tokens
     sinks {
-        sink "password" {
+        sink "password" match="exact" {
             fix "Use environment variable or secrets manager"
         }
-        sink "api_key" {
+        sink "api_key" match="exact" {
             fix "Use environment variable or secrets manager"
         }
-        sink "secret" {
+        sink "secret" match="exact" {
             fix "Use environment variable or secrets manager"
         }
-        sink "token" {
+        sink "token" match="exact" {
             fix "Use environment variable or secrets manager"
         }
     }

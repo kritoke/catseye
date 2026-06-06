@@ -82,12 +82,17 @@ let matches_metavar ~(pattern : string) ~(name : string) : bool =
 
 (** Check if a call name matches a sink pattern.
     - Patterns starting with [$] use metavariable matching (receiver wildcard)
-    - All other patterns use substring matching (backward compatible) *)
-let matches_sink ~(pattern : string) ~(name : string) : bool =
+    - All other patterns use the [match_mode] field: [Substring] (default,
+      backward compatible) checks if [name] contains [pattern]; [Exact]
+      requires [String.equal pattern name]. The [match_mode] parameter is
+      optional with default [Substring] so existing call sites continue to work. *)
+let matches_sink ~(pattern : string) ~(name : string) ~(match_mode : match_mode) : bool =
   if String.length pattern > 0 && pattern.[0] = '$' then
     matches_metavar ~pattern ~name
   else
-    is_substring ~pattern ~in_:name
+    match match_mode with
+    | Exact -> String.equal pattern name
+    | Substring -> is_substring ~pattern ~in_:name
 
 (** Check if any sanitizer pattern matches a call name *)
 let matches_sanitizer (patterns : string list) (name : string) : bool =
@@ -339,7 +344,7 @@ and is_suspect (node : Security_node.t) (ctx : taint_context)
 (** Check if a node should be flagged by a sink pattern *)
 let node_matches_sink (n : Security_node.t) (sink : sink_def) : bool =
   n.Security_node.node_type = Security_node.Call
-  && matches_sink ~pattern:sink.pattern ~name:n.Security_node.name
+  && matches_sink ~pattern:sink.pattern ~match_mode:sink.match_mode ~name:n.Security_node.name
 
 (** Check if a rule should apply to a given node based on language filters *)
 let language_allows (rule : rule_def) (node : Security_node.t) : bool =

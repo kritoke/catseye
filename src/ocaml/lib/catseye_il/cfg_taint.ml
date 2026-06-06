@@ -244,7 +244,7 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
       (* Guard clauses — flat, not nested *)
       (* 1. Does the function name match the sink pattern? *)
       if not (Catseye_rules.Interpreter.matches_sink
-               ~pattern:sink.pattern ~name:fn_name) then []
+               ~pattern:sink.pattern ~match_mode:sink.match_mode ~name:fn_name) then []
       (* 2. Check for sanitized args *)
 else if List.exists ~f:(fun a ->
           Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers (expr_name a)
