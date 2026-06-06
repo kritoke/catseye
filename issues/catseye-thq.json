@@ -4,13 +4,14 @@
   "blocks": [
     "catseye-fov"
   ],
+  "closed_at": "2026-06-06T20:22:47Z",
   "created": "2026-06-06T15:17:34Z",
   "description": "Follow-up to catseye-fov. interpreter.ml:matches_sink (line 86-91) does plain substring matching when the pattern does not start with $. This means any short sink pattern (e.g. 'try', 'read', 'exec', 'get', 'set') can match unintended call names that contain the pattern as a substring (e.g. 'RateLimiter.retry_after' matches 'try', 'bread' would match 'read'). The catseye-fov fix patched one instance (SilentErrorSwallow on Crystal) by adding a language filter, but the underlying substring matching is a latent class of bugs likely affecting many other rules. Fix: add an 'exact' modifier (or anchored '^pattern$' syntax) to KDL sinks so rules can opt into exact/prefix matching. Update loader.ml to parse the new field, update interpreter.ml:matches_sink to honor it, audit the existing ruleset to identify which sinks would benefit, and add regression tests. This is a non-trivial engine change that should ship with a CHANGELOG note and a migration guide for rule authors.",
   "id": "catseye-thq",
   "labels": [],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "matches_sink substring matching is a class of false-positive bugs: add exact-anchor support",
   "type": "bug",
-  "updated_at": "2026-06-06T19:49:49Z"
+  "updated_at": "2026-06-06T20:22:47Z"
 }
