@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-fov"
+  ],
   "created": "2026-06-06T15:17:34Z",
   "description": "Follow-up to catseye-fov. The fix added a language filter to SilentErrorSwallow, but several other OCaml-*-prefixed rules and rules in OCaml-context files lack the same defense-in-depth filter: MissingErrorContext (in src/ocaml/rules/ocaml_error_context.kdl:13-30), OCamlCommandInjection, OCamlShellInterpolation, OCamlUnsafeOperations, OCamlMarshalDeserialization. None of these are currently known to produce false positives, but a substring-sink change in any of them would be a latent FP. For each rule, verify the rule is OCaml-specific (sinks match OCaml syntax), add languages { include ocaml } if so, and add a regression fixture under test/samples/. Out of scope: the broader substring-match engine issue (separate ticket).",
   "id": "catseye-t0q",
@@ -10,5 +12,5 @@
   "status": "open",
   "title": "Audit and add languages { include ocaml } filters to all OCaml-*-prefixed and OCaml-scoped rules",
   "type": "bug",
-  "updated_at": "2026-06-06T15:17:34Z"
+  "updated_at": "2026-06-06T15:17:45Z"
 }
