@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "catseye-ozj"
+  ],
   "blocks": [],
   "created": "2026-06-06T22:30:15Z",
   "description": "The hallucinated method database in `crystal_rules.ml` (lines ~112-205, ~80 lines of static data) is a separable concern. It's a curated knowledge base, not a detector.\n\n**Current location** (crystal_rules.ml):\n- `type method_entry` (lines 113-118)\n- `hallucinated_methods : method_entry list` (lines 120-200) — 30+ entries, organized by comment groups\n- `method_db : (string, method_entry) Hashtbl.t` (lines 203-214) — lookup table\n- `check_hallucinated` (line 218) — accessor\n\n**Why separate it:**\n1. It's pure data + a hashtable built from it. No AST traversal, no module type `t`. Single responsibility: \"what does AI get wrong about Crystal.\"\n2. Editors that want to add/remove/reclassify entries shouldn't scroll past 1800 lines of detector code.\n3. The data could be reused by a future IDE/CLI command (`catseye list-hallucinations`) without pulling in the whole rule engine.\n4. Easier to write tests for the DB independently.\n\n**Target file:** `src/ocaml/lib/ai_linter/crystal_hallucinations.ml`\n\n**API:**\n```ocaml\ntype method_entry = { name : string; correct : string; category : string; lang : [ `Crystal | `Ruby | `JS | `Elixir ] }\nval all : method_entry list\nval lookup : string -\u003e method_entry option\n```\n\n**Note:** The current implementation has a subtle bug in the hashtable build — it stores both the full name AND the last component under the same key (`Hashtbl.replace`), so the last entry in the list wins for that key. Not a runtime bug today (no two entries share a last component), but worth flagging in a code comment when moving.\n\nBlocks: catseye-ozj (refactor epic)",
@@ -10,5 +12,5 @@
   "status": "open",
   "title": "REFACTOR: move hallucinated method DB to crystal_hallucinations.ml",
   "type": "task",
-  "updated_at": "2026-06-06T22:30:15Z"
+  "updated_at": "2026-06-06T22:31:23Z"
 }
