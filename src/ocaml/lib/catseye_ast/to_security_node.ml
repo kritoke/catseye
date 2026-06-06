@@ -206,7 +206,15 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     let rescue_nodes = List.concat_map ~f:(fun c -> walk_expr c.rescue_body file lang) rescue_clauses in
     let ensure_nodes = match ensure_body with Some e -> walk_expr e file lang | None -> [] in
     let else_nodes = match else_body with Some e -> walk_expr e file lang | None -> [] in
-    try_nodes @ rescue_nodes @ ensure_nodes @ else_nodes
+    (* Emit a synthetic Call node named "try" so rules with a "try" sink
+       (e.g. SilentErrorSwallow) can match. Without this, ETryCatchFinally
+       produces no Call node and such rules are dead. Used for both OCaml
+       `try ... with ...` and Crystal `begin ... rescue ... end`. *)
+    let try_call_arg = make_arg ~arg_type:Security_node.ArgUnknown ~value:"<try-body>" in
+    let try_call = make_node
+      ~node_type:Security_node.Call ~name:"try" ~args:[try_call_arg]
+      ~line:e.expr_location.start.line ~file ~language:lang in
+    try_nodes @ rescue_nodes @ ensure_nodes @ else_nodes @ [try_call]
   | EUse (_pat, val_expr, body) ->
     (* use pattern <- value; body
        Treat as a call node so taint propagation works through the value *)

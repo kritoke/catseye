@@ -188,6 +188,20 @@ and translate_stmt_expr (e : expr) : il_block =
     let pos = pos_of_expr e in
     [ILThrow (IELiteral msg, pos)]
 
+  | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body } ->
+    let pos = pos_of_expr e in
+    (* Walk try body, rescue clauses, ensure, else for any nested calls
+       so the existing taint analysis sees them. Then emit a synthetic
+       ILCall named "try" so rules with a "try" sink (e.g. SilentErrorSwallow)
+       can match in the CFG engine, mirroring the to_security_node.ml change
+       for the flat engine. *)
+    let body_calls = extract_calls try_body in
+    let rescue_calls = List.concat_map ~f:(fun c -> extract_calls c.rescue_body) rescue_clauses in
+    let ensure_calls = match ensure_body with Some e -> extract_calls e | None -> [] in
+    let else_calls = match else_body with Some e -> extract_calls e | None -> [] in
+    let try_call = ILCall (None, "try", [IEUnknown "<try-body>"], pos) in
+    body_calls @ rescue_calls @ ensure_calls @ else_calls @ [try_call]
+
   | _ ->
     (* ELiteral, EVar, EFieldAccess, ETuple, EList, ERecord, etc. —
        these don't produce IL nodes on their own *)

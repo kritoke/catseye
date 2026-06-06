@@ -34,8 +34,9 @@ rule "MissingErrorContext" severity="Medium" {
 
 rule "SilentErrorSwallow" severity="Low" {
     languages { include "ocaml" }
+    conditions { skip_taint_check }
     sinks {
-        sink "try" match="exact" arg=0 {
+        sink "try" match="exact" {
             pattern "_ -> ()"
             pattern "_ -> ()"
             pattern "with _ -> ()"
