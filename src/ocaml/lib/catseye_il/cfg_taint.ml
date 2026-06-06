@@ -101,6 +101,18 @@ let rec expr_name (e : il_expr) : string =
   | IECall (fn, _, _) -> fn
   | IEUnknown s -> s
 
+(* Get string value of an expression for condition/pattern matching.
+   Unlike [expr_name] (which returns "<literal>" for literals), this returns
+   the actual literal contents, which is what the flat engine's
+   args_contain_any works on. *)
+let rec expr_string_value (e : il_expr) : string =
+  match e with
+  | IEVar v -> v
+  | IEField (inner, field, _) -> expr_string_value inner ^ "." ^ field
+  | IELiteral s -> s
+  | IECall (fn, _, _) -> fn
+  | IEUnknown s -> s
+
 let taint_lval (state : taint_state) (lv : lval) : taint_state =
   { state with tainted = LvalSet.add lv state.tainted }
 
@@ -236,6 +248,28 @@ and check_call_sinks (fn_name : string) (args : il_expr list)
       (* 2. Check for sanitized args *)
 else if List.exists ~f:(fun a ->
           Catseye_rules.Interpreter.matches_sanitizer sink.sanitizers (expr_name a)
+        ) args then []
+      (* 2.5. Check rule-level conditions: check_args_contain / check_args_missing.
+         Mirrors the flat engine's evaluate_rule_conditions in interpreter.ml.
+         For check_args_contain: the rule fires only if at least one arg's string
+         form contains at least one of the patterns (mirrors args_contain_any).
+         For check_args_missing: the rule fires only if NO arg's string form
+         contains any of the patterns (mirrors args_missing_all, inverted).
+         TODO: factor the substring-arg logic into catseye_rules/rule_args.ml so
+         both engines share it; current duplication is tracked as a follow-up. *)
+else if rule.conditions.check_args_contain <> [] &&
+        not (List.exists ~f:(fun a ->
+          let name = expr_string_value a in
+          List.exists ~f:(fun p ->
+            Catseye_rules.Interpreter.is_substring ~pattern:p ~in_:name
+          ) rule.conditions.check_args_contain
+        ) args) then []
+else if rule.conditions.check_args_missing <> [] &&
+        List.exists ~f:(fun a ->
+          let name = expr_string_value a in
+          List.exists ~f:(fun p ->
+            Catseye_rules.Interpreter.is_substring ~pattern:p ~in_:name
+          ) rule.conditions.check_args_missing
         ) args then []
       (* 3. Dominator-based suppression: sanitizer dominates this block *)
       else if (match dom_ctx.dom with
