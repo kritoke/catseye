@@ -33,6 +33,7 @@ rule "MissingErrorContext" severity="Medium" {
 }
 
 rule "SilentErrorSwallow" severity="Low" {
+    languages { include "ocaml" }
     sinks {
         sink "try" arg=0 {
             pattern "_ -> ()"
