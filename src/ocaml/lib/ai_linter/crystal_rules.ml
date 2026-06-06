@@ -918,43 +918,6 @@ let detect_nested_ternary (m : t) =
     AI often generates repetitive parameter lists instead of grouping into a record. *)
 let detect_data_clump (m : t) =
   let min_co_occurrence = 3 in
-  (* Collect all function parameter sets *)
-  let param_sets = List.filter_map (fun item ->
-    match item.item_value with
-    | IFunction (_, params, _, _) ->
-        Some (List.filter_map (function PVar v -> Some v | _ -> None) params)
-    | _ -> None
-  ) m.mod_items in
-  (* Count how many functions each parameter appears in *)
-  let param_counts = Hashtbl.create 32 in
-  List.iter (fun params ->
-    List.iter (fun p ->
-      let current = try Hashtbl.find param_counts p with Stdlib.Not_found -> 0 in
-      Hashtbl.replace param_counts p (current + 1)
-    ) params
-  ) param_sets;
-  (* Find pairs that co-occur in 3+ functions *)
-  let pair_counts = Hashtbl.create 64 in
-  List.iter (fun params ->
-    let sorted = list_sort_uniq String.compare params in
-    let rec count_pairs = function
-      | [] | [_] -> ()
-      | a :: rest ->
-          List.iter (fun b ->
-            let key = a ^ "," ^ b in
-            let current = try Hashtbl.find pair_counts key with Stdlib.Not_found -> 0 in
-            Hashtbl.replace pair_counts key (current + 1)
-          ) rest;
-          count_pairs rest
-    in
-    count_pairs sorted
-  ) param_sets;
-
-(** Rule: Data Clump
-    Detects the same pair of parameters appearing together in 3+ functions.
-    AI often generates repetitive parameter lists instead of grouping into a record. *)
-let detect_data_clump (m : t) =
-  let min_co_occurrence = 3 in
   
   
   
@@ -979,7 +942,7 @@ let detect_data_clump (m : t) =
         count_pairs rest
     in
     count_pairs sorted
-  ) param_sets in
+  ) param_sets;
   let collected = List.concat_map (fun (key, count) ->
     if count >= min_co_occurrence then
       let pair_name = String.map (fun c -> if c = ',' then ' ' else c) key in
