@@ -2,6 +2,7 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-06T16:09:21Z",
   "created": "2026-06-02T10:33:20Z",
   "description": "",
   "id": "catseye-1af",
@@ -15,8 +16,8 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "FP: ReDoS false positive on regex with (\u0026|$) stop anchor",
   "type": "task",
-  "updated_at": "2026-06-06T15:21:54Z"
+  "updated_at": "2026-06-06T16:09:21Z"
 }
