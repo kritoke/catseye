@@ -1,8 +1,7 @@
 {
   "assignee": "",
   "blocked_by": [
-    "catseye-4o6",
-    "catseye-ozj"
+    "catseye-4o6"
   ],
   "blocks": [],
   "created": "2026-06-06T22:31:17Z",
@@ -14,5 +13,5 @@
   "status": "open",
   "title": "REFACTOR: simplify is_test_or_spec_file using Base String.contains",
   "type": "task",
-  "updated_at": "2026-06-06T22:32:14Z"
+  "updated_at": "2026-06-07T13:35:30Z"
 }
