@@ -2,6 +2,26 @@
 (library
  (name ai_linter)
  (public_name catseye.ai_linter)
- (modules types ast_rules gleam_rules crystal_rules type_inference javascript_rules svelte_rules ocaml_rules rust_rules)
+ (modules
+  types
+  ast_rules
+  gleam_rules
+  crystal_hallucinations
+  crystal_rules_helpers
+  crystal_rules_ghost
+  crystal_rules_foreigner
+  crystal_rules_happy_path
+  crystal_rules_security
+  crystal_rules_quality
+  crystal_rules_complexity
+  crystal_rules_exception_safety
+  crystal_rules_type_network
+  crystal_rules_style
+  crystal_rules
+  type_inference
+  javascript_rules
+  svelte_rules
+  ocaml_rules
+  rust_rules)
  (libraries base stdio sexplib0 sexplib catseye_ast catseye_types)
  (flags (:standard -w -27-26-50-6)))
