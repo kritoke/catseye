@@ -1,8 +1,7 @@
 {
   "assignee": "",
   "blocked_by": [
-    "catseye-4o6",
-    "catseye-ozj"
+    "catseye-4o6"
   ],
   "blocks": [],
   "created": "2026-06-06T22:30:36Z",
@@ -14,5 +13,5 @@
   "status": "open",
   "title": "REFACTOR: hoist magic numbers and string lists into a config record",
   "type": "task",
-  "updated_at": "2026-06-06T22:32:13Z"
+  "updated_at": "2026-06-07T13:35:30Z"
 }
