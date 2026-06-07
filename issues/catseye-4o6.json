@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [
     "catseye-705",
@@ -13,8 +13,8 @@
   "labels": [],
   "parent": "catseye-ozj",
   "priority": 1,
-  "status": "open",
+  "status": "in_progress",
   "title": "REFACTOR: split crystal_rules.ml by category into focused submodules",
   "type": "task",
-  "updated_at": "2026-06-07T03:04:31Z"
+  "updated_at": "2026-06-07T03:08:59Z"
 }
