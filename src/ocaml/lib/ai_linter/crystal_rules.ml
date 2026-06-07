@@ -673,7 +673,6 @@ let detect_flag_argument (m : t) =
     Detects functions with too many expression nodes in their body.
     AI often generates monolithic functions that should be decomposed. *)
 let detect_long_method (m : t) =
-  let max_nodes = 50 in
   let rec count_nodes (e : expr) : int =
     match e.expr_value with
     | EBlock es -> List.fold_left (fun acc e -> acc + count_nodes e) 0 es
@@ -689,19 +688,6 @@ let detect_long_method (m : t) =
         List.fold_left (fun acc rc -> acc + count_nodes rc.rescue_body) 0 rescue_clauses +
         (match ensure_body with Some e -> count_nodes e | None -> 0) +
         (match else_body with Some e -> count_nodes e | None -> 0)
-    | _ -> 1
-  in
-  
-  let rec count_nodes (e : expr) : int =
-    match e.expr_value with
-    | EBlock es -> List.fold_left (fun acc e -> acc + count_nodes e) 0 es
-    | EApp (_, args) -> 1 + List.fold_left (fun acc a -> acc + count_nodes a) 0 args
-    | EIf (_, then_, else_) ->
-      1 + count_nodes then_ +
-      (match else_ with Some e -> count_nodes e | None -> 0)
-    | ELet (_, e1, e2) -> 1 + count_nodes e1 + count_nodes e2
-    | ECase (_, branches) ->
-      1 + List.fold_left (fun acc (_, body) -> acc + count_nodes body) 0 branches
     | _ -> 1
   in
   let max_nodes = 80 in
