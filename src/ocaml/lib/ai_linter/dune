@@ -7,6 +7,7 @@
   ast_rules
   gleam_rules
   crystal_hallucinations
+  crystal_config
   crystal_rules_helpers
   crystal_rules_ghost
   crystal_rules_foreigner
