@@ -7,14 +7,15 @@
     "catseye-o2j",
     "catseye-v3p"
   ],
+  "closed_at": "2026-06-07T13:34:21Z",
   "created": "2026-06-06T22:29:41Z",
   "description": "`s/ocaml/lib/ai_linter/crystal_rules.ml` is 1921 lines because it jams 22 categories of rules into one file. The existing `(* ── Category N: ── *)` section dividers are the only structural cue.\n\n**Proposed split** (target: each file ~200-400 lines, one concern per file):\n\n| New file | Contents |\n|---|---|\n| `crystal_rules_helpers.ml` | `is_test_or_spec_file`, `get_name_chain`, `get_full_name`, `collect_app_names`, `list_sort_uniq` |\n| `crystal_hallucinations.ml` | `method_entry` type, `hallucinated_methods` list, `method_db` hashtable, `check_hallucinated` |\n| `crystal_rules_ghost.ml` | Category 1: hallucinated-stdlib, deprecated-syntax |\n| `crystal_rules_foreigner.ml` | Category 2: manual-loop, primitive-obsession |\n| `crystal_rules_happy_path.ml` | Category 3: nil-chaser, ignored-return, unsafe-pointer, sleep-in-prod |\n| `crystal_rules_security.ml` | Category 5: hardcoded-secrets. Category 6: hardcoded-urls. |\n| `crystal_rules_quality.ml` | Categories 7-9: blanket-rescue, magic-string, debug-require, empty-catch, flag-argument, long-method |\n| `crystal_rules_complexity.ml` | Categories 10-12: data-clump, feature-envy, complex-conditional, message-chain, nested-ternary, repeated-regex, callback-hell |\n| `crystal_rules_exception_safety.ml` | Categories 14, 16, 17: non-atomic-file-op, unbounded-file-read, open-rescue, missing-else, reassignment-in-condition, unreachable-code, dead-code-after-error |\n| `crystal_rules_type_network.ml` | Category 18: type-checker-abuse, hardcoded-port |\n| `crystal_rules_style.ml` | Categories 19-22: unless-with-else, global-variable, float-equality, sequential-blocking, empty-string-comparison, negated-comparison, string-concat-loop, nilable-ivar-access, redundant-self |\n| `crystal_rules.ml` (slim) | Module composition: `analyze_module` that calls each submodule's `all` and applies the test-file skip list |\n\n**Why this layout:**\n- Each file does one thing (SRP)\n- Categories group naturally by reviewer mental model (security, complexity, style, etc.)\n- A regression in one rule only touches one file\n- The dune `(modules ...)` list already supports arbitrary module names — just add them\n\n**Constraint:** Public API must remain `Crystal_rules.analyze_module : t -\u003e Types.finding list`. The integration test in `catseye_cli/ai_linter_integration.ml` must continue to compile and behave identically.\n\nThis is a structural-only refactor — no detector logic should change. After refactor, run `just test` and confirm all findings on the existing sample corpus (`test/samples/smell_samples/`, `test/samples/vulnerable.cr`) are byte-identical.\n\nBlocks: catseye-ozj (refactor epic)",
   "id": "catseye-4o6",
   "labels": [],
   "parent": "catseye-ozj",
   "priority": 1,
-  "status": "in_progress",
+  "status": "closed",
   "title": "REFACTOR: split crystal_rules.ml by category into focused submodules",
   "type": "task",
-  "updated_at": "2026-06-07T03:08:59Z"
+  "updated_at": "2026-06-07T13:34:21Z"
 }
