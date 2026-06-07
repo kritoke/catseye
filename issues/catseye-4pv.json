@@ -7,9 +7,15 @@
   "id": "catseye-4pv",
   "labels": [],
   "parent": "catseye-ozj",
+  "comments": [
+    {
+      "text": "Superseded by catseye-4o6. The hallucinated method DB (type method_entry, hallucinated_methods, method_db, check_hallucinated) was moved to crystal_hallucinations.ml as part of the split into category modules. No additional work needed.",
+      "timestamp": "2026-06-07T13:35:01Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "REFACTOR: move hallucinated method DB to crystal_hallucinations.ml",
   "type": "task",
-  "updated_at": "2026-06-07T03:04:31Z"
+  "updated_at": "2026-06-07T13:35:01Z"
 }
