@@ -9,9 +9,15 @@
   "id": "catseye-9ow",
   "labels": [],
   "parent": "catseye-ozj",
+  "comments": [
+    {
+      "text": "Deferred — message format standardization needs design input. The current 4 styles in crystal_rules.ml are documented in the original ticket description. The 'right' format depends on user preference (single-line vs multi-line, severity emoji vs severity word, em-dash vs colon, etc.). A follow-up ticket should land the format choice as a separate decision before doing the 30+ text changes.",
+      "timestamp": "2026-06-07T16:55:52Z"
+    }
+  ],
   "priority": 3,
   "status": "in_progress",
   "title": "REFACTOR: standardize error message format and emitter helper",
   "type": "task",
-  "updated_at": "2026-06-07T15:17:29Z"
+  "updated_at": "2026-06-07T16:55:52Z"
 }
