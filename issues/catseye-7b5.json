@@ -4,14 +4,15 @@
   "blocks": [
     "catseye-ozj"
   ],
+  "closed_at": "2026-06-07T02:21:13Z",
   "created": "2026-06-06T22:29:12Z",
   "description": "In `src/ocaml/lib/ai_linter/crystal_rules.ml`, the function `detect_data_clump` is defined **twice** at lines 919 and 956. The OCaml compiler allows this (no warning emitted by default) and the second definition shadows the first.\n\n**First definition (line 919) — broken:**\n- Allocates `param_counts` hashtable (never used)\n- Allocates `pair_counts` hashtable and populates it\n- Then **falls off the end with no return value** — implicitly returns `()`, which is the wrong type for a `t -\u003e (string * int) list` function\n\n**Second definition (line 956) — working:**\n- Skips `param_counts` entirely\n- Populates `pair_counts`\n- Folds hashtable into findings list, sorts and returns\n\nThe second one runs and produces correct findings, so the bug is invisible at runtime — but the first ~35 lines are dead code that will silently break if someone \"fixes\" the second one without noticing the first exists. It also signals sloppy maintenance: any future change to the logic could land in the wrong copy.\n\n**Fix:**\n- Delete the first definition (lines 919-953 plus the doc comment immediately above at 911-915)\n- Keep the second, working definition\n\nThis ticket is a child of catseye-ozj (the refactor epic) but can land independently.",
   "id": "catseye-7b5",
   "labels": [],
   "parent": "catseye-ozj",
   "priority": 0,
-  "status": "in_progress",
+  "status": "closed",
   "title": "BUG: detect_data_clump defined twice — first version is silently broken",
   "type": "bug",
-  "updated_at": "2026-06-06T22:40:27Z"
+  "updated_at": "2026-06-07T02:21:13Z"
 }
