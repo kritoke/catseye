@@ -32,33 +32,60 @@ module Float = Stdlib.Float
 module Int = Stdlib.Int
 module Char = Stdlib.Char
 
-(* File path helpers *)
+(* ── String helpers (used by is_test_or_spec_file and the AST
+   combinators below) ──────────────────────────────────────────────── *)
+
+(** Check if a string contains a substring (Naive O(n*m); use sparingly). *)
+let string_contains (haystack : string) (needle : string) : bool =
+  let hlen = String.length haystack in
+  let nlen = String.length needle in
+  if nlen = 0 then true
+  else if nlen > hlen then false
+  else
+    let rec check i =
+      if i + nlen > hlen then false
+      else if String.sub haystack i nlen = needle then true
+      else check (i + 1)
+    in
+    check 0
+
+(** Check if a call name starts with any of the given prefixes. *)
+let name_starts_with_any (name : string) (prefixes : string list) : bool =
+  List.exists (fun prefix ->
+    String.length name >= String.length prefix &&
+    String.sub name 0 (String.length prefix) = prefix
+  ) prefixes
+
+(** Check if a call name ends with any of the given suffixes. *)
+let name_ends_with_any (name : string) (suffixes : string list) : bool =
+  let nlen = String.length name in
+  List.exists (fun suffix ->
+    let slen = String.length suffix in
+    nlen >= slen &&
+    String.sub name (nlen - slen) slen = suffix
+  ) suffixes
+
+(** Check if a call name equals one of the given strings, OR is
+    "<receiver>.<suffix>" for some receiver (i.e. name ends with
+    ".<suffix>"). Used by debug-print and similar detectors. *)
+let name_matches (name : string) (suffixes : string list) : bool =
+  List.exists (fun suffix ->
+    name = suffix ||
+    (String.length name > String.length suffix + 1 &&
+     String.sub name (String.length name - String.length suffix - 1)
+       (String.length suffix + 1) = "." ^ suffix)
+  ) suffixes
+
+(* ── File path helpers ──────────────────────────────────────────────── *)
 
 let is_test_or_spec_file (file : string) : bool =
   let lower = String.lowercase_ascii file in
-  let rec contains_substr str pat =
-    let plen = String.length pat in
-    let slen = String.length str in
-    if plen > slen then false
-    else if String.sub str 0 plen = pat then true
-    else contains_substr (String.sub str 1 (slen - 1)) pat
-  in
-  let matched = List.exists (fun pat ->
-    let plen = String.length pat in
-    if String.length lower >= plen then
-      let suffix = String.sub lower (String.length lower - plen) plen in
-      pat = suffix || (pat = "test_" && String.length lower >= 5 && String.sub lower 0 5 = "test_")
-      || contains_substr lower pat
-    else false
-  ) [
-    "/test/"; "/spec/"; "/benchmark/"; "/bench/";
-    "/example/"; "/examples/"; "/tests/";
-    "_test.cr"; "_spec.cr"; "_bench.cr";
-    "_test."; "_spec."; "_bench.";
-    "_tests.cr"; "test_"; "spec_";
-    "smell_";
-  ] in
-  matched
+  let path_markers = ["/test/"; "/spec/"; "/benchmark/"; "/bench/"; "/example/"; "/examples/"; "/tests/"] in
+  let file_suffixes = ["_test.cr"; "_spec.cr"; "_bench.cr"; "_tests.cr"] in
+  let name_prefixes = ["test_"; "spec_"; "smell_"] in
+  List.exists (string_contains lower) path_markers
+  || List.exists (fun suf -> name_ends_with_any lower [suf]) file_suffixes
+  || List.exists (fun p -> name_starts_with_any lower [p]) name_prefixes
 
 let list_sort_uniq cmp l =
   let sorted = Stdlib.List.sort (fun a b -> cmp a b) l in
@@ -123,33 +150,6 @@ let map_functions (m : t) (f : string -> expr -> int -> (string * int) list)
   in
   items m.mod_items
 
-(** Check if a call name starts with any of the given prefixes. *)
-let name_starts_with_any (name : string) (prefixes : string list) : bool =
-  List.exists (fun prefix ->
-    String.length name >= String.length prefix &&
-    String.sub name 0 (String.length prefix) = prefix
-  ) prefixes
-
-(** Check if a call name ends with any of the given suffixes. *)
-let name_ends_with_any (name : string) (suffixes : string list) : bool =
-  let nlen = String.length name in
-  List.exists (fun suffix ->
-    let slen = String.length suffix in
-    nlen >= slen &&
-    String.sub name (nlen - slen) slen = suffix
-  ) suffixes
-
-(** Check if a call name equals one of the given strings, OR is
-    "<receiver>.<suffix>" for some receiver (i.e. name ends with
-    ".<suffix>"). Used by debug-print and similar detectors. *)
-let name_matches (name : string) (suffixes : string list) : bool =
-  List.exists (fun suffix ->
-    name = suffix ||
-    (String.length name > String.length suffix + 1 &&
-     String.sub name (String.length name - String.length suffix - 1)
-       (String.length suffix + 1) = "." ^ suffix)
-  ) suffixes
-
 (** Generic pre-order walk of all subexpressions of [e]. The visitor
     receives every expression in the tree, including [e] itself.
     Visits: EBlock, ELet, ELetAssert, EIf, ECase, EApp, EFn, ETryCatchFinally.
@@ -184,21 +184,6 @@ let map_subexpressions (f : expr -> 'a list) (e : expr) : 'a list =
   let acc = ref [] in
   iter_subexpressions (fun e -> acc := !acc @ f e) e;
   !acc
-
-(** Check if a string contains a substring (Naive O(n*m); use sparingly). *)
-let string_contains (haystack : string) (needle : string) : bool =
-  let hlen = String.length haystack in
-  let nlen = String.length needle in
-  if nlen = 0 then true
-  else if nlen > hlen then false
-  else
-    let rec check i =
-      if i + nlen > hlen then false
-      else if String.sub haystack i nlen = needle then true
-      else check (i + 1)
-    in
-    check 0
-
 (** Collect all string literal expressions in [e] as (expr, string) pairs.
     The expr is included so callers can recover the source line.
     Filters out the empty string (which is usually a default, not data). *)
