@@ -1,8 +1,6 @@
 {
   "assignee": "",
-  "blocked_by": [
-    "catseye-ozj"
-  ],
+  "blocked_by": [],
   "blocks": [
     "catseye-705",
     "catseye-9ow",
@@ -18,5 +16,5 @@
   "status": "open",
   "title": "REFACTOR: split crystal_rules.ml by category into focused submodules",
   "type": "task",
-  "updated_at": "2026-06-06T22:32:13Z"
+  "updated_at": "2026-06-07T03:04:31Z"
 }
