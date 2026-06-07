@@ -45,7 +45,7 @@ let all () = [
   ("long-method", T.Warning, Quality.detect_long_method);
   ("infinite-recursion", T.Error, Quality.detect_infinite_recursion);
   ("debug-print", T.Warning, Quality.detect_debug_print);
-  ("string-interpolation-query", T.Error, Quality.detect_string_interpolation_in_query);
+  ("string-interpolation-query", T.Error, Security.detect_string_interpolation_in_query);
   ("complex-conditional", T.Hint, Complexity.detect_complex_conditional);
   ("message-chain", T.Hint, Complexity.detect_message_chain);
   ("nested-ternary", T.Warning, Complexity.detect_nested_ternary);
@@ -83,12 +83,22 @@ let test_file_skip_rules = [
   "hallucinated-stdlib";
 ]
 
+(** Analyze module and return findings *)
 let analyze_module (m : t) : Types.finding list =
+  (* Get file path for test/exempt filtering *)
   let file_path = m.mod_path in
-  let is_test = Crystal_rules_helpers.is_test_or_spec_file file_path in
-
+  let is_test = is_test_or_spec_file file_path in
+  
   List.concat_map (fun (rule_id, sev, detector) ->
-    if is_test && List.mem rule_id test_file_skip_rules then []
+    (* Skip certain rules for test files *)
+    if is_test && List.mem rule_id [
+      "deprecated-syntax";  (* puts/p/pp are fine in tests *)
+      "ignored-return";     (* return values often ignored in test helpers *)
+      "primitive-obsession"; (* many params are fine in test data setup *)
+      "too-many-params";
+      "debug-print";
+      "hallucinated-stdlib";
+    ] then []
     else List.map (fun (msg, line) ->
       { Types.file = file_path;
         Types.line = line;
