@@ -10,9 +10,15 @@
   "id": "catseye-9mh.1",
   "labels": [],
   "parent": "catseye-9mh",
+  "comments": [
+    {
+      "text": "Spike complete. Key findings:\n\nWIRE FORMAT: XML with \u003cwire-format version=\"1\"\u003e root.\n- Reuses Catseye_ast.Tree_sitter_xml for parsing — zero new OCaml deps.\n- Each AST node → XML element with srow/scol/erow/ecol attributes (0-based rows, 0-based cols).\n- srow/erow are 0-based (FCS is 1-based, so we subtract 1).\n- Position convention: matches what ocaml_mapper.ml expects from tree-sitter XML.\n\nVERSIONS PINNED:\n- .NET SDK: 10.0.108 (already on the dev machine via nixpkgs-unstable)\n- FSharp.Compiler.Service: 43.12.204 (requires FSharp.Core 10.1.204 — must use \u003cPackageReference Update=\"FSharp.Core\" Version=\"10.1.204\" /\u003e in fsproj to override SDK default)\n- FSharp.Core: 10.1.204 (pinned explicitly)\n\nFCS 43.12.204 AST API DIFFERENCES FROM DOCUMENTATION:\nThe online FCS docs/examples use an older API. Key changes in 43.12.204:\n1. SynExpr.LetOrUse is a RECORD { IsRecursive; Bindings; Body; Range; Trivia; IsFromSource; IsUse; IsBang }\n2. SynConst.String(text, synStringKind, range) — field is 'text', not 'value'\n3. SynType.App(typeName, lessRange, typeArgs, ...) — field is 'typeArgs', not 'args'\n4. SynExpr.App(flag, isInfix, funcExpr, argExpr, range) — 1st field is ExprAtomicFlag\n5. SynExpr.ComputationExpr — NOT 'CompExpr'\n6. SynExpr.ForEach — for-in loops use ForEach, not For\n7. SynMemberDefn.Member(memberDefn, range) — field is 'memberDefn', not 'binding'\n8. SynOpenDeclTarget.ModuleOrNamespace(longId: SynLongIdent, range) — longId is SynLongIdent, not Ident list\n9. FSharpDiagnosticSeverity is in FSharp.Compiler.Diagnostics namespace\n10. 'range' type (lowercase) is in FSharp.Compiler.Text\n\nSAMPLE FIXTURE: tests/fixtures/fsharp/sample.fs\n- Covers: records, unions, let bindings, match, if/else, tuples, lambdas, lists, record construction/update, type members, async CE, Console.ReadLine (source), File.WriteAllText (sink), printfn (sink), ignore (skip), for-in loop\n- The 'base' keyword in union case field names causes a parse error — use short names (b, h) instead\n\nGOLDEN OUTPUT: tests/fixtures/fsharp/spike-output.xml (447 lines)\n- Wire format version 1, all taint-relevant nodes present",
+      "timestamp": "2026-06-09T12:57:18Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "FCS spike: confirm AST extraction + decide wire format",
   "type": "task",
-  "updated_at": "2026-06-09T11:07:07Z"
+  "updated_at": "2026-06-09T12:57:18Z"
 }
