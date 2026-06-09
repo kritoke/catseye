@@ -5,6 +5,7 @@
     "catseye-9mh.2",
     "catseye-9mh.3"
   ],
+  "closed_at": "2026-06-09T12:57:18Z",
   "created": "2026-06-09T10:54:31Z",
   "description": "Spike to de-risk the F# integration before scaffolding code.\n\nGoals\n1. Build a minimal F# console app that references `FSharp.Compiler.Service` (FCS).\n2. Parse a representative F# file (modules, records, `let` bindings, `match`, async, computation expressions, type providers skipped) via `FSharp.Compiler.SourceCodeServices.FSharpChecker.ParseFile`.\n3. Walk the resulting `FSharpAst` and confirm we can reach every node type the mapper will need: `SynModuleDecl`, `SynBinding`, `SynPat`, `SynExpr`, `SynType`.\n4. Decide wire format. Two candidates:\n   - **XML** — matches what `catseye_ast/tree_sitter_xml.ml` already consumes from tree-sitter. Lowest friction.\n   - **JSON** — more typed, but requires a JSON parser in catseye_ast (we don't have one today) or a S-expression bridge.\n   - Default: **XML**. Document the decision in a comment in `fsharp-extractor/Program.fs` so the mapper can rely on it.\n5. Capture one concrete example file + the exact XML the extractor should emit, checked into `tests/fixtures/fsharp/spike-output.xml`. The mapper ticket references this fixture.\n\nAcceptance\n- `fsharp-extractor` compiles against FCS in a scratch directory.\n- A short README note lives in the spike ticket describing the chosen wire format with one example.\n- Decision recorded as a `bw comment catseye-9mh \"...\"` so the parent epic has a permanent breadcrumb.\n\nWorktree: `catseye-9mh.1/fcs-spike` (epic-id + child ordinal).",
   "id": "catseye-9mh.1",
@@ -17,7 +18,7 @@
     }
   ],
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "FCS spike: confirm AST extraction + decide wire format",
   "type": "task",
   "updated_at": "2026-06-09T12:57:18Z"
