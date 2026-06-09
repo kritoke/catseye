@@ -1,6 +1,8 @@
 {
   "assignee": "",
-  "blocked_by": [],
+  "blocked_by": [
+    "catseye-9mh.4"
+  ],
   "blocks": [],
   "created": "2026-06-09T10:56:09Z",
   "description": "Prove the F# pipeline works end to end.\n\nLayout\n- `tests/fixtures/fsharp/sample.fs` — small but realistic F# file. Mix of: `let` bindings, a record, a `match` expression, an `async` block, a function that calls `System.Console.ReadLine` and `File.WriteAllText` (one true positive for the taint path), and a function that uses `ignore` (must be skipped).\n- `tests/fixtures/fsharp/sample.expected.xml` — golden output of the OCaml mapper (the CatseyeAST.t as serialized XML). Compared in a unit test.\n- `tests/fsharp_mapper_test.ml` (or wherever the project puts mapper tests — coordinate with the existing OCaml test layout) — asserts:\n  - `Fsharp_mapper.parse_file` returns `Ok _` on `sample.fs`.\n  - The resulting AST contains the expected `EApp` node for `ReadLine` and `WriteAllText`.\n  - The `EApp` for `ignore` is tagged for skipping.\n  - The position info on the first `let` is `line 1, col 0`-ish (sanity).\n\nAcceptance\n- All four assertions pass.\n- Test runs in the existing `dune test` invocation (no new test runner).\n- README example: a one-liner showing how to analyze `tests/fixtures/fsharp/sample.fs` with the CLI.\n\nBlocked by: catseye-9mh.4, catseye-9mh.5.\nWorktree: `catseye-9mh.7/fsharp-tests`.",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "F# sample fixture + golden tests + end-to-end smoke",
   "type": "task",
-  "updated_at": "2026-06-09T10:56:09Z"
+  "updated_at": "2026-06-09T10:56:31Z"
 }
