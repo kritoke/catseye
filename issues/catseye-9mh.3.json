@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-09T10:55:08Z",
+  "description": "Create `src/extractor/fsharp/` with the F# console app that uses FSharp.Compiler.Service.\n\nLayout\n- `src/extractor/fsharp/Catseye.FSharp.Extractor.fsproj` — net8.0 (or as decided in spike), references `FSharp.Compiler.Service` from nuget.\n- `src/extractor/fsharp/Program.fs` — entry point. CLI: `catseye-fsharp-extractor \u003cfile.fs|fsx|fsi\u003e [--out \u003cpath\u003e]`. Default: write to stdout.\n- `src/extractor/fsharp/AstEmitter.fs` — walks `FSharpAst`, emits the wire format decided in catseye-9mh.1. Encapsulate the XML element naming + attribute conventions so they're documented in one place.\n- `src/extractor/fsharp/Symbols.fs` — pulls the typed symbols we care about (function names, parameter names, type names) from `FSharpChecker.GetBackgroundCheckResultsForFile` so the mapper can record them.\n- `src/extractor/fsharp/README.md` — short: what it does, how to build (`dotnet build`), how to invoke, where the wire-format spec lives.\n- `.gitignore` entries for `bin/`, `obj/`, `*.user`.\n\nConstraints\n- Must compile on a clean `nix develop` shell (depends on catseye-9mh.2).\n- Exit codes: 0 on success, 2 on parse error, 1 on I/O. Errors go to stderr with file:line:col when FCS provides them.\n- No silent fallbacks — if the file won't parse, return non-zero so the OCaml side can fall back gracefully (or skip).\n- Avoid `dotnet new`-generated boilerplate cruft (telemetry, launch profiles, etc.) — keep the project minimal.\n\nAcceptance\n- `dotnet build` succeeds.\n- `dotnet run -- /path/to/valid.fs` emits the wire format agreed in the spike.\n- `dotnet run -- /nonexistent.fs` exits non-zero with a clear error.\n- Output of one real F# file is checked into `tests/fixtures/fsharp/spike-output.xml` (coord with spike ticket).\n\nBlocked by: catseye-9mh.1, catseye-9mh.2.\nWorktree: `catseye-9mh.3/fsharp-extractor-scaffold`.",
+  "id": "catseye-9mh.3",
+  "labels": [],
+  "parent": "catseye-9mh",
+  "priority": 2,
+  "status": "open",
+  "title": "Scaffold fsharp-extractor .NET console project",
+  "type": "task",
+  "updated_at": "2026-06-09T10:55:08Z"
+}
