@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [
     "catseye-9mh.2",
@@ -11,8 +11,8 @@
   "labels": [],
   "parent": "catseye-9mh",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "FCS spike: confirm AST extraction + decide wire format",
   "type": "task",
-  "updated_at": "2026-06-09T10:56:31Z"
+  "updated_at": "2026-06-09T11:07:07Z"
 }
