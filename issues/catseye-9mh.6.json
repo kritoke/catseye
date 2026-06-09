@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-09T10:55:55Z",
+  "description": "Fill in the security-relevant fields of the F# `Language_plugin.t` descriptor. The list was scoped in the parent epic; this ticket lands it.\n\nLists to add to `src/ocaml/lib/catseye_ast/fsharp_plugin.ml`\n\n`taint_sources` (untrusted data entering the program):\n- `System.Console.ReadLine`\n- `System.Console.In.ReadLine`\n- `System.Console.ReadKey`\n- `System.Environment.GetCommandLineArgs`\n- `System.Environment.GetEnvironmentVariable`\n- `System.IO.Console.In`\n- `System.Net.Http.HttpClient.GetStringAsync`\n- `System.Net.WebClient.DownloadString`\n\n`taint_sinks` (data leaving the program / executing):\n- `System.Console.Write`\n- `System.Console.WriteLine`\n- `printf`\n- `eprintf`\n- `fprintf`\n- `System.IO.File.WriteAllText`\n- `System.IO.File.AppendAllText`\n- `System.IO.File.WriteAllLines`\n- `System.IO.File.AppendAllLines`\n- `System.IO.File.WriteAllBytes`\n- `System.Diagnostics.Process.Start`\n- `System.Net.Http.HttpClient.PostAsync`\n- `System.Net.Http.HttpClient.PutAsync`\n- `System.Net.Http.HttpClient.SendAsync`\n- `System.Net.WebClient.DownloadFile`\n- `System.Data.SqlClient.SqlCommand` (constructor; parameter-taken)\n- `Microsoft.Data.SqlClient.SqlCommand`\n\n`skip_calls`:\n- `ignore`\n- `id`\n- `failwith`\n- `failwithf`\n- `invalidArg`\n- `raise`\n\nAcceptance\n- Lists match the scope documented in the parent epic (catseye-9mh).\n- No false positives on the smoke fixture (catseye-9mh.7).\n- A comment in the plugin file documents the criteria for adding to each list (so future contributors don't cargo-cult).\n\nBlocked by: catseye-9mh.4.\nWorktree: `catseye-9mh.6/fsharp-taint-lists`.",
+  "id": "catseye-9mh.6",
+  "labels": [],
+  "parent": "catseye-9mh",
+  "priority": 2,
+  "status": "open",
+  "title": "F# taint sources / sinks / skip_calls in plugin descriptor",
+  "type": "task",
+  "updated_at": "2026-06-09T10:55:55Z"
+}
