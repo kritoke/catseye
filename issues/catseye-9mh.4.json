@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-09T10:55:31Z",
+  "description": "Bridge the `fsharp-extractor` output into `CatseyeAST.t`.\n\nFiles\n- `src/ocaml/lib/catseye_ast/fsharp_mapper.ml` — mirrors the structure of `ocaml_mapper.ml`. Reads the XML wire format from extractor stdout, walks it, produces `Types.t`. Focus on:\n  - `SynModuleDecl` → `item` (`Let`, `Type`, `Module`).\n  - `SynBinding` → `expr` (`ELet`, `EFn` for `let f x = ...`).\n  - `SynPat` → `pattern` (`PVar`, `PDiscard`, `PTuple`, `PList`, `PAlias`, `PType`).\n  - `SynExpr` → `expr` (`EApp`, `EIf`, `ECase`, `EVar`, `ELiteral`, `EBinOp`, `EUnOp`, `EFieldAccess`, `ERecord`, `EList`, `ETuple`, `ETryCatchFinally`).\n  - `SynType` → `typ` (`TVar`, `TFn`, `TList`, `TTuple`, `TRecord`).\n- `src/ocaml/lib/catseye_ast/fsharp_plugin.ml` — `Language_plugin.t` descriptor (see catseye-9mh.6 for the taint lists). `parse_file` shells out to the extractor (path lookup honors `CATSEYE_FSHARP_EXTRACTOR` env var, then `nix build` output, then `PATH`).\n- Update `src/ocaml/lib/catseye_ast/dune` to include both new modules.\n\nDecisions\n- Position info: use FCS's `(file, startLine, startCol, endLine, endCol)` ranges. Map to `Position.t` / `range` like `ocaml_mapper.ml` does.\n- Error handling: on extractor failure, return `PE.parse_error` with a useful message (don't silently fall back to an empty AST).\n- Comments / trivia: ignore for now (F# has `SynExpr.Quote` for quotations, but we don't need them for the first slice).\n\nAcceptance\n- Mapper handles a representative fixture file end-to-end.\n- Plugin descriptor has the correct extensions (`.fs`, `.fsx`, `.fsi`), manifest files (`*.fsproj`, `paket.dependencies`), and capability flags (`supports_ast_bridge = true`, `supports_il_cfg = true`).\n- A short note in the mapper header documents the wire-format version it consumes (so future extractor changes know to bump a version stamp).\n\nBlocked by: catseye-9mh.3.\nWorktree: `catseye-9mh.4/fsharp-plugin-mapper`.",
+  "id": "catseye-9mh.4",
+  "labels": [],
+  "parent": "catseye-9mh",
+  "priority": 2,
+  "status": "open",
+  "title": "Add F# plugin + mapper to catseye_ast",
+  "type": "task",
+  "updated_at": "2026-06-09T10:55:31Z"
+}
