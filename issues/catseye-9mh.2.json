@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-09T10:54:47Z",
+  "description": "Make the .NET toolchain available to build `fsharp-extractor`.\n\nChanges\n1. Add `dotnet-sdk` (or `dotnet-sdk_8` / `_9` — pin to a specific version the spike ticket specifies) to `devShells.default.buildInputs` in `flake.nix`.\n2. Add a new derivation `packages.fsharp-extractor` (or a sub-package under the same flake) that:\n   - Pulls the source from `src/extractor/fsharp/`.\n   - Runs `dotnet publish -c Release -o $out/bin` to produce a self-contained or framework-dependent binary.\n   - Records the output path so downstream tickets know where to find the binary.\n3. Document the dotnet version requirement in `install.md` next to the other toolchain notes (Crystal, OCaml, Node, Go).\n4. Verify `nix develop -c dotnet --version` and `nix build .#fsharp-extractor` work end-to-end on a clean shell.\n\nDecisions to surface\n- Pin to a specific .NET SDK version (LTS preferred). Make it a top-level input in the same style as `pkgs` / `opam-nix` for visibility.\n- Self-contained vs framework-dependent: prefer **framework-dependent** for smaller flake closure, but document the trade-off in a comment.\n\nAcceptance\n- `nix develop` succeeds and `dotnet --version` is on `PATH`.\n- `nix build .#fsharp-extractor` produces a runnable binary.\n- `flake.nix` diff is small and self-explanatory.\n\nBlocked by: catseye-9mh.1 (need to know the FCS version + .NET SDK target).\nWorktree: `catseye-9mh.2/flake-dotnet`.",
+  "id": "catseye-9mh.2",
+  "labels": [],
+  "parent": "catseye-9mh",
+  "priority": 2,
+  "status": "open",
+  "title": "flake.nix: add dotnet-sdk + fsharp-extractor derivation",
+  "type": "task",
+  "updated_at": "2026-06-09T10:54:47Z"
+}
