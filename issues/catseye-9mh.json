@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-09T10:54:11Z",
+  "description": "Add F# as a first-class supported language in Catseye.\n\nApproach\n- Ship a small .NET console app `fsharp-extractor` (mirroring the Crystal/Elixir extractor pattern) that uses `FSharp.Compiler.Service` (FCS) to parse `.fs`, `.fsx`, `.fsi` files and emit a stable XML representation of the AST + key typed symbols.\n- Add a Catseye plugin (`catseye_ast/fsharp_plugin.ml` + `fsharp_mapper.ml`) that consumes that wire format and produces `CatseyeAST.t`, so the rest of the pipeline (IL, CFG, taint, code smells) needs no F#-specific changes.\n- Update `flake.nix` to add `dotnet-sdk` to the dev shell and wire the extractor build.\n\nWhy FCS (not tree-sitter-fsharp)\n- FCS gives a *typed* AST (resolves names, types, symbols). tree-sitter-fsharp gives only an untyped CST.\n- We already have the \"external extractor\" pattern for Crystal and Elixir; F# fits it cleanly.\n\nFirst-slice scope (taint)\n- Sources: `Console.ReadLine`, `Console.In.ReadLine`, `System.Environment.GetCommandLineArgs`, `System.Console.ReadKey`.\n- Sinks: `System.Console.Write/WriteLine`, `printf/eprintf/fprintf`, `System.IO.File.WriteAllText/AppendAllLines/WriteAllLines`, `System.Diagnostics.Process.Start`, `System.Net.Http.HttpClient.PostAsync/SendAsync/GetStringAsync`, `System.Net.WebClient.DownloadString`.\n- Skip: `ignore`, `id`, `failwith`, `invalidArg`.\n- Manifest files: `*.fsproj`, `paket.dependencies`.\n- This is intentionally a small first slice — easy to grow.\n\nOut of scope (non-goals)\n- F# scripting REPL analysis (`.fsx` is parsed, not executed).\n- Full F# type-checker integration (we use the AST + symbols, not full type-checked IL).\n- Building a separate `fsharp-crowsnest` or `fsharp-rules` package — F# goes through the existing pipeline.\n- .NET dependency in production builds of the OCaml binary (extractor is a sidecar).",
+  "id": "catseye-9mh",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Add F# analysis using F# Compiler Service",
+  "type": "epic",
+  "updated_at": "2026-06-09T10:54:11Z"
+}
