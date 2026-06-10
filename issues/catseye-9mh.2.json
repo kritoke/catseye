@@ -11,9 +11,15 @@
   "id": "catseye-9mh.2",
   "labels": [],
   "parent": "catseye-9mh",
+  "comments": [
+    {
+      "text": "Changed approach from buildDotnetModule nix derivation to the Crystal/Elixir extractor pattern:\n- Extractor built on demand via dotnet run/publish, not as a nix package\n- dotnetCorePackages.sdk_10_0 (10.0.300) added to devShells.default.buildInputs\n- nix develop -c dotnet --version confirmed: 10.0.300\n- install.md updated with .NET SDK 10.0+ prerequisite\n- buildDotnetModule approach deferred (requires nugetDeps, complex setup; not needed for on-demand builds)",
+      "timestamp": "2026-06-10T00:54:28Z"
+    }
+  ],
   "priority": 2,
   "status": "in_progress",
   "title": "flake.nix: add dotnet-sdk + fsharp-extractor derivation",
   "type": "task",
-  "updated_at": "2026-06-10T00:45:30Z"
+  "updated_at": "2026-06-10T00:54:28Z"
 }
