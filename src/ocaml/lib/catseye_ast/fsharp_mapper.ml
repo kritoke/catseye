@@ -404,27 +404,31 @@ let walk_type_defn (n : xml) : item =
   let is_record = List.exists ~f:(fun c -> c.tag = "record_repr") n.children in
   let is_union = List.exists ~f:(fun c -> c.tag = "union_repr") n.children in
   if is_record then
-    let record_repr = List.find_exn ~f:(fun c -> c.tag = "record_repr") n.children in
-    let fields = List.filter_map ~f:(fun c ->
-      if c.tag = "field" then
-        let fname = name_attr c in
-        let ty = match children_with_tag c ~tag:"type_longident" with
-          | [t] -> walk_type t
-          | _ -> TUnknown
-        in
-        Some (fname, ty)
-      else None
-    ) record_repr.children in
-    { item_value = ITypeDef (name, fields, []); item_location = loc }
+    match List.find ~f:(fun c -> c.tag = "record_repr") n.children with
+    | Some record_repr ->
+      let fields = List.filter_map ~f:(fun c ->
+        if c.tag = "field" then
+          let fname = name_attr c in
+          let ty = match children_with_tag c ~tag:"type_longident" with
+            | [t] -> walk_type t
+            | _ -> TUnknown
+          in
+          Some (fname, ty)
+        else None
+      ) record_repr.children in
+      { item_value = ITypeDef (name, fields, []); item_location = loc }
+    | None -> { item_value = ITypeAlias (name, [], TUnknown); item_location = loc }
   else if is_union then
-    let union_repr = List.find_exn ~f:(fun c -> c.tag = "union_repr") n.children in
-    let variants = List.filter_map ~f:(fun c ->
-      if c.tag = "union_case" then
-        let vname = name_attr c in
-        Some { variant_name = vname; variant_args = []; variant_tag = 0 }
-      else None
-    ) union_repr.children in
-    { item_value = ITypeDef (name, [], variants); item_location = loc }
+    match List.find ~f:(fun c -> c.tag = "union_repr") n.children with
+    | Some union_repr ->
+      let variants = List.filter_map ~f:(fun c ->
+        if c.tag = "union_case" then
+          let vname = name_attr c in
+          Some { variant_name = vname; variant_args = []; variant_tag = 0 }
+        else None
+      ) union_repr.children in
+      { item_value = ITypeDef (name, [], variants); item_location = loc }
+    | None -> { item_value = ITypeAlias (name, [], TUnknown); item_location = loc }
   else
     { item_value = ITypeAlias (name, [], TUnknown); item_location = loc }
 
@@ -474,7 +478,7 @@ let find_extractor () : string option =
      if Stdlib.Sys.file_exists fsproj then
        Some (Stdlib.Printf.sprintf "dotnet run --project %s --" (Stdlib.Filename.quote src_dir))
      else
-       (* 3. In PATH *)
+       (* 3. In PATH — assume it exists; caller handles failure *)
        Some "catseye-fsharp-extractor")
 
 (* ── Parse entry point ─────────────────────────────────────────────── *)
@@ -489,7 +493,7 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
     | None ->
       Error (PE.make_error ~file:path ~message:"F# extractor not found. Set CATSEYE_FSHARP_EXTRACTOR or install dotnet SDK.")
     | Some extractor ->
-      let cmd = Stdlib.Printf.sprintf "%s %s 2>&1"
+      let cmd = Stdlib.Printf.sprintf "%s %s 2>/dev/null"
         extractor
         (Stdlib.Filename.quote path) in
       try

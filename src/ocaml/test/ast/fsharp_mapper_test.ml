@@ -57,8 +57,8 @@ let () =
          | EApp (fn, args) ->
              (match fn.expr_value with
               | EVar name ->
-                  if name = "Console.ReadLine" || name = "readLine" then found_readline := true;
-                  if name = "File.WriteAllText" || name = "writeAllText" then found_writealltext := true;
+                  if name = "Console.ReadLine" || name = "Console.In.ReadLine" then found_readline := true;
+                  if name = "File.WriteAllText" || name = "File.AppendAllText" then found_writealltext := true;
                   if name = "ignore" then found_ignore := true;
                   if name = "printfn" || name = "printf" then ()
               | _ -> ());
@@ -112,21 +112,6 @@ let () =
              Printf.printf "  Line %d: unknown (%s)\n" line s
          | _ ->
              Printf.printf "  Line %d: other\n" line)
-      ) mod_.mod_items;
-
-      (* Check foreach separately — it might be in the AST as a different construct *)
-      List.iter (fun item ->
-        match item.item_value with
-        | IFunction (_, _, _, body) ->
-            let has_foreach (e : expr) =
-              match e.expr_value with
-              | EApp _ | ELet _ | EIf _ | ECase _ | EBlock _ | ETuple _ | EList _ | ERecord _ | EFn _ | EBinOp _ | EUnOp _ | EFieldAccess _ ->
-                  (* Walk children — already handled by check_expr *)
-                  false
-              | _ -> false
-            in
-            ignore (has_foreach body)
-        | _ -> ()
       ) mod_.mod_items;
 
       Printf.printf "\n=== Results ===\n";
