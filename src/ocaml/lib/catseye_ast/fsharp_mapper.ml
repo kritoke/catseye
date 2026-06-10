@@ -489,7 +489,7 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
     | None ->
       Error (PE.make_error ~file:path ~message:"F# extractor not found. Set CATSEYE_FSHARP_EXTRACTOR or install dotnet SDK.")
     | Some extractor ->
-      let cmd = Stdlib.Printf.sprintf "%s %s 2>/dev/null"
+      let cmd = Stdlib.Printf.sprintf "%s %s 2>&1"
         extractor
         (Stdlib.Filename.quote path) in
       try

@@ -5,13 +5,22 @@
 open Catseye_ast.Types
 open Catseye_ast.Parse
 
-let extractor_path =
-  "/workspaces/catseye/src/extractor/fsharp/bin/Release/net10.0/Catseye.FSharp.Extractor"
-
-let sample_path =
-  "/workspaces/catseye/tests/fixtures/fsharp/sample.fs"
-
 let () =
+  (* Use CATSEYE_FSHARP_EXTRACTOR env var if set, otherwise resolve from repo root *)
+  let extractor_path =
+    match Sys.getenv "CATSEYE_FSHARP_EXTRACTOR" with
+    | path -> path
+    | exception Not_found ->
+      (* dune runs tests with cwd = src/ocaml *)
+      "src/extractor/fsharp/bin/Release/net10.0/Catseye.FSharp.Extractor"
+  in
+  let sample_path =
+    match Sys.getenv "CATSEYE_FSHARP_SAMPLE" with
+    | path -> path
+    | exception Not_found ->
+      "tests/fixtures/fsharp/sample.fs"
+  in
+
   (* Point to the F# extractor binary *)
   Unix.putenv "CATSEYE_FSHARP_EXTRACTOR" extractor_path;
 

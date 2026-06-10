@@ -60,7 +60,9 @@ let plugin : Language_plugin.t = {
     "raise";
   ];
 
-  manifest_files = ["fsproj"; "paket.dependencies"];
+  manifest_files = ["paket.dependencies"];
+  (* NOTE: .fsproj files vary by project name; the API doesn't support globs.
+     paket.dependencies is the closest fixed-name manifest for F# projects. *)
   skip_lib_dir = false;
 
   supports_ast_bridge = true;
