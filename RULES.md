@@ -305,6 +305,16 @@ Functions that neutralize taint:
 | `get_or_fetch`                                                 | Safe retrieval              |
 | `Random::Secure`, `Tempfile`, `Dir.mktmpdir`                   | Safe random/temp generation |
 
+### F# (basic)
+
+F# analysis uses F# Compiler Service (FCS) via an external extractor. The first slice covers:
+
+- **Security**: taint sources (`Console.ReadLine`, `Environment.GetCommandLineArgs`), taint sinks (`File.WriteAllText`, `Process.Start`, `printfn`), skip calls (`ignore`, `failwith`)
+- **Code smells**: F# flows through the same AST-based detectors as other languages (complexity, nesting, dead code, etc.)
+- **AI antipatterns**: not yet supported for F#
+
+See `src/extractor/fsharp/README.md` for the wire format spec.
+
 ---
 
 ## Quick Reference

@@ -30,6 +30,10 @@ chmod +x install-grammars.sh
 
 This downloads the required language parsers using `npx tree-sitter-cli`.
 
+### F# Support (Optional)
+
+F# analysis requires the .NET SDK 10.0+. If using Nix, run `nix develop` to get it automatically. Otherwise, install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download).
+
 ---
 
 ## Basic Usage

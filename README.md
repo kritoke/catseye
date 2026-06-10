@@ -2,7 +2,7 @@
 
 **Multi-language static security analysis with taint tracking, code smell detection, and AI antipattern linting.**
 
-Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust, and Elixir** — with language-specific security rules and antipattern databases for each.
+Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust, Elixir, and F#** — with language-specific security rules and antipattern databases for each.
 
 > **v0.4.4** - OCaml idiomatic rules, updated Crystal/Gleam/Svelte detectors, OCaml verbose-option detection
 
@@ -50,6 +50,7 @@ EOF
 - **OCaml** 5.x + **Dune** 3.x
 - **tree-sitter** CLI + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
 - **Crystal** 1.x (optional — needed only for native Crystal extractor)
+- **.NET SDK** 10.0+ (optional — needed only for F# support; the nix dev shell provides this)
 - OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
 
 For detailed instructions on installing dependencies without Nix, see [install.md](install.md).
@@ -103,6 +104,7 @@ catseye-ocaml --list-rules --lang javascript --output rules.json
 | Svelte     | `.svelte`                  |  ✅ XSS/SSRF   |      ✅ 12 rules      | ✅ 16 detectors | tree-sitter (two-pass)         |
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |      ✅ 18 rules      | ✅ 16 detectors | tree-sitter                    |
 | Rust       | `.rs`                      |    ✅ Basic    |    ✅ 3 detectors     | ✅ 16 detectors | tree-sitter (native)           |
+| F#         | `.fs` `.fsx` `.fsi`        |    ✅ Basic    |          —            | ✅ 16 detectors | FCS extractor (.NET)           |
 
 ## CLI Reference
 
