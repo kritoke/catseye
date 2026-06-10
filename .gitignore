@@ -33,6 +33,11 @@ src/ocaml/*.install
 .catseye/
 .dune-cache/
 
+# .NET build artifacts (F# extractor)
+src/extractor/fsharp/bin/
+src/extractor/fsharp/obj/
+*.user
+
 # Crystal cache
 crystal/
 
