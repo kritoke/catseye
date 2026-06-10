@@ -140,7 +140,7 @@ let check_god_class (modules : t list) : Finding.t list =
       | JavaScript -> "javascript"
       | OCaml -> "ocaml"
       | Elixir -> "elixir"
-    | FSharp -> "fsharp"
+      | FSharp -> "fsharp"
       | Other s -> s
     in
     let check_items items file findings =
