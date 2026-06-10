@@ -25,6 +25,7 @@ let lang_of_extension path =
   else if Stdlib.Filename.check_suffix path ".svelte" then Some Svelte
   else if Stdlib.Filename.check_suffix path ".rs" then Some Rust
   else if Stdlib.Filename.check_suffix path ".ml" || Stdlib.Filename.check_suffix path ".mli" then Some OCaml
+  else if Stdlib.Filename.check_suffix path ".fs" || Stdlib.Filename.check_suffix path ".fsx" || Stdlib.Filename.check_suffix path ".fsi" then Some FSharp
   else None
 
 (* ── File parsing ────────────────────────────────────────────────────── *)
@@ -82,4 +83,5 @@ let parse_file
       | Rust -> Rust_mapper.parse_file ~path
       | OCaml -> Ocaml_mapper.parse_file ~path
       | Elixir -> parse_elixir ~path ~extractor_cmd:cmds.flat
+      | FSharp -> Fsharp_mapper.parse_file ~path
       | Other _ -> Stdlib.Result.Error (PE.make_error ~file:path ~message:"Unsupported language"))

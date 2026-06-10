@@ -497,7 +497,8 @@ let rec check_data_classes_in_items (items : item list) (file : string) (lang : 
 let check_data_classes (modules : Catseye_ast.Types.t list) : Finding.t list =
   Stdlib.List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | Rust -> "rust" | JavaScript -> "javascript"
-    | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s in
+    | OCaml -> "ocaml" | Elixir -> "elixir"
+    | FSharp -> "fsharp" | Other s -> s in
     check_data_classes_in_items mod_.mod_items mod_.mod_path lang
   ) modules
 
@@ -655,7 +656,8 @@ let check_magic_numbers (modules : Catseye_ast.Types.t list)
     : Finding.t list =
   Stdlib.List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | Rust -> "rust" | JavaScript -> "javascript"
-    | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s in
+    | OCaml -> "ocaml" | Elixir -> "elixir"
+    | FSharp -> "fsharp" | Other s -> s in
     let scopes = Ast_scope.build [mod_] in
     Stdlib.List.concat_map (fun (scope : Ast_scope.ast_scope) ->
       let nums = collect_magic_numbers scope.body in
@@ -707,7 +709,8 @@ let check_empty_catch (modules : Catseye_ast.Types.t list)
     : Finding.t list =
   Stdlib.List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | Rust -> "rust" | JavaScript -> "javascript"
-    | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s in
+    | OCaml -> "ocaml" | Elixir -> "elixir"
+    | FSharp -> "fsharp" | Other s -> s in
     let scopes = Ast_scope.build [mod_] in
     Stdlib.List.concat_map (fun (scope : Ast_scope.ast_scope) ->
       let empties = find_empty_catches scope.body in
@@ -787,7 +790,8 @@ let check_return_from_finally (modules : Catseye_ast.Types.t list)
     : Finding.t list =
   Stdlib.List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | Rust -> "rust" | JavaScript -> "javascript"
-    | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s in
+    | OCaml -> "ocaml" | Elixir -> "elixir"
+    | FSharp -> "fsharp" | Other s -> s in
     let scopes = Ast_scope.build [mod_] in
     Stdlib.List.filter_map (fun (scope : Ast_scope.ast_scope) ->
       match find_return_in_finally scope.body with
@@ -833,7 +837,8 @@ let check_float_equality (modules : Catseye_ast.Types.t list)
     : Finding.t list =
   Stdlib.List.concat_map (fun (mod_ : Catseye_ast.Types.t) ->
     let lang = match mod_.mod_lang with Gleam -> "gleam" | Crystal -> "crystal" | Svelte -> "svelte" | TypeScript -> "typescript" | Rust -> "rust" | JavaScript -> "javascript"
-    | OCaml -> "ocaml" | Elixir -> "elixir" | Other s -> s in
+    | OCaml -> "ocaml" | Elixir -> "elixir"
+    | FSharp -> "fsharp" | Other s -> s in
     let scopes = Ast_scope.build [mod_] in
     Stdlib.List.concat_map (fun (scope : Ast_scope.ast_scope) ->
       let floats = find_float_equality scope.body in

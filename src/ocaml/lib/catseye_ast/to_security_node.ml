@@ -26,6 +26,7 @@ let lang_to_string = function
   | Rust -> "rust"
   | OCaml -> "ocaml"
   | Elixir -> "elixir"
+  | FSharp -> "fsharp"
   | Other s -> s
 
 (* ── Helpers ────────────────────────────────────────────────────────── *)

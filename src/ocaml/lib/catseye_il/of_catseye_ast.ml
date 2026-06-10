@@ -279,6 +279,7 @@ let translate (mod_ : Catseye_ast.Types.t) : il_unit =
     | Rust -> "rust"
     | OCaml -> "ocaml"
     | Elixir -> "elixir"
+    | FSharp -> "fsharp"
     | Other s -> s
   in
   let fns = List.concat_map ~f:walk_item mod_.mod_items in
