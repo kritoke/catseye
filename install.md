@@ -15,6 +15,10 @@ This guide covers building Catseye without Nix. If you have Nix installed, see [
 
 - **Crystal** 1.x (for the native Crystal extractor — without this, Crystal uses tree-sitter fallback)
 
+### Optional (for F# support)
+
+- **.NET SDK** 10.0+ (for the F# extractor using FSharp.Compiler.Service; the nix dev shell provides this automatically via `dotnetCorePackages.sdk_10_0`)
+
 ## Install Dependencies
 
 ### 1. Install OCaml and Dune

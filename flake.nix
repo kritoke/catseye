@@ -68,6 +68,7 @@
             (if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 else pkgs.crystal)
             just
             go
+            dotnetCorePackages.sdk_10_0
             openspec.packages.${system}.default
           ];
         };

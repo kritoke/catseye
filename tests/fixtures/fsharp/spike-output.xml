@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wire-format version="1">
+  <module_or_namespace kind="module" name="Sample" srow="1" scol="0" erow="119" ecol="5">
+    <open srow="3" scol="0" erow="3" ecol="11">System</open>
+    <open srow="4" scol="0" erow="4" ecol="14">System.IO</open>
+    <type_defn name="User" srow="8" scol="5" erow="12" ecol="1">
+      <record_repr srow="8" scol="12" erow="12" ecol="1">
+        <field name="Name" srow="9" scol="10" erow="9" ecol="16">
+          <type_longident srow="9" scol="10" erow="9" ecol="16">string</type_longident>
+        </field>
+        <field name="Email" srow="10" scol="11" erow="10" ecol="17">
+          <type_longident srow="10" scol="11" erow="10" ecol="17">string</type_longident>
+        </field>
+        <field name="Age" srow="11" scol="9" erow="11" ecol="12">
+          <type_longident srow="11" scol="9" erow="11" ecol="12">int</type_longident>
+        </field>
+      </record_repr>
+    </type_defn>
+    <type_defn name="Config" srow="14" scol="5" erow="18" ecol="1">
+      <record_repr srow="14" scol="14" erow="18" ecol="1">
+        <field name="Host" srow="15" scol="10" erow="15" ecol="16">
+          <type_longident srow="15" scol="10" erow="15" ecol="16">string</type_longident>
+        </field>
+        <field name="Port" srow="16" scol="10" erow="16" ecol="13">
+          <type_longident srow="16" scol="10" erow="16" ecol="13">int</type_longident>
+        </field>
+        <field name="Debug" srow="17" scol="11" erow="17" ecol="15">
+          <type_longident srow="17" scol="11" erow="17" ecol="15">bool</type_longident>
+        </field>
+      </record_repr>
+    </type_defn>
+    <type_defn name="Shape" srow="22" scol="5" erow="25" ecol="37">
+      <union_repr srow="23" scol="4" erow="25" ecol="37">
+        <union_case name="Circle" srow="23" scol="6" erow="23" ecol="12">
+          <field name="radius" srow="23" scol="24" erow="23" ecol="29">
+            <type_longident srow="23" scol="24" erow="23" ecol="29">float</type_longident>
+          </field>
+        </union_case>
+        <union_case name="Rectangle" srow="24" scol="6" erow="24" ecol="15">
+          <field name="width" srow="24" scol="26" erow="24" ecol="31">
+            <type_longident srow="24" scol="26" erow="24" ecol="31">float</type_longident>
+          </field>
+          <field name="height" srow="24" scol="42" erow="24" ecol="47">
+            <type_longident srow="24" scol="42" erow="24" ecol="47">float</type_longident>
+          </field>
+        </union_case>
+        <union_case name="Triangle" srow="25" scol="6" erow="25" ecol="14">
+          <field name="b" srow="25" scol="21" erow="25" ecol="26">
+            <type_longident srow="25" scol="21" erow="25" ecol="26">float</type_longident>
+          </field>
+          <field name="h" srow="25" scol="32" erow="25" ecol="37">
+            <type_longident srow="25" scol="32" erow="25" ecol="37">float</type_longident>
+          </field>
+        </union_case>
+      </union_repr>
+    </type_defn>
+    <binding srow="29" scol="4" erow="29" ecol="30">
+      <pat_named srow="29" scol="4" erow="29" ecol="12">greeting</pat_named>
+      <expr_string srow="29" scol="15" erow="29" ecol="30">Hello, world!</expr_string>
+    </binding>
+    <binding srow="30" scol="4" erow="30" ecol="16">
+      <pat_named srow="30" scol="4" erow="30" ecol="6">pi</pat_named>
+      <expr_float srow="30" scol="9" erow="30" ecol="16">3.14159</expr_float>
+    </binding>
+    <binding srow="31" scol="4" erow="31" ecol="18">
+      <pat_named srow="31" scol="4" erow="31" ecol="11">isReady</pat_named>
+      <expr_bool srow="31" scol="14" erow="31" ecol="18">True</expr_bool>
+    </binding>
+    <binding srow="35" scol="4" erow="39" ecol="65">
+      <pat_longident name="describeShape" srow="35" scol="4" erow="35" ecol="23">
+        <pat_named srow="35" scol="18" erow="35" ecol="23">shape</pat_named>
+      </pat_longident>
+      <expr_match srow="36" scol="4" erow="39" ecol="65">
+        <expr_ident srow="36" scol="10" erow="36" ecol="15">shape</expr_ident>
+        <match_clause srow="37" scol="18" erow="37" ecol="51">
+          <pat_longident name="Circle" srow="37" scol="6" erow="37" ecol="14">
+            <pat_named srow="37" scol="13" erow="37" ecol="14">r</pat_named>
+          </pat_longident>
+          <expr_app isInfix="false" srow="37" scol="18" erow="37" ecol="51">
+            <expr_app isInfix="false" srow="37" scol="18" erow="37" ecol="49">
+              <expr_ident srow="37" scol="18" erow="37" ecol="25">sprintf</expr_ident>
+              <expr_string srow="37" scol="26" erow="37" ecol="49">Circle with radius %f</expr_string>
+            </expr_app>
+            <expr_ident srow="37" scol="50" erow="37" ecol="51">r</expr_ident>
+          </expr_app>
+        </match_clause>
+        <match_clause srow="38" scol="26" erow="38" ecol="55">
+          <pat_longident name="Rectangle" srow="38" scol="6" erow="38" ecol="22">
+            <pat_tuple srow="38" scol="17" erow="38" ecol="21">
+              <pat_named srow="38" scol="17" erow="38" ecol="18">w</pat_named>
+              <pat_named srow="38" scol="20" erow="38" ecol="21">h</pat_named>
+            </pat_tuple>
+          </pat_longident>
+          <expr_app isInfix="false" srow="38" scol="26" erow="38" ecol="55">
+            <expr_app isInfix="false" srow="38" scol="26" erow="38" ecol="53">
+              <expr_app isInfix="false" srow="38" scol="26" erow="38" ecol="51">
+                <expr_ident srow="38" scol="26" erow="38" ecol="33">sprintf</expr_ident>
+                <expr_string srow="38" scol="34" erow="38" ecol="51">Rectangle %fx%f</expr_string>
+              </expr_app>
+              <expr_ident srow="38" scol="52" erow="38" ecol="53">w</expr_ident>
+            </expr_app>
+            <expr_ident srow="38" scol="54" erow="38" ecol="55">h</expr_ident>
+          </expr_app>
+        </match_clause>
+        <match_clause srow="39" scol="25" erow="39" ecol="65">
+          <pat_longident name="Triangle" srow="39" scol="6" erow="39" ecol="21">
+            <pat_tuple srow="39" scol="16" erow="39" ecol="20">
+              <pat_named srow="39" scol="16" erow="39" ecol="17">b</pat_named>
+              <pat_named srow="39" scol="19" erow="39" ecol="20">h</pat_named>
+            </pat_tuple>
+          </pat_longident>
+          <expr_app isInfix="false" srow="39" scol="25" erow="39" ecol="65">
+            <expr_app isInfix="false" srow="39" scol="25" erow="39" ecol="63">
+              <expr_app isInfix="false" srow="39" scol="25" erow="39" ecol="61">
+                <expr_ident srow="39" scol="25" erow="39" ecol="32">sprintf</expr_ident>
+                <expr_string srow="39" scol="33" erow="39" ecol="61">Triangle base=%f height=%f</expr_string>
+              </expr_app>
+              <expr_ident srow="39" scol="62" erow="39" ecol="63">b</expr_ident>
+            </expr_app>
+            <expr_ident srow="39" scol="64" erow="39" ecol="65">h</expr_ident>
+          </expr_app>
+        </match_clause>
+      </expr_match>
+    </binding>
+    <binding srow="43" scol="4" erow="50" ecol="15">
+      <pat_longident name="validateUser" srow="43" scol="4" erow="43" ecol="29">
+        <pat_typed srow="43" scol="18" erow="43" ecol="28">
+          <pat_named srow="43" scol="18" erow="43" ecol="22">user</pat_named>
+          <type_longident srow="43" scol="24" erow="43" ecol="28">User</type_longident>
+        </pat_typed>
+      </pat_longident>
+      <expr_let srow="44" scol="4" erow="50" ecol="15">
+        <binding srow="44" scol="8" erow="44" ecol="34">
+          <pat_named srow="44" scol="8" erow="44" ecol="15">nameLen</pat_named>
+          <expr_longident srow="44" scol="18" erow="44" ecol="34">user.Name.Length</expr_longident>
+        </binding>
+        <expr_if srow="45" scol="4" erow="50" ecol="15">
+          <expr_app isInfix="false" srow="45" scol="7" erow="45" ecol="18">
+            <expr_app isInfix="true" srow="45" scol="7" erow="45" ecol="16">
+              <expr_longident srow="45" scol="15" erow="45" ecol="16">op_LessThan</expr_longident>
+              <expr_ident srow="45" scol="7" erow="45" ecol="14">nameLen</expr_ident>
+            </expr_app>
+            <expr_int srow="45" scol="17" erow="45" ecol="18">1</expr_int>
+          </expr_app>
+          <expr_app isInfix="false" srow="46" scol="8" erow="46" ecol="32">
+            <expr_ident srow="46" scol="8" erow="46" ecol="13">Error</expr_ident>
+            <expr_string srow="46" scol="14" erow="46" ecol="32">Name is required</expr_string>
+          </expr_app>
+          <expr_if srow="47" scol="9" erow="50" ecol="15">
+            <expr_app isInfix="false" srow="47" scol="12" erow="47" ecol="42">
+              <expr_ident srow="47" scol="12" erow="47" ecol="15">not</expr_ident>
+              <expr_app isInfix="false" srow="47" scol="17" erow="47" ecol="41">
+                <expr_longident srow="47" scol="17" erow="47" ecol="36">user.Email.Contains</expr_longident>
+                <expr_string srow="47" scol="37" erow="47" ecol="40">@</expr_string>
+              </expr_app>
+            </expr_app>
+            <expr_app isInfix="false" srow="48" scol="8" erow="48" ecol="29">
+              <expr_ident srow="48" scol="8" erow="48" ecol="13">Error</expr_ident>
+              <expr_string srow="48" scol="14" erow="48" ecol="29">Invalid email</expr_string>
+            </expr_app>
+            <expr_app isInfix="false" srow="50" scol="8" erow="50" ecol="15">
+              <expr_ident srow="50" scol="8" erow="50" ecol="10">Ok</expr_ident>
+              <expr_ident srow="50" scol="11" erow="50" ecol="15">user</expr_ident>
+            </expr_app>
+          </expr_if>
+        </expr_if>
+      </expr_let>
+    </binding>
+    <binding srow="54" scol="4" erow="54" ecol="24">
+      <pat_longident name="swap" srow="54" scol="4" erow="54" ecol="15">
+        <pat_tuple srow="54" scol="10" erow="54" ecol="14">
+          <pat_named srow="54" scol="10" erow="54" ecol="11">a</pat_named>
+          <pat_named srow="54" scol="13" erow="54" ecol="14">b</pat_named>
+        </pat_tuple>
+      </pat_longident>
+      <expr_tuple srow="54" scol="19" erow="54" ecol="23">
+        <expr_ident srow="54" scol="19" erow="54" ecol="20">b</expr_ident>
+        <expr_ident srow="54" scol="22" erow="54" ecol="23">a</expr_ident>
+      </expr_tuple>
+    </binding>
+    <binding srow="58" scol="4" erow="58" ecol="26">
+      <pat_named srow="58" scol="4" erow="58" ecol="7">add</pat_named>
+      <expr_lambda srow="58" scol="10" erow="58" ecol="26">
+        <expr_lambda srow="58" scol="10" erow="58" ecol="26">
+          <expr_app isInfix="false" srow="58" scol="21" erow="58" ecol="26">
+            <expr_app isInfix="true" srow="58" scol="21" erow="58" ecol="24">
+              <expr_longident srow="58" scol="23" erow="58" ecol="24">op_Addition</expr_longident>
+              <expr_ident srow="58" scol="21" erow="58" ecol="22">x</expr_ident>
+            </expr_app>
+            <expr_ident srow="58" scol="25" erow="58" ecol="26">y</expr_ident>
+          </expr_app>
+        </expr_lambda>
+      </expr_lambda>
+    </binding>
+    <binding srow="62" scol="4" erow="62" ecol="29">
+      <pat_named srow="62" scol="4" erow="62" ecol="11">numbers</pat_named>
+      <expr_unknown srow="62" scol="14" erow="62" ecol="29"/>
+    </binding>
+    <binding srow="63" scol="4" erow="63" ecol="50">
+      <pat_named srow="63" scol="4" erow="63" ecol="11">doubled</pat_named>
+      <expr_app isInfix="false" srow="63" scol="14" erow="63" ecol="50">
+        <expr_app isInfix="true" srow="63" scol="14" erow="63" ecol="24">
+          <expr_longident srow="63" scol="22" erow="63" ecol="24">op_PipeRight</expr_longident>
+          <expr_ident srow="63" scol="14" erow="63" ecol="21">numbers</expr_ident>
+        </expr_app>
+        <expr_app isInfix="false" srow="63" scol="25" erow="63" ecol="50">
+          <expr_longident srow="63" scol="25" erow="63" ecol="33">List.map</expr_longident>
+          <expr_lambda srow="63" scol="35" erow="63" ecol="49">
+            <expr_app isInfix="false" srow="63" scol="44" erow="63" ecol="49">
+              <expr_app isInfix="true" srow="63" scol="44" erow="63" ecol="47">
+                <expr_longident srow="63" scol="46" erow="63" ecol="47">op_Multiply</expr_longident>
+                <expr_ident srow="63" scol="44" erow="63" ecol="45">n</expr_ident>
+              </expr_app>
+              <expr_int srow="63" scol="48" erow="63" ecol="49">2</expr_int>
+            </expr_app>
+          </expr_lambda>
+        </expr_app>
+      </expr_app>
+    </binding>
+    <binding srow="67" scol="4" erow="71" ecol="1">
+      <pat_named srow="67" scol="4" erow="67" ecol="17">defaultConfig</pat_named>
+      <expr_record srow="67" scol="20" erow="71" ecol="1">
+        <record_field name="Host" srow="68" scol="11" erow="68" ecol="22">
+          <expr_string srow="68" scol="11" erow="68" ecol="22">localhost</expr_string>
+        </record_field>
+        <record_field name="Port" srow="69" scol="11" erow="69" ecol="15">
+          <expr_int srow="69" scol="11" erow="69" ecol="15">8080</expr_int>
+        </record_field>
+        <record_field name="Debug" srow="70" scol="12" erow="70" ecol="17">
+          <expr_bool srow="70" scol="12" erow="70" ecol="17">False</expr_bool>
+        </record_field>
+      </expr_record>
+    </binding>
+    <binding srow="73" scol="4" erow="73" ecol="53">
+      <pat_named srow="73" scol="4" erow="73" ecol="15">debugConfig</pat_named>
+      <expr_record srow="73" scol="18" erow="73" ecol="53">
+        <record_field name="Debug" srow="73" scol="47" erow="73" ecol="51">
+          <expr_bool srow="73" scol="47" erow="73" ecol="51">True</expr_bool>
+        </record_field>
+      </expr_record>
+    </binding>
+    <type_defn name="Counter" srow="77" scol="5" erow="80" ecol="51">
+      <record_repr srow="78" scol="4" erow="78" ecol="18">
+        <field name="Value" srow="78" scol="13" erow="78" ecol="16">
+          <type_longident srow="78" scol="13" erow="78" ecol="16">int</type_longident>
+        </field>
+      </record_repr>
+      <binding srow="79" scol="11" erow="79" ecol="56">
+        <pat_longident name="this.Increment" srow="79" scol="11" erow="79" ecol="27">
+          <pat_unit srow="79" scol="25" erow="79" ecol="27"/>
+        </pat_longident>
+        <expr_record srow="79" scol="30" erow="79" ecol="56">
+          <record_field name="Value" srow="79" scol="40" erow="79" ecol="54">
+            <expr_app isInfix="false" srow="79" scol="40" erow="79" ecol="54">
+              <expr_app isInfix="true" srow="79" scol="40" erow="79" ecol="52">
+                <expr_longident srow="79" scol="51" erow="79" ecol="52">op_Addition</expr_longident>
+                <expr_longident srow="79" scol="40" erow="79" ecol="50">this.Value</expr_longident>
+              </expr_app>
+              <expr_int srow="79" scol="53" erow="79" ecol="54">1</expr_int>
+            </expr_app>
+          </record_field>
+        </expr_record>
+      </binding>
+      <binding srow="80" scol="11" erow="80" ecol="51">
+        <pat_longident name="this.Add" srow="80" scol="11" erow="80" ecol="22">
+          <pat_named srow="80" scol="20" erow="80" ecol="21">n</pat_named>
+        </pat_longident>
+        <expr_record srow="80" scol="25" erow="80" ecol="51">
+          <record_field name="Value" srow="80" scol="35" erow="80" ecol="49">
+            <expr_app isInfix="false" srow="80" scol="35" erow="80" ecol="49">
+              <expr_app isInfix="true" srow="80" scol="35" erow="80" ecol="47">
+                <expr_longident srow="80" scol="46" erow="80" ecol="47">op_Addition</expr_longident>
+                <expr_longident srow="80" scol="35" erow="80" ecol="45">this.Value</expr_longident>
+              </expr_app>
+              <expr_ident srow="80" scol="48" erow="80" ecol="49">n</expr_ident>
+            </expr_app>
+          </record_field>
+        </expr_record>
+      </binding>
+    </type_defn>
+    <binding srow="84" scol="4" erow="86" ecol="47">
+      <pat_longident name="saveUserInput" srow="84" scol="4" erow="84" ecol="20">
+        <pat_unit srow="84" scol="18" erow="84" ecol="20"/>
+      </pat_longident>
+      <expr_let srow="85" scol="4" erow="86" ecol="47">
+        <binding srow="85" scol="8" erow="85" ecol="34">
+          <pat_named srow="85" scol="8" erow="85" ecol="13">input</pat_named>
+          <expr_app isInfix="false" srow="85" scol="16" erow="85" ecol="34">
+            <expr_longident srow="85" scol="16" erow="85" ecol="32">Console.ReadLine</expr_longident>
+            <expr_unit srow="85" scol="32" erow="85" ecol="34"/>
+          </expr_app>
+        </binding>
+        <expr_app isInfix="false" srow="86" scol="4" erow="86" ecol="47">
+          <expr_longident srow="86" scol="4" erow="86" ecol="21">File.WriteAllText</expr_longident>
+          <expr_tuple srow="86" scol="22" erow="86" ecol="46">
+            <expr_string srow="86" scol="22" erow="86" ecol="39">/tmp/output.txt</expr_string>
+            <expr_ident srow="86" scol="41" erow="86" ecol="46">input</expr_ident>
+          </expr_tuple>
+        </expr_app>
+      </expr_let>
+    </binding>
+    <binding srow="90" scol="4" erow="93" ecol="29">
+      <pat_longident name="printArgs" srow="90" scol="4" erow="90" ecol="16">
+        <pat_unit srow="90" scol="14" erow="90" ecol="16"/>
+      </pat_longident>
+      <expr_let srow="91" scol="4" erow="93" ecol="29">
+        <binding srow="91" scol="8" erow="91" ecol="47">
+          <pat_named srow="91" scol="8" erow="91" ecol="12">args</pat_named>
+          <expr_app isInfix="false" srow="91" scol="15" erow="91" ecol="47">
+            <expr_longident srow="91" scol="15" erow="91" ecol="45">Environment.GetCommandLineArgs</expr_longident>
+            <expr_unit srow="91" scol="45" erow="91" ecol="47"/>
+          </expr_app>
+        </binding>
+        <expr_foreach srow="92" scol="4" erow="93" ecol="29">
+          <pat_named srow="92" scol="8" erow="92" ecol="11">arg</pat_named>
+          <expr_ident srow="92" scol="15" erow="92" ecol="19">args</expr_ident>
+          <expr_app isInfix="false" srow="93" scol="8" erow="93" ecol="29">
+            <expr_app isInfix="false" srow="93" scol="8" erow="93" ecol="25">
+              <expr_ident srow="93" scol="8" erow="93" ecol="15">printfn</expr_ident>
+              <expr_string srow="93" scol="16" erow="93" ecol="25">arg: %s</expr_string>
+            </expr_app>
+            <expr_ident srow="93" scol="26" erow="93" ecol="29">arg</expr_ident>
+          </expr_app>
+        </expr_foreach>
+      </expr_let>
+    </binding>
+    <binding srow="97" scol="4" erow="99" ecol="17">
+      <pat_longident name="ignored" srow="97" scol="4" erow="97" ecol="14">
+        <pat_unit srow="97" scol="12" erow="97" ecol="14"/>
+      </pat_longident>
+      <expr_let srow="98" scol="4" erow="99" ecol="17">
+        <binding srow="98" scol="8" erow="98" ecol="35">
+          <pat_named srow="98" scol="8" erow="98" ecol="14">result</pat_named>
+          <expr_app isInfix="false" srow="98" scol="17" erow="98" ecol="35">
+            <expr_longident srow="98" scol="17" erow="98" ecol="33">Console.ReadLine</expr_longident>
+            <expr_unit srow="98" scol="33" erow="98" ecol="35"/>
+          </expr_app>
+        </binding>
+        <expr_app isInfix="false" srow="99" scol="4" erow="99" ecol="17">
+          <expr_ident srow="99" scol="4" erow="99" ecol="10">ignore</expr_ident>
+          <expr_ident srow="99" scol="11" erow="99" ecol="17">result</expr_ident>
+        </expr_app>
+      </expr_let>
+    </binding>
+    <binding srow="103" scol="4" erow="106" ecol="1">
+      <pat_longident name="fetchDataAsync" srow="103" scol="4" erow="103" ecol="22">
+        <pat_named srow="103" scol="19" erow="103" ecol="22">url</pat_named>
+      </pat_longident>
+      <expr_app isInfix="false" srow="103" scol="25" erow="106" ecol="1">
+        <expr_ident srow="103" scol="25" erow="103" ecol="30">async</expr_ident>
+        <expr_computationexpr srow="103" scol="31" erow="106" ecol="1">
+          <expr_let srow="104" scol="4" erow="105" ecol="22">
+            <binding srow="104" scol="4" erow="104" ecol="44">
+              <pat_named srow="104" scol="9" erow="104" ecol="13">data</pat_named>
+              <expr_app isInfix="false" srow="104" scol="16" erow="104" ecol="44">
+                <expr_ident srow="104" scol="16" erow="104" ecol="21">async</expr_ident>
+                <expr_computationexpr srow="104" scol="22" erow="104" ecol="44">
+                  <expr_yieldorreturn srow="104" scol="24" erow="104" ecol="42">
+                    <expr_string srow="104" scol="31" erow="104" ecol="42">mock data</expr_string>
+                  </expr_yieldorreturn>
+                </expr_computationexpr>
+              </expr_app>
+            </binding>
+            <expr_yieldorreturn srow="105" scol="4" erow="105" ecol="22">
+              <expr_longident srow="105" scol="11" erow="105" ecol="22">data.Length</expr_longident>
+            </expr_yieldorreturn>
+          </expr_let>
+        </expr_computationexpr>
+      </expr_app>
+    </binding>
+    <binding srow="110" scol="0" erow="119" ecol="5">
+      <pat_longident name="main" srow="111" scol="4" erow="111" ecol="13">
+        <pat_named srow="111" scol="9" erow="111" ecol="13">argv</pat_named>
+      </pat_longident>
+      <expr_seq srow="112" scol="4" erow="119" ecol="5">
+        <expr_app isInfix="false" srow="112" scol="4" erow="112" ecol="25">
+          <expr_app isInfix="false" srow="112" scol="4" erow="112" ecol="16">
+            <expr_ident srow="112" scol="4" erow="112" ecol="11">printfn</expr_ident>
+            <expr_string srow="112" scol="12" erow="112" ecol="16">%s</expr_string>
+          </expr_app>
+          <expr_ident srow="112" scol="17" erow="112" ecol="25">greeting</expr_ident>
+        </expr_app>
+        <expr_let srow="113" scol="4" erow="119" ecol="5">
+          <binding srow="113" scol="8" erow="113" ecol="72">
+            <pat_named srow="113" scol="8" erow="113" ecol="12">user</pat_named>
+            <expr_record srow="113" scol="15" erow="113" ecol="72">
+              <record_field name="Name" srow="113" scol="24" erow="113" ecol="31">
+                <expr_string srow="113" scol="24" erow="113" ecol="31">Alice</expr_string>
+              </record_field>
+              <record_field name="Email" srow="113" scol="41" erow="113" ecol="60">
+                <expr_string srow="113" scol="41" erow="113" ecol="60">alice@example.com</expr_string>
+              </record_field>
+              <record_field name="Age" srow="113" scol="68" erow="113" ecol="70">
+                <expr_int srow="113" scol="68" erow="113" ecol="70">30</expr_int>
+              </record_field>
+            </expr_record>
+          </binding>
+          <expr_seq srow="114" scol="4" erow="119" ecol="5">
+            <expr_match srow="114" scol="4" erow="116" ecol="42">
+              <expr_app isInfix="false" srow="114" scol="10" erow="114" ecol="27">
+                <expr_ident srow="114" scol="10" erow="114" ecol="22">validateUser</expr_ident>
+                <expr_ident srow="114" scol="23" erow="114" ecol="27">user</expr_ident>
+              </expr_app>
+              <match_clause srow="115" scol="14" erow="115" ecol="40">
+                <pat_longident name="Ok" srow="115" scol="6" erow="115" ecol="10">
+                  <pat_named srow="115" scol="9" erow="115" ecol="10">u</pat_named>
+                </pat_longident>
+                <expr_app isInfix="false" srow="115" scol="14" erow="115" ecol="40">
+                  <expr_app isInfix="false" srow="115" scol="14" erow="115" ecol="33">
+                    <expr_ident srow="115" scol="14" erow="115" ecol="21">printfn</expr_ident>
+                    <expr_string srow="115" scol="22" erow="115" ecol="33">Valid: %s</expr_string>
+                  </expr_app>
+                  <expr_longident srow="115" scol="34" erow="115" ecol="40">u.Name</expr_longident>
+                </expr_app>
+              </match_clause>
+              <match_clause srow="116" scol="19" erow="116" ecol="42">
+                <pat_longident name="Error" srow="116" scol="6" erow="116" ecol="15">
+                  <pat_named srow="116" scol="12" erow="116" ecol="15">msg</pat_named>
+                </pat_longident>
+                <expr_app isInfix="false" srow="116" scol="19" erow="116" ecol="42">
+                  <expr_app isInfix="false" srow="116" scol="19" erow="116" ecol="38">
+                    <expr_ident srow="116" scol="19" erow="116" ecol="26">printfn</expr_ident>
+                    <expr_string srow="116" scol="27" erow="116" ecol="38">Error: %s</expr_string>
+                  </expr_app>
+                  <expr_ident srow="116" scol="39" erow="116" ecol="42">msg</expr_ident>
+                </expr_app>
+              </match_clause>
+            </expr_match>
+            <expr_seq srow="117" scol="4" erow="119" ecol="5">
+              <expr_app isInfix="false" srow="117" scol="4" erow="117" ecol="20">
+                <expr_ident srow="117" scol="4" erow="117" ecol="17">saveUserInput</expr_ident>
+                <expr_unit srow="117" scol="18" erow="117" ecol="20"/>
+              </expr_app>
+              <expr_seq srow="118" scol="4" erow="119" ecol="5">
+                <expr_app isInfix="false" srow="118" scol="4" erow="118" ecol="16">
+                  <expr_ident srow="118" scol="4" erow="118" ecol="13">printArgs</expr_ident>
+                  <expr_unit srow="118" scol="14" erow="118" ecol="16"/>
+                </expr_app>
+                <expr_int srow="119" scol="4" erow="119" ecol="5">0</expr_int>
+              </expr_seq>
+            </expr_seq>
+          </expr_seq>
+        </expr_let>
+      </expr_seq>
+    </binding>
+  </module_or_namespace>
+</wire-format>
