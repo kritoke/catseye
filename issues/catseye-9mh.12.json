@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-06-10T10:11:07Z",
@@ -8,8 +8,8 @@
   "labels": [],
   "parent": "catseye-9mh",
   "priority": 4,
-  "status": "open",
+  "status": "in_progress",
   "title": "F# extractor: refactor module-level mutable StringBuilder",
   "type": "task",
-  "updated_at": "2026-06-10T10:11:07Z"
+  "updated_at": "2026-06-10T10:13:54Z"
 }
