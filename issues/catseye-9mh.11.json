@@ -2,14 +2,15 @@
   "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
+  "closed_at": "2026-06-10T10:12:19Z",
   "created": "2026-06-10T10:11:01Z",
   "description": "In `fsharp_mapper.ml`, `find_extractor` returns `Some \"catseye-fsharp-extractor\"` for the PATH fallback without checking if the binary exists. The subsequent `Unix.open_process_in` will fail with a confusing shell error.\n\nFix: Use `Unix.system \"which catseye-fsharp-extractor \u003e /dev/null 2\u003e\u00261\"` or `Sys.file_exists` on common PATH locations to verify the binary exists before returning `Some`. Return `None` if not found, and let the caller produce a clear error message.",
   "id": "catseye-9mh.11",
   "labels": [],
   "parent": "catseye-9mh",
   "priority": 3,
-  "status": "in_progress",
+  "status": "closed",
   "title": "F# mapper: find_extractor PATH fallback should verify binary exists",
   "type": "task",
-  "updated_at": "2026-06-10T10:11:51Z"
+  "updated_at": "2026-06-10T10:12:19Z"
 }
