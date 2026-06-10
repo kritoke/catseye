@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-06-10T10:11:18Z",
+  "description": "The `manifest_files` field in `Language_plugin.t` is `string list` — no glob support. F# projects have variable `.fsproj` filenames (e.g., `MyProject.fsproj`), so `\"fsproj\"` can't be listed as a manifest file.\n\nOptions:\n1. Add glob support to `manifest_files` (e.g., `\"*.fsproj\"`)\n2. Add a `manifest_extensions` field to `Language_plugin.t`\n3. Document the limitation and move on\n\nThis is LOW priority since `manifest_files` isn't actively used in the codebase.",
+  "id": "catseye-9mh.14",
+  "labels": [],
+  "parent": "catseye-9mh",
+  "priority": 4,
+  "status": "open",
+  "title": "F# plugin: add manifest_files glob support or document limitation",
+  "type": "task",
+  "updated_at": "2026-06-10T10:11:18Z"
+}
