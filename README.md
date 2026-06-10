@@ -79,6 +79,10 @@ catseye-ocaml --lang javascript,typescript path/to/project/
 # Scan with all checks
 just scan-full path/to/project/src
 
+# F# analysis (requires .NET SDK 10.0+)
+export CATSEYE_FSHARP_EXTRACTOR=src/extractor/fsharp/bin/Release/net10.0/Catseye.FSharp.Extractor
+catseye-ocaml --lang fsharp tests/fixtures/fsharp/sample.fs
+
 # JSON output
 just scan-json path/to/project/src
 
