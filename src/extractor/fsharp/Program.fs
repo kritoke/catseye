@@ -16,6 +16,10 @@ open FSharp.Compiler.Diagnostics
 
 // ── helpers ────────────────────────────────────────────────────
 
+// NOTE: sb is module-level mutable state. This is acceptable because the
+// extractor is a single-shot CLI tool (one parse per process invocation).
+// If the extractor is ever embedded in a larger application, sb should be
+// passed through the walk functions as a parameter.
 let sb = StringBuilder()
 let indent depth = String(' ', depth * 2)
 let xmlEscape (s: string) =
@@ -301,7 +305,12 @@ let main argv =
     let sourceText = IO.File.ReadAllText filePath |> SourceText.ofString
     let parsingOptions = { FSharpParsingOptions.Default with SourceFiles = [| filePath |] }
     let checker = FSharpChecker.Create()
-    let parseResults = checker.ParseFile(filePath, sourceText, parsingOptions) |> Async.RunSynchronously
+    let parseResults =
+        try
+            checker.ParseFile(filePath, sourceText, parsingOptions) |> fun a -> Async.RunSynchronously(a, timeout = 30000)
+        with :? TimeoutException ->
+            eprintfn "error: FCS parse timed out after 30s for %s" filePath
+            exit 2
     let diags = parseResults.Diagnostics
     let hasErrors = diags |> Array.exists (fun d -> d.Severity = FSharpDiagnosticSeverity.Error)
     if hasErrors then

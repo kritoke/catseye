@@ -46,6 +46,24 @@ let () =
          | _ -> "unexpected lang");
       Printf.printf "Items: %d\n" (List.length mod_.mod_items);
 
+      (* Structural assertions *)
+      let item_counts = List.fold_left (fun acc item ->
+        match item.item_value with
+        | IFunction _ -> (fst acc + 1, snd acc)
+        | ITypeDef _ -> (fst acc, snd acc + 1)
+        | _ -> acc
+      ) (0, 0) mod_.mod_items in
+      let func_count = fst item_counts in
+      let type_count = snd item_counts in
+      let import_count = List.fold_left (fun acc item ->
+        match item.item_value with IImport _ -> acc + 1 | _ -> acc
+      ) 0 mod_.mod_items in
+      let constant_count = List.fold_left (fun acc item ->
+        match item.item_value with IConstant _ -> acc + 1 | _ -> acc
+      ) 0 mod_.mod_items in
+      Printf.printf "  Functions: %d, Types: %d, Imports: %d, Constants: %d\n"
+        func_count type_count import_count constant_count;
+
       (* Walk items and check for expected structures *)
       let found_readline = ref false in
       let found_writealltext = ref false in
@@ -121,9 +139,11 @@ let () =
       Printf.printf "  match expression:           %s\n" (if !found_match then "FOUND" else "MISSING");
 
       let all_ok = !found_readline && !found_writealltext && !found_ignore && !found_match in
-      if all_ok then
-        Printf.printf "\nPASS: all expected F# AST nodes found\n"
+      let structural_ok = func_count >= 6 && type_count >= 3 && import_count >= 2 && constant_count >= 5 in
+      if all_ok && structural_ok then
+        Printf.printf "\nPASS: all expected F# AST nodes found, structural assertions passed\n"
       else begin
-        Printf.printf "\nFAIL: some expected nodes missing\n";
+        if not all_ok then Printf.printf "FAIL: some expected taint nodes missing\n";
+        if not structural_ok then Printf.printf "FAIL: structural assertions failed (func=%d type=%d import=%d const=%d)\n" func_count type_count import_count constant_count;
         exit 1
       end

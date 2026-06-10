@@ -73,9 +73,10 @@ let rec walk_type (n : xml) : typ =
     TTuple (List.map ~f:walk_type n.children)
   | "type_app" ->
     (match n.children with
-     | base :: _ -> TVar (match base with
-       | { tag = "type_longident"; _ } -> text_of base
-       | _ -> "<app>")
+     | base :: args ->
+       let base_type = walk_type base in
+       let arg_types = List.map ~f:walk_type args in
+       TApp (base_type, arg_types)
      | [] -> TUnknown)
   | "type_anon" -> TUnknown
   | _ -> TUnknown
@@ -478,8 +479,11 @@ let find_extractor () : string option =
      if Stdlib.Sys.file_exists fsproj then
        Some (Stdlib.Printf.sprintf "dotnet run --project %s --" (Stdlib.Filename.quote src_dir))
      else
-       (* 3. In PATH — assume it exists; caller handles failure *)
-       Some "catseye-fsharp-extractor")
+       (* 3. In PATH — verify it exists *)
+       let which_cmd = "which catseye-fsharp-extractor 2>/dev/null" in
+       let exit_code = Stdlib.Sys.command which_cmd in
+       if exit_code = 0 then Some "catseye-fsharp-extractor"
+       else None)
 
 (* ── Parse entry point ─────────────────────────────────────────────── *)
 

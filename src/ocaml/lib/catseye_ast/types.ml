@@ -54,6 +54,7 @@ type typ =
   | TBool
   | TUnit
   | TVar of string
+  | TApp of typ * typ list  (* Type application, e.g., List<int> *)
   | TList of typ
   | TTuple of typ list
   | TRecord of (string * typ) list
