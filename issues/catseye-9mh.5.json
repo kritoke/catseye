@@ -6,14 +6,15 @@
   "blocks": [
     "catseye-9mh.7"
   ],
+  "closed_at": "2026-06-10T01:03:52Z",
   "created": "2026-06-09T10:55:42Z",
   "description": "Plug the F# mapper into the dispatcher so files with `.fs`/`.fsx`/`.fsi` extensions get routed correctly.\n\nFiles\n- `src/ocaml/lib/catseye_ast/types.ml` — add `FSharp` to the `lang` variant.\n- `src/ocaml/lib/catseye_ast/parse.ml`:\n  - Extend `lang_of_extension` to map `.fs`, `.fsx`, `.fsi` to `Some FSharp`.\n  - Add the `| FSharp -\u003e Fsharp_mapper.parse_file ~path` branch in the dispatch match.\n- `src/ocaml/lib/catseye_ast/plugin_registry.ml` — no changes needed if `parse_via_registry` already works; verify by reading. (If we want the new plugin auto-registered, the wiring point lives in `catseye_cli`/`catseye_engine`; check during the impl.)\n\nAcceptance\n- `Lang.to_string` (or whatever the pretty-printer is called) covers F#.\n- `parse.ml` test (or a smoke run) successfully parses a `.fs` file via the new branch.\n- No regression in any existing language's dispatch.\n\nBlocked by: catseye-9mh.4.\nWorktree: `catseye-9mh.5/wire-fsharp-dispatch`.",
   "id": "catseye-9mh.5",
   "labels": [],
   "parent": "catseye-9mh",
   "priority": 2,
-  "status": "open",
+  "status": "closed",
   "title": "Wire F# into parse.ml + types.ml + plugin registry",
   "type": "task",
-  "updated_at": "2026-06-09T10:56:31Z"
+  "updated_at": "2026-06-10T01:03:52Z"
 }
