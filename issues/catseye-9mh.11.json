@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [],
   "created": "2026-06-10T10:11:01Z",
@@ -8,8 +8,8 @@
   "labels": [],
   "parent": "catseye-9mh",
   "priority": 3,
-  "status": "open",
+  "status": "in_progress",
   "title": "F# mapper: find_extractor PATH fallback should verify binary exists",
   "type": "task",
-  "updated_at": "2026-06-10T10:11:01Z"
+  "updated_at": "2026-06-10T10:11:51Z"
 }
