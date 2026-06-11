@@ -133,6 +133,10 @@ let auto_exclude_dirs (root : string) (base_exclude : string list) : string list
     "_site"; ".jekyll-cache";  (* Ruby static *)
     ".cache";
   ] in
+  (* Always exclude these dirs even if they don't exist at root level *)
+  let always_exclude = [
+    "obj"; "bin";  (* .NET build artifacts *)
+  ] in
   (* Also exclude hidden dirs that are tool-specific *)
   let known_hidden = [
     ".git"; ".hg"; ".svn";
@@ -147,6 +151,7 @@ let auto_exclude_dirs (root : string) (base_exclude : string list) : string list
       extra := name :: !extra
   in
   List.iter ~f:check_and_add known_artifact_dirs;
+  List.iter ~f:(fun name -> extra := name :: !extra) always_exclude;
   List.iter ~f:check_and_add known_hidden;
   (* Merge with base exclude, deduplicate *)
   let combined = !extra @ base_exclude in
