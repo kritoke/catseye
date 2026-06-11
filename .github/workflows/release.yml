@@ -1,7 +1,7 @@
 name: Release
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE22: true
 
 on:
   push:
@@ -15,11 +15,11 @@ jobs:
   build-linux-x86_64:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "22"
 
       - name: Install dependencies
         run: |
@@ -40,6 +40,7 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
+          opam switch create 5.4.1 2>&1 | tail -5 || true
           eval $(opam env)
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
@@ -92,11 +93,11 @@ jobs:
   build-linux-aarch64:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "22"
 
       - name: Install deps
         run: |
@@ -117,6 +118,7 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
+          opam switch create 5.4.1 2>&1 | tail -5 || true
           eval $(opam env)
           opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
           cd src/ocaml && opam exec -- dune build --profile release
@@ -149,16 +151,17 @@ jobs:
             artifact: catseye-macos-aarch64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "22"
 
       - name: Install deps
         run: |
           brew install opam
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
+          opam switch create 5.4.1 2>&1 | tail -5 || true
 
       - name: Install Elixir/OTP
         uses: erlef/setup-beam@v1

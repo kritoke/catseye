@@ -15,11 +15,11 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "22"
 
       - name: Install dependencies
         run: |
@@ -34,8 +34,9 @@ jobs:
           export OPAMROOT=/home/runner/.opam
           export PATH="$OPAMROOT/bin:$PATH"
           opam init --disable-sandboxing --auto-setup -y 2>&1 | grep -v darcs || true
+          opam switch create 5.4.1 2>&1 | tail -5 || true
           eval $(opam env)
-          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson 2>&1 | tail -20
+          opam install -y dune ocamlfind menhir cmdliner yojson bos rresult logs fmt sqlite3 ocamlgraph kdl toml sedlex ppx_deriving ppx_deriving_yojson base stdio core incremental eio eio_posix 2>&1 | tail -20
 
       - name: Build Catseye
         run: |
