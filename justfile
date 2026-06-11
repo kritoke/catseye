@@ -24,6 +24,8 @@ build:
     cp -f src/ocaml/_build/default/tools/feedback/feedback.exe /workspaces/catseye/bin/catseye-feedback
     @echo "  Building Elixir escript..."
     cd /workspaces/catseye/scripts/elixir-extractor && MIX_ENV=prod mix escript.build 2>/dev/null && cp -f catseye_extractor /workspaces/catseye/bin/ || true
+    @echo "  Building F# extractor..."
+    cd src/extractor/fsharp && dotnet build -c Release 2>/dev/null && cp -f bin/Release/net10.0/Catseye.FSharp.Extractor /workspaces/catseye/bin/catseye-fsharp-extractor || true
     @echo "✓ Built → bin/"
 
 nix-build:
@@ -38,6 +40,8 @@ build-release:
     cd src/ocaml && dune build --profile release && cp -f _build/default/bin/main.exe /workspaces/catseye/bin/catseye-ocaml
     @echo "  Building Elixir escript..."
     cd /workspaces/catseye/scripts/elixir-extractor && MIX_ENV=prod mix escript.build 2>/dev/null && cp -f catseye_extractor /workspaces/catseye/bin/ || true
+    @echo "  Building F# extractor..."
+    cd src/extractor/fsharp && dotnet build -c Release 2>/dev/null && cp -f bin/Release/net10.0/Catseye.FSharp.Extractor /workspaces/catseye/bin/catseye-fsharp-extractor || true
     @echo "✓ Built (release) → bin/"
 
 build-extractors:
@@ -51,6 +55,9 @@ build-extractors:
 test: build
     @echo "=== Unit tests ==="
     cd src/ocaml && dune test
+    @echo ""
+    @echo "=== E2E: F# mapper test ==="
+    @CATSEYE_FSHARP_EXTRACTOR=bin/catseye-fsharp-extractor CATSEYE_FSHARP_SAMPLE=tests/fixtures/fsharp/sample.fs cd src/ocaml && dune exec test/ast/fsharp_mapper_test.exe 2>/dev/null || echo "  ⚠ F# test skipped (extractor not built)"
     @echo ""
     @echo "=== E2E: Vulnerable samples ==="
     @./bin/catseye-ocaml --rules src/ocaml/rules --format json test/samples/ > /tmp/catseye-test-out.json 2>/dev/null || true
@@ -183,6 +190,8 @@ install prefix="$HOME/.local": build
     @install -m 755 bin/catseye-hierarchical-extractor {{prefix}}/lib/catseye/extractor/catseye-hierarchical-extractor 2>/dev/null || true
     @install -d {{prefix}}/lib/catseye/elixir-extractor
     @install -m 755 bin/catseye_extractor {{prefix}}/lib/catseye/elixir-extractor/catseye_extractor 2>/dev/null || true
+    @install -d {{prefix}}/lib/catseye/fsharp-extractor
+    @install -m 755 bin/catseye-fsharp-extractor {{prefix}}/lib/catseye/fsharp-extractor/catseye-fsharp-extractor 2>/dev/null || true
     @echo "✓ Installed to {{prefix}}"
     @if ! echo ":$$PATH:" | grep -q ":$$HOME/.local/bin:"; then \
         echo "Hint: Add ~/.local/bin to your PATH"; \

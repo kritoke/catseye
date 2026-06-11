@@ -67,6 +67,12 @@ just build
 just test
 ```
 
+**F# support:** If you have .NET SDK 10.0+ installed, `just build` will also build the F# extractor. To scan F# files, set the extractor path:
+```bash
+export CATSEYE_FSHARP_EXTRACTOR=bin/catseye-fsharp-extractor
+catseye-ocaml --lang fsharp path/to/fsharp/project
+```
+
 ## Quick Start
 
 ```bash
