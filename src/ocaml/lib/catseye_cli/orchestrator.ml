@@ -743,6 +743,8 @@ let run (config : t) : int =
             List.map ~f:(convert_ai_finding ~lang:"rust") (Ai_linter.Rust_rules.analyze_module mod_)
            | Other "ocaml" ->
             List.map ~f:(convert_ai_finding ~lang:"ocaml") (Ai_linter.Ocaml_rules.analyze_module mod_)
+           | Elixir ->
+            List.map ~f:(convert_ai_finding ~lang:"elixir") (Ai_linter.Elixir_rules.analyze_module mod_)
            | _ -> [])
       with exn -> Format.eprintf "AI lint error: %s\n" (Exn.to_string exn); [])
     ) sources in

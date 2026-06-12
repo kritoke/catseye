@@ -274,6 +274,21 @@ Catches patterns common in AI-generated code.
 | `UnsafePanic`       | `unwrap()`, `expect()`, `panic!()` without error handling      |
 | `RustInefficiency`  | Unnecessary clones, `String::from(&var)`                       |
 
+### Elixir (120+ detectors)
+
+| Category                    | Rule ID                          | What it catches                                                              |
+| --------------------------- | -------------------------------- | ---------------------------------------------------------------------------- |
+| **Hallucinated methods**     | `hallucinated-method`            | Python (`strip`, `len`, `dict`, `range`, `append`, `enumerate`, `isinstance`), Ruby (`puts`, `nil?`, `select`, `reject`, `collect`, `inject`, `each`), JavaScript (`console.log`, `array_push`, `parseInt`, `JSON.parse`, `fetch`, `typeof`), Java (`System.out.println`, `Integer.parseInt`, `ArrayList`, `HashMap`, `toString`), Go (`fmt.Println`, `make`, `len`, `panic`, `defer`), PHP (`strlen`, `strpos`, `var_dump`, `echo`, `explode`) |
+| **Framework confusion**      | `framework-confusion`             | Python `for i in range`, `while True`, `elif`, `__init__`, `self`; Ruby `attr_accessor`, `require`, `class` |
+| **Elixir misremembered APIs**| `hallucinated-method`             | `Map.has_key` → `Map.has_key?/2`, `Enum.empty` → `Enum.empty?/1`, `String.trim_start` → `String.trim_leading/1` |
+| **Non-idiomatic Enum**       | `non-idiomatic-length-empty`     | `length(x) == 0` instead of `Enum.empty?/1`                                 |
+|                            | `non-idiomatic-sort-reverse`     | `Enum.sort |> Enum.reverse` instead of `Enum.sort(:desc)`                    |
+|                            | `non-idiomatic-identity-map`     | `Enum.map(collection, fn x -> x end)` no-op                                 |
+|                            | `non-idiomatic-reduce-sum`       | `Enum.reduce` with `acc + x` instead of `Enum.sum/1`                         |
+|                            | `non-idiomatic-reduce-count`     | `Enum.reduce` with conditional increment instead of `Enum.count/2`            |
+|                            | `non-idiomatic-reduce-frequencies` | `Enum.reduce` with `Map.update` counter instead of `Enum.frequencies/1`     |
+| **Debug leftovers**          | `debug-leftover`                  | `IO.inspect`, `dbg`, `IEx.pry`, `IO.puts` in production code                  |
+
 ---
 
 ## Taint Sources
