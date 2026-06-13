@@ -97,14 +97,7 @@ let rec translate_expr (e : expr) : il_expr =
   | EUnknown s -> IEUnknown s
   | ERecordUpdate (_, _) -> IEUnknown "<record_update>"
 
-and expr_full_name (e : expr) : string =
-  match e.expr_value with
-  | EVar v -> v
-  | EFieldAccess (recv, field) ->
-    let prefix = expr_full_name recv in
-    if prefix = "" then field
-    else prefix ^ "." ^ field
-  | _ -> ""
+and expr_full_name (e : expr) : string = Catseye_ast.Types.expr_full_name e
 
 (* ── Expression → il_block (when expression contains statements) ────── *)
 
@@ -262,25 +255,13 @@ let rec walk_item (item : item) : il_function list =
        default `walk_item`. Without this, calls inside top-level expressions
        (e.g. `EVIL_REGEX = Regex.new("(a+)+")`) are never seen by the CFG
        engine and rules never fire on them. *)
-    [let _ = () in
-     { fn_name = ""; fn_params = []; fn_body = translate_block_expr body; fn_pos = pos_of_item item }]
+    [{ fn_name = ""; fn_params = []; fn_body = translate_block_expr body; fn_pos = pos_of_item item }]
   | IImport _ | ITypeAlias _ | ITypeDef _
   | IExternal _ | IUnknown _ -> []
 
 (* ── Main entry point ───────────────────────────────────────────────── *)
 
 let translate (mod_ : Catseye_ast.Types.t) : il_unit =
-  let lang = match mod_.mod_lang with
-    | Gleam -> "gleam"
-    | Crystal -> "crystal"
-    | Svelte -> "svelte"
-    | TypeScript -> "typescript"
-    | JavaScript -> "javascript"
-    | Rust -> "rust"
-    | OCaml -> "ocaml"
-    | Elixir -> "elixir"
-    | FSharp -> "fsharp"
-    | Other s -> s
-  in
+  let lang = Catseye_ast.Types.lang_to_string mod_.mod_lang in
   let fns = List.concat_map ~f:walk_item mod_.mod_items in
   { il_file = mod_.mod_path; il_lang = lang; il_functions = fns }

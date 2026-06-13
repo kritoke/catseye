@@ -16,46 +16,20 @@ open Types
 
 module Tsx = Tree_sitter_xml
 
-(* Tree-sitter XML node type *)
-type xml = {
+(* Tree-sitter XML node type — structural sharing with Tsx *)
+type xml = Tsx.xml = {
   tag : string;
   attrs : (string * string) list;
   children : xml list;
   text : string;
 }
 
-let attr (n : xml) (k : string) : string =
-  try Stdlib.List.assoc k n.attrs with Stdlib.Not_found -> ""
-
-let line_of (n : xml) : int =
-  match attr n "srow" with "" -> 0 | s -> (try Stdlib.int_of_string s + 1 with _ -> 0)
-
-let parse_xml = Tsx.parse_xml
-let find = Tsx.find
-
-(* Convert Tsx.xml to our local xml type *)
-let rec convert_xml (n : Tsx.xml) : xml = {
-  tag = n.tag;
-  attrs = n.attrs;
-  children = List.map ~f:convert_xml n.children;
-  text = n.text;
-}
-
-(* ── Position helpers ─────────────────────────────────────────────── *)
-
-let position_of_xml (n : xml) ~(field : string) =
-  let row = try Stdlib.int_of_string (attr n field) + 1 with _ -> 0 in
-  Position.make ~line:row ~column:0 ~byte_offset:0
-
-let range_of_xml (n : xml) =
-  { start = position_of_xml n ~field:"srow";
-    end_ = position_of_xml n ~field:"erow" }
-
-let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter ~f:(fun c -> attr c "field" = field) n.children
-
-let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter ~f:(fun c -> c.tag = tag) n.children
+let attr = Tsx.attr
+let line_of = Tsx.line_of
+let position_of_xml = Tsx.position_of_xml
+let range_of_xml = Tsx.range_of_xml
+let children_with_field = Tsx.children_with_field
+let children_with_tag = Tsx.children_with_tag
 
 let child_with_tag (n : xml) ~(tag : string) : xml option =
   let rec find = function
@@ -381,11 +355,11 @@ let parse_with_grammar ~grammar ~path : (t, PE.parse_error) Result.t =
     let status = Unix.close_process_in ic in
     match status with
     | Unix.WEXITED 0 | Unix.WEXITED 1 ->
-      let doc = parse_xml (Stdlib.Buffer.contents xml_str) in
+      let doc = Tsx.parse_xml (Stdlib.Buffer.contents xml_str) in
       (* Drill through wrapper tags *)
-      let program = match find doc ~tag:"source_file" with
-        | [p] -> convert_xml p
-        | _ -> convert_xml doc
+      let program = match Tsx.find doc ~tag:"source_file" with
+        | [p] -> p
+        | _ -> doc
       in
       let items = List.concat_map ~f:(fun c -> walk_item c path) program.children in
       let mod_ = {

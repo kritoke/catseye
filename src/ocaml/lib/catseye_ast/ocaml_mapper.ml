@@ -23,22 +23,10 @@ let attr = Tsx.attr
 let line_of = Tsx.line_of
 let find = Tsx.find
 let parse_xml = Tsx.parse_xml
-
-(* ── Position helpers ─────────────────────────────────────────────── *)
-
-let position_of_xml (n : xml) ~field =
-  let row = try Stdlib.int_of_string (attr n field) + 1 with _ -> 0 in
-  Position.make ~line:row ~column:0 ~byte_offset:0
-
-let range_of_xml (n : xml) =
-  { start = position_of_xml n ~field:"srow";
-    end_ = position_of_xml n ~field:"erow" }
-
-let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter ~f:(fun c -> attr c "field" = field) n.children
-
-let children_with_tag (n : xml) ~(tag : string) : xml list =
-  List.filter ~f:(fun c -> c.tag = tag) n.children
+let position_of_xml = Tsx.position_of_xml
+let range_of_xml = Tsx.range_of_xml
+let children_with_field = Tsx.children_with_field
+let children_with_tag = Tsx.children_with_tag
 
 (* ── XML → CatseyeAST conversion ────────────────────────────────────── *)
 

@@ -52,10 +52,6 @@ module AnalysisGraph = struct
   let create ~(files : file_node list) =
     { files; asts = []; findings = []; smells = [] }
 
-  let invalidate_file (g : t) (_path : string) =
-    (* Keep all files, hash change will propagate *)
-    g.files <- g.files
-
   let get_files (g : t) = g.files
 
   let update_ast (g : t) (path : string) (ast_json : string) =

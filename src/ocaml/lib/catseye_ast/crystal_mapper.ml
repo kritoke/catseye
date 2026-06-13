@@ -136,24 +136,6 @@ let stmt_to_expr (call_arg_map : (int * string, arg_node list) Stdlib.Hashtbl.t)
 
 (* ── Function body reconstruction ──────────────────────────────────── *)
 
-(** Find the line where a function/class/module scope ends.
-    This is the line of the next def/class/module/import at the same or lesser indentation,
-    or the end of the file. *)
-let find_scope_end (nodes : security_node list) (def_idx : int) : int =
-  let def_node = Stdlib.List.nth nodes def_idx in
-  let def_line = def_node.line in
-  let rec scan idx =
-    if idx >= Stdlib.List.length nodes then Int.max_value
-    else
-      let node = Stdlib.List.nth nodes idx in
-      if idx > def_idx && node.line > def_line then
-        match node.node_type with
-        | "def" | "class" | "module" -> node.line
-        | _ -> scan (idx + 1)
-      else scan (idx + 1)
-  in
-  scan (def_idx + 1)
-
 (** Collect body expressions for a function, given its line range *)
 let collect_body (call_arg_map : (int * string, arg_node list) Stdlib.Hashtbl.t)
     (nodes : security_node list) (start_line : int) (end_line : int) : expr list =

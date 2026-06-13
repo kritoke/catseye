@@ -88,9 +88,7 @@ let has_changes (t : incremental_tracker) =
 let changed_count (t : incremental_tracker) =
   List.length t.added + List.length t.changed + List.length t.removed
 
-(* Cache invalidation *)
-let invalidate_all () = ()
-let invalidate_file (_path : string) = ()
+(* Cache invalidation — TODO: implement when incremental engine is activated *)
 
 (* Findings management *)
 let update_findings (_path : string) (_findings : Catseye_types.Finding.t list) = ()

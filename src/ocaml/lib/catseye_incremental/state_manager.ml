@@ -108,6 +108,9 @@ module Engine = struct
       added_files = List.rev !added;
       modified_files = List.rev !modified }
 
+  (** Mark a file as needing re-analysis by resetting its analyzed timestamp.
+      Not yet called from the incremental engine, but will be needed when
+      incremental mode is fully activated. *)
   let invalidate_file (t : t) (path : string) =
     match File_map.get path t.previous_map with
     | None -> t

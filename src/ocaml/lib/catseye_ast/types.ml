@@ -9,6 +9,18 @@ let ( <> ) = Stdlib.( <> )
 (** Supported languages *)
 type lang = Gleam | Crystal | Svelte | TypeScript | JavaScript | Rust | OCaml | Elixir | FSharp | Other of string
 
+let lang_to_string = function
+  | Gleam -> "gleam"
+  | Crystal -> "crystal"
+  | Svelte -> "svelte"
+  | TypeScript -> "typescript"
+  | JavaScript -> "javascript"
+  | Rust -> "rust"
+  | OCaml -> "ocaml"
+  | Elixir -> "elixir"
+  | FSharp -> "fsharp"
+  | Other s -> s
+
 (** Source position *)
 module Position : sig
   type t = {
@@ -114,6 +126,18 @@ and expr = {
   expr_value : expr_value;
   expr_location : range;
 }
+
+(** Build a dotted name from an expression tree.
+    EVar "x" → "x", EFieldAccess(EVar "a", "b") → "a.b".
+    Returns "" for non-nameable expressions. *)
+let rec expr_full_name (e : expr) : string =
+  match e.expr_value with
+  | EVar v -> v
+  | EFieldAccess (recv, field) ->
+    let prefix = expr_full_name recv in
+    if prefix = "" then field
+    else prefix ^ "." ^ field
+  | _ -> ""
 
 (** Item (top-level definitions) *)
 type item_value =

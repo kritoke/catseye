@@ -17,18 +17,6 @@ let ( <> ) = Stdlib.( <> )
 open Catseye_types
 open Types
 
-let lang_to_string = function
-  | Gleam -> "gleam"
-  | Crystal -> "crystal"
-  | Svelte -> "svelte"
-  | TypeScript -> "typescript"
-  | JavaScript -> "javascript"
-  | Rust -> "rust"
-  | OCaml -> "ocaml"
-  | Elixir -> "elixir"
-  | FSharp -> "fsharp"
-  | Other s -> s
-
 (* ── Helpers ────────────────────────────────────────────────────────── *)
 
 let make_node ~node_type ~name ~args ~line ~file ~language : Security_node.t = {
@@ -76,14 +64,7 @@ let patterns_to_args (pats : pattern list) : Security_node.arg list =
 
 (* ── Expression name extraction ─────────────────────────────────────── *)
 
-let rec expr_full_name (e : expr) : string =
-  match e.expr_value with
-  | EVar v -> v
-  | EFieldAccess (recv, field) ->
-    let prefix = expr_full_name recv in
-    if prefix = "" then field
-    else prefix ^ "." ^ field
-  | _ -> ""
+(* expr_full_name inherited from Types *)
 
 (* ── Expression → node list ────────────────────────────────────────── *)
 

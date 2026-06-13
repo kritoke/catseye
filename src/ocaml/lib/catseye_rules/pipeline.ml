@@ -130,37 +130,6 @@ let detect_inheritance_anomalies
 
 (* ── Module Graph Analysis ──────────────────────────────────────────── *)
 
-module Graph = struct
-  type vertex = string
-  type edge = { from : vertex; to_ : vertex; label : string }
-  
-  (** Find dependency cycles - returns list of cycles *)
-  let find_dependency_cycles (deps : edge list) : vertex list list =
-    let adj = Hashtbl.create (module String) in
-    (* Build adjacency list *)
-    List.iter deps ~f:(fun dep ->
-      Hashtbl.update adj dep.from ~f:(function
-        | Some lst -> dep.to_ :: lst
-        | None -> [dep.to_]
-      )
-    );
-    []
-
-  (** Check for dangerous circular dependencies *)
-  let check_circular_deps (modules : (string * string list) list) : bool =
-    let module_set = List.fold modules ~init:(Set.empty (module String)) 
-        ~f:(fun acc (name, _) -> Set.add acc name) in
-    let module_list = Set.to_list module_set in
-    let rec has_cycle visited curr =
-      if Set.mem visited curr then true else
-      let new_visited = Set.add visited curr in
-      match List.Assoc.find modules ~equal:String.equal curr with
-      | Some deps -> List.exists deps ~f:(has_cycle new_visited)
-      | None -> false
-    in
-    List.exists module_list ~f:(has_cycle (Set.empty (module String)))
-end
-
 (* ── Semantic Validation ───────────────────────────────────────────── *)
 
 module SemanticValidator = struct

@@ -61,24 +61,6 @@ let block_has_sanitizer (cfg : Cfg_graph.t) (block_id : int) : bool =
     | _ -> false
   ) nodes
 
-(** Check if any node in a block calls a function from a given sanitizer list.
-    This version uses the rule-specific sanitizers from the KDL rules. *)
-let block_has_rule_sanitizer (cfg : Cfg_graph.t) (block_id : int)
-    (sanitizers : string list) : bool =
-  let nodes = Cfg_graph.block_nodes cfg block_id in
-  List.exists ~f:(fun node ->
-    match node with
-    | ILCall (_, fn_name, _, _) ->
-      List.exists ~f:(fun _pat ->
-        Catseye_rules.Interpreter.matches_sanitizer sanitizers fn_name
-      ) sanitizers
-      (* Also check known built-in sanitizers *)
-      || is_sanitizer_call fn_name
-    | ILAssign (_, IECall (fn_name, _, _), _) ->
-      is_sanitizer_call fn_name
-    | _ -> false
-  ) nodes
-
 (** Compute dominator analysis for a CFG.
     Returns dominance functions + identified guard blocks. *)
 let compute (cfg : Cfg_graph.t) : t =

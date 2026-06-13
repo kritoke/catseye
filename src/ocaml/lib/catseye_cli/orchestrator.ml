@@ -68,31 +68,6 @@ let run_list_rules (config : Config.t) : int =
 
 (* ── Extractors ─────────────────────────────────────────────────────── *)
 
-let run_crystal_extractor (extractor : string) (file_path : string) : (string, int) Result.t =
-  let cmd = Printf.sprintf "CRYSTAL_HAS_WRAPPER=1 crystal run %s -- %s 2>/dev/null"
-    (Stdlib.Filename.quote extractor) (Stdlib.Filename.quote file_path)
-  in
-  let exit_code = Stdlib.Sys.command cmd in
-  if exit_code = 0 then
-    try
-      let tmp_file, oc = Stdlib.Filename.open_temp_file ~perms:0o600 "catseye-extract-" ".out" in
-      (* SECURE: open_temp_file creates atomically with random suffix *)
-      Stdlib.close_out oc;
-      let ic = Stdlib.open_in tmp_file in
-      let len = Stdlib.in_channel_length ic in
-      let buf = Stdlib.Bytes.create len in
-      Stdlib.really_input ic buf 0 len;
-      Stdlib.close_in ic;
-      let content = Stdlib.Bytes.to_string buf in
-      Stdlib.Sys.remove tmp_file;
-      Ok content
-    with
-    | Sys_error _ -> Error (-2)
-    | End_of_file -> Error (-3)
-    | _ -> Error (-4)
-  else
-    Error exit_code
-
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
   (* JS/TS/Svelte/OCaml always use AST bridge — they have no flat extractor *)
   let use_bridge = config.ast_bridge || match src.lang with "javascript" | "typescript" | "svelte" | "ocaml" | "elixir" | "fsharp" -> true | _ -> false in

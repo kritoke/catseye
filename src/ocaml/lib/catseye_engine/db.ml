@@ -96,10 +96,7 @@ let get_tainted_records (db : t) (var : string) (file : string) : taint_record l
   | None -> []
 
 (** Check if a variable is tainted in ANY file (cross-file taint propagation). *)
-let is_tainted_anywhere (db : t) (var : string) : bool =
-  Map.Poly.exists db ~f:(fun records ->
-    List.exists ~f:(fun r -> r.var_name = var) records
-  )
+let is_tainted_anywhere = is_tainted
 
 (** Get all taint records for a variable across ALL files (for cross-file propagation). *)
 let get_tainted_records_global (db : t) (var : string) : taint_record list =

@@ -9,6 +9,7 @@
 *)
 
 open Base
+open Types
 
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
@@ -40,6 +41,17 @@ let rec find (n : xml) ~tag : xml list =
 (** Collect only *direct* children matching a predicate. *)
 let children_where (n : xml) ~f : xml list =
   List.filter n.children ~f:f
+
+(** Build a source position from an XML attribute.
+    Reads the attribute [field] (e.g. "srow", "erow") and converts to 1-indexed line. *)
+let position_of_xml (n : xml) ~field =
+  let row = try Stdlib.int_of_string (attr n field) + 1 with _ -> 0 in
+  Position.make ~line:row ~column:0 ~byte_offset:0
+
+(** Build a source range from srow/erow XML attributes. *)
+let range_of_xml (n : xml) =
+  { start = position_of_xml n ~field:"srow";
+    end_ = position_of_xml n ~field:"erow" }
 
 (* ── Tokenizer ─────────────────────────────────────────────────────── *)
 
@@ -186,9 +198,11 @@ let parse_xml_all s =
 let children_with_tag (n : xml) ~(tag : string) : xml list =
   List.filter ~f:(fun c -> c.tag = tag) n.children
 
-(** Direct children with a specific attribute. *)
+(** Direct children with a specific [field] attribute value.
+    Tree-sitter XML uses `field="name"` to annotate the role of child nodes.
+    This finds direct children whose `field` attribute equals the given value. *)
 let children_with_field (n : xml) ~(field : string) : xml list =
-  List.filter ~f:(fun c -> Stdlib.List.mem_assoc field c.attrs) n.children
+  List.filter ~f:(fun c -> attr c "field" = field) n.children
 
 (* ── Grammar resolution ─────────────────────────────────────────────── *)
 
