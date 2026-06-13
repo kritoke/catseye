@@ -155,3 +155,67 @@ let find_enclosing_class (nodes : Security_node.t list) (file : string) (line : 
         | next :: _ -> if next.Security_node.line > line then Some td else find rest
       else find rest
   in find type_defs
+
+(* ── Shared string utilities ────────────────────────────────────────── *)
+
+(** Substring check. True if [sub] appears anywhere in [str]. *)
+let contains (str : string) (sub : string) : bool =
+  find_substring str sub >= 0
+
+(** File paths that should be exempt from certain checks.
+    Uses suffix matching against known benchmark/test/example directories. *)
+let is_benchmark_or_example (file : string) : bool =
+  let lower = Stdlib.String.lowercase_ascii file in
+  Stdlib.List.exists (fun pat ->
+    let plen = Stdlib.String.length pat in
+    Stdlib.String.length lower >= plen &&
+    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
+  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+
+(** Method names that should be exempt from anatomy/complexity checks.
+    Covers constructors, factories, parsers, builders, handlers, tests,
+    getters, compute/query/validate patterns. *)
+let is_exempt_method (name : string) : bool =
+  (* Standard constructors *)
+  name = "initialize" || name = "new"
+  (* From/Parse patterns (serialization/deserialization) *)
+  || Stdlib.String.length name >= 5 && Stdlib.String.sub name 0 5 = "from_"
+  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "decode" || p = "parse_" || p = "to_json" || p = "to_hash")
+  (* Builder patterns *)
+  || Stdlib.String.length name >= 5 && (let p = Stdlib.String.sub name 0 5 in p = "build" || p = "creat")
+  (* Private helpers — extracted for dedup, params are required *)
+  || Stdlib.String.length name >= 5 && Stdlib.String.sub name (Stdlib.String.length name - 5) 5 = "_core"
+  (* Event/action handlers — domain context requires many params *)
+  || Stdlib.String.length name >= 7 && Stdlib.String.sub name 0 7 = "handle_"
+  (* Benchmark methods — self-contained harnesses *)
+  || Stdlib.String.length name >= 9 && Stdlib.String.sub name 0 9 = "benchmark"
+  (* Test methods *)
+  || Stdlib.String.length name >= 4 && Stdlib.String.sub name 0 4 = "test"
+  (* Rust getter patterns — idiomatic query methods *)
+  || Stdlib.String.length name >= 4 && Stdlib.String.sub name 0 4 = "get_"
+  (* Rust compute/query/populate patterns — aggregate functions that are naturally larger *)
+  || Stdlib.String.length name >= 8 && (let p = Stdlib.String.sub name 0 8 in p = "compute_" || p = "populate" || p = "aggregate")
+  (* Rust query patterns *)
+  || Stdlib.String.length name >= 6 && Stdlib.String.sub name 0 6 = "query_"
+  (* Rust update/validate/revert patterns — often contain many validations/operations *)
+  || Stdlib.String.length name >= 7 && (let p = Stdlib.String.sub name 0 7 in p = "update_" || p = "archive_" || p = "revert_")
+  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "delay_" || p = "grant_")
+  (* Rust badge/check patterns *)
+  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "check_" || p = "badge_")
+  (* Rust validate pattern (suffix) *)
+  || Stdlib.String.length name >= 8 && Stdlib.String.sub name (Stdlib.String.length name - 8) 8 = "_validate"
+
+(** File paths that should be exempt from DRY checks.
+    Includes benchmark/test/example dirs, constant files, DTOs, auth patterns. *)
+let is_dry_exempt_file (file : string) : bool =
+  let lower = Stdlib.String.lowercase_ascii file in
+  Stdlib.List.exists (fun pat ->
+    let plen = Stdlib.String.length pat in
+    Stdlib.String.length lower >= plen &&
+    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
+  ) [ "constants.cr"; "consts.cr"; "enums.cr"; "enums.gl"; "constants.gl"
+    ; "/bench/"; "/benchmark/"; "/example/"; "/examples/"
+    ; "/spec/"; "/test/"; "/tests/"
+    ; "auth.rs"; "users.rs"; "auth.gl"; "users.gl"
+    ; "rewards.rs"; "rewards.gl"
+    ; "/dtos/"; "/dto/"; "/types/"; "/entities/"; "/models/" ]

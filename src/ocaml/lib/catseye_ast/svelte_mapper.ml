@@ -58,8 +58,8 @@ let run_tree_sitter_on_string ~grammar ~lang ~source : xml option =
     let oc = Stdlib.open_out tmp in
     Stdlib.output_string oc source;
     Stdlib.close_out oc;
-    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name %s -x '%s' 2>/dev/null"
-      grammar lang tmp in
+    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name %s -x %s 2>/dev/null"
+      (Stdlib.Filename.quote grammar) lang (Stdlib.Filename.quote tmp) in
     let ic = Unix.open_process_in cmd in
     let buf = Stdlib.Buffer.create 4096 in
     (try while true do Stdlib.Buffer.add_channel buf ic 4096 done with Stdlib.End_of_file -> ());
@@ -140,7 +140,8 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
   | None ->
     Error (PE.make_error ~file:path ~message:"Svelte tree-sitter grammar not found. Set TREE_SITTER_SVELTE_GRAMMAR or install tree-sitter-svelte.")
   | Some grammar ->
-    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name svelte -x '%s' 2>/dev/null" grammar path in
+    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name svelte -x %s 2>/dev/null"
+      (Stdlib.Filename.quote grammar) (Stdlib.Filename.quote path) in
     try
       let ic = Unix.open_process_in cmd in
       let xml_str = Stdlib.Buffer.create 4096 in

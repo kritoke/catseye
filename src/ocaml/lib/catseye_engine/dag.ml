@@ -64,19 +64,32 @@ let build_dag (sink : Security_node.t) (db : Db.t)
   (* Check if var is a function parameter *)
   let is_param var = Set.Poly.mem def_params var in
 
-  (* Trace a single var backwards; returns (nodes, edges, entry_point_ids) *)
+  (* Trace a single var backwards.
+     Returns (nodes, edges, entry_point_ids, current_node_id)
+     where current_node_id is the id of the topmost node in this trace
+     (the propagator closest to the sink, or the source/param itself).
+     The caller creates the edge from current_node_id to sink_id. *)
   let counter = ref 0 in
   let fresh () = Int.incr counter; Stdlib.Printf.sprintf "n%d" !counter in
   let empty_set = Set.Poly.empty in
 
   let rec trace var =
-    trace_with_depth var 0 empty_set
+    let (ns, es, ents, cur_id) = trace_with_depth var 0 empty_set in
+    (* Only the outermost call creates the edge to sink_id *)
+    let sink_edge = match cur_id with
+      | Some cid -> [{ src = cid; dst = sink_id; label = "flows to" }]
+      | None -> []
+    in
+    (ns, sink_edge @ es, ents)
 
-  (* Internal trace with depth tracking and cycle prevention *)
+  (* Internal trace with depth tracking and cycle prevention.
+     Returns (nodes, edges, entry_point_ids, current_node_id option)
+     where current_node_id is the id of the node that the CALLER should
+     link to — i.e. the propagator or source at this level. *)
   and trace_with_depth var depth seen =
     (* Check depth limit and cycle detection *)
     if depth > max_trace_depth || Set.Poly.mem seen var then
-      ([], [], [])
+      ([], [], [], None)
     else
       let seen' = Set.Poly.add seen var in
       match find_assign var with
@@ -84,9 +97,10 @@ let build_dag (sink : Security_node.t) (db : Db.t)
         let id = fresh () in
         ([ { id; label = var; node_type = `Source; file = sink.file; line = 0 } ],
          [],
-         [id])
+         [id],
+         Some id)
       | None ->
-        ([], [], [])
+        ([], [], [], None)
       | Some assign ->
         let id = fresh () in
         let propagator : dag_node = {
@@ -105,12 +119,20 @@ let build_dag (sink : Security_node.t) (db : Db.t)
           } in
           ([src; propagator],
            [{ src = src_id; dst = id; label = "defines" }],
-           [src_id])
+           [src_id],
+           Some id)
         | Some sv ->
-          let (up_nodes, up_edges, entries) = trace_with_depth sv (depth + 1) seen' in
+          let (up_nodes, up_edges, entries, child_id) = trace_with_depth sv (depth + 1) seen' in
+          (* Chain current propagator to its child, not to sink_id.
+             Only the outermost `trace` creates the sink edge. *)
+          let edge = match child_id with
+            | Some cid -> { src = id; dst = cid; label = "flows to" }
+            | None -> { src = id; dst = sink_id; label = "flows to" }
+          in
           (propagator :: up_nodes,
-           { src = id; dst = sink_id; label = "flows to" } :: up_edges,
-           entries)
+           edge :: up_edges,
+           entries,
+           Some id)
   in
 
 let (nodes, edges, entries) =

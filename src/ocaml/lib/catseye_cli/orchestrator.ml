@@ -583,6 +583,18 @@ let run (config : t) : int =
     Stdlib.exit 0
   end;
 
+  (* Step 2b: AST cache — avoid re-parsing files for CFG and Claws paths *)
+  let ast_cache = Stdlib.Hashtbl.create 64 in
+  let get_cached_ast (src : source_file) : Catseye_ast.Types.t option =
+    match Stdlib.Hashtbl.find_opt ast_cache src.path with
+    | Some mod_ -> Some mod_
+    | None ->
+      (try match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
+       | Ok mod_ -> Stdlib.Hashtbl.replace ast_cache src.path mod_; Some mod_
+       | Error _ -> None
+       with _ -> None)
+  in
+
   (* Step 3: Load rules *)
   let rules = time_phase "rules" (fun () ->
     match Catseye_rules.Loader.load_rules config.rules_dir with
@@ -613,9 +625,9 @@ let run (config : t) : int =
         if config.format = Terminal && !analyzed mod 10 = 0 then
           Format.eprintf "  [progress] Analyzed %d/%d files...\n" !analyzed (List.length sources);
         try
-          match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
-          | Error _ -> []
-          | Ok mod_ ->
+          match get_cached_ast src with
+          | None -> []
+          | Some mod_ ->
             let unit = Catseye_il.Of_catseye_ast.translate mod_ in
             let opts : Catseye_il.Cfg_taint.analyze_opts = {
               cfg_max_blocks = config.cfg_max_blocks;
@@ -821,15 +833,8 @@ let run (config : t) : int =
 
   (* Step 4e: Claws — code smell analysis *)
   let all_findings = if config.claws then begin
-    (* Parse ASTs for files that support it (Gleam always, Crystal via bridge) *)
-    let ast_modules = List.filter_map ~f:(fun src ->
-      try match Catseye_ast.Parse.parse_file ~extractor_cmds:config.extractor_cmds ~path:src.path with
-        | Ok mod_ -> Some mod_
-        | Error _ -> None
-      with
-      | Sys_error _ -> None
-      | Failure _ -> None
-    ) sources in
+    (* Use cached ASTs — already parsed in Step 2b or earlier phases *)
+    let ast_modules = List.filter_map ~f:get_cached_ast sources in
     let claws_findings =
       if ast_modules <> [] then
         Catseye_claws.Smells.analyze_ast ast_modules config.claws_config
@@ -910,7 +915,6 @@ let run (config : t) : int =
       else List.filter ~f:(fun (f : Finding.t) ->
         not (List.mem suppressed ~equal:String.equal f.Finding.rule)
       ) all_findings in
-    let sup = config.taint_suppress in
     let sup = config.taint_suppress in
     if Map.is_empty sup then filtered
     else List.filter ~f:(fun (f : Finding.t) ->

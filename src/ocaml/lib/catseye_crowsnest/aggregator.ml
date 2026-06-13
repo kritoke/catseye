@@ -24,19 +24,25 @@ type dep_result = {
   level : [ `Critical | `Warning | `Clean ];
 }
 
+let is_critical_severity (s : string) : bool =
+  let lower = Stdlib.String.lowercase_ascii s in
+  (Stdlib.String.length lower >= 4 &&
+   let prefix = Stdlib.String.sub lower 0 4 in
+   Base.List.mem ~equal:String.equal ["crit"; "high"] prefix)
+  || lower = "critical" || lower = "high"
+
+let is_warning_severity (s : string) : bool =
+  let lower = Stdlib.String.lowercase_ascii s in
+  (Stdlib.String.length lower >= 3 &&
+   Stdlib.String.sub lower 0 3 = "mod")
+  || lower = "moderate" || lower = "medium" || lower = "low"
+
 let level_of_osv = function
   | Vulnerabilities vulns ->
     if List.exists ~f:(fun v ->
       match v.severity with
-      | Some s when
-          String.length s >= 4 &&
-          (Stdlib.String.sub s 0 4 = "CRIT" || Stdlib.String.sub s 0 4 = "HIGH")
-        -> true
-      | Some s when
-          String.length s >= 4 &&
-          Stdlib.String.sub s 0 4 = "MOD" || s = "HIGH" || s = "CRITICAL"
-        -> true
-      | _ -> false
+      | Some s -> is_critical_severity s
+      | None -> false
     ) vulns then `Critical
     else `Warning
   | No_known_cves -> `Clean
@@ -147,9 +153,18 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
           | Some json -> Osv.parse_osv_response json
           | None ->
             let r = Osv.query "hex" dep.name version in
-            (match cache with
-             | Some _c -> ()
-             | None -> ());
+            (* Cache the raw response, matching Shard_yml pattern *)
+            (match cache, r with
+             | Some c, (Vulnerabilities _ | No_known_cves) ->
+               let json = Printf.sprintf
+                 {|{"_osv_status":"%s"}|}
+                 (match r with
+                  | No_known_cves -> "clean"
+                  | Vulnerabilities _ -> "has_vulns"
+                  | Query_failed _ -> "failed")
+               in
+               Cache.store_osv c "hex" dep.name version json
+             | _ -> ());
             r
         in
 

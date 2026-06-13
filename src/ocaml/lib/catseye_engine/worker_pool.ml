@@ -1,9 +1,9 @@
 (* lib/catseye_engine/worker_pool.ml
-   Crystal worker pool — manages persistent Crystal extractor processes.
-   
+   Crystal worker pool - manages persistent Crystal extractor processes.
+
    Workers communicate via NDJSON over stdin/stdout. The pool distributes
    extraction requests round-robin and collects results.
-   
+
    Usage:
      let pool = Worker_pool.create "bin/catseye-crystal-extractor" 4 in
      let nodes = Worker_pool.extract pool "src/foo.cr" in
@@ -34,6 +34,7 @@ type worker = {
   worker_stdin : Stdlib.out_channel;
   worker_stdout : Stdlib.in_channel;
   worker_stdout_fd : Unix.file_descr;  (* Raw fd for select() *)
+  mutable leftover : Stdlib.Buffer.t;  (* Buffered data from previous reads spanning NDJSON lines *)
 }
 
 type t = {
@@ -103,7 +104,7 @@ let spawn_worker (extractor_path : string) (worker_id : int) : worker =
   Unix.close stdin_r; Unix.close stdout_w;
   let proc_stdin = Unix.out_channel_of_descr stdin_w in
   let proc_stdout = Unix.in_channel_of_descr stdout_r in
-  { id = worker_id; worker_stdin = proc_stdin; worker_stdout = proc_stdout; worker_stdout_fd = stdout_r }
+  { id = worker_id; worker_stdin = proc_stdin; worker_stdout = proc_stdout; worker_stdout_fd = stdout_r; leftover = Stdlib.Buffer.create 8192 }
 
 (** Create a pool of N workers. *)
 let create (extractor_path : string) (pool_size : int) : t =
@@ -124,7 +125,7 @@ let send_request (w : worker) (req_id : int) (file : string) : unit =
     Stdlib.output_char oc '\n';
     Stdlib.flush oc
   with
-  (* Handle EPIPE/Broken pipe — worker died mid-request *)
+  (* Handle EPIPE/Broken pipe - worker died mid-request *)
   | Sys_error msg when string_prefix msg ~prefix:"Broken pipe" ->
     Logs.warn (fun m -> m "Worker %d EPIPE on flush" w.id);
     raise (Stdlib.Failure "Worker EPIPE")
@@ -135,37 +136,51 @@ let send_request (w : worker) (req_id : int) (file : string) : unit =
     raise exn)
 
 (** Read a single NDJSON response line from a persistent --serve worker.
-    Uses Unix.select to avoid OCaml 5 fast I/O races. *)
+    Uses Unix.select to avoid OCaml 5 fast I/O races.
+    Persists leftover data on the worker record so that data spanning
+    multiple NDJSON lines is not lost between calls. *)
 let read_response (w : worker) : (int * Security_node.t list option) =
   let buf = Bytes.create 8192 in
-  let buffer = Stdlib.Buffer.create 8192 in
   let rec read_until_newline () =
-    (* Use the stored raw fd for select() *)
-    let fd = w.worker_stdout_fd in
-    let n = read_with_select fd buf in
-    if n = 0 then begin
-      (* Timeout or EOF *)
-      let content = Stdlib.Buffer.contents buffer in
-      if content = "" then (-1, None)
-      else (try decode_response content with _ -> (-1, None))
-    end else begin
-      (* Got data — append to buffer and look for newline *)
-      Stdlib.Buffer.add_subbytes buffer buf 0 n;
-      let content = Stdlib.Buffer.contents buffer in
-      match Stdlib.String.index_opt content '\n' with
+    (* First check leftover from previous read *)
+    let leftover_content = Stdlib.Buffer.contents w.leftover in
+    if Stdlib.String.length leftover_content > 0 then begin
+      match Stdlib.String.index_opt leftover_content '\n' with
       | Some pos ->
-        let line = Stdlib.String.sub content 0 pos in
-        if Stdlib.String.length content > pos + 1 then begin
-          (* More data after newline — keep it for next response *)
-          Stdlib.Buffer.clear buffer;
-          Stdlib.Buffer.add_string buffer (Stdlib.String.sub content (pos + 1) (Stdlib.String.length content - pos - 1))
-        end;
+        let line = Stdlib.String.sub leftover_content 0 pos in
+        if Stdlib.String.length leftover_content > pos + 1 then begin
+          Stdlib.Buffer.clear w.leftover;
+          Stdlib.Buffer.add_string w.leftover (Stdlib.String.sub leftover_content (pos + 1) (Stdlib.String.length leftover_content - pos - 1))
+        end else
+          Stdlib.Buffer.clear w.leftover;
         (try decode_response line with _ -> (-1, None))
-      | None -> read_until_newline ()
+      | None ->
+        (* No newline in leftover, read more from fd *)
+        let fd = w.worker_stdout_fd in
+        let n = read_with_select fd buf in
+        if n = 0 then begin
+          let content = Stdlib.Buffer.contents w.leftover in
+          Stdlib.Buffer.clear w.leftover;
+          if content = "" then (-1, None)
+          else (try decode_response content with _ -> (-1, None))
+        end else begin
+          Stdlib.Buffer.add_subbytes w.leftover buf 0 n;
+          read_until_newline ()
+        end
+    end
+    else begin
+      (* No leftover — read fresh from fd *)
+      let fd = w.worker_stdout_fd in
+      let n = read_with_select fd buf in
+      if n = 0 then (-1, None)
+      else begin
+        Stdlib.Buffer.add_subbytes w.leftover buf 0 n;
+        read_until_newline ()
+      end
     end
   in
   try read_until_newline ()
-  with Stdlib.End_of_file -> 
+  with Stdlib.End_of_file ->
     (-1, None)
 
 (** Extract a single file via the pool (round-robin). *)

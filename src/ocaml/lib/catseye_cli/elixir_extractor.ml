@@ -261,10 +261,12 @@ let extract_with_data (project_dir : string) : (Catseye_types.Finding.t list * Y
     let escript = Stdlib.Filename.concat dir "catseye_extractor" in
     if Stdlib.Sys.file_exists escript then Some escript else None
   in
-  let escript_path_opt = 
-    Option.bind (try_escript (Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor")) (fun _ ->
-      try_escript (Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor"))
-    |> (fun o -> match o with Some _ -> o | None -> try_escript (Stdlib.Filename.concat catseye_root_abs "bin"))
+  let escript_path_opt =
+    List.find_map ~f:try_escript [
+      Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor";
+      Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor";
+      Stdlib.Filename.concat catseye_root_abs "bin";
+    ]
   in
   let (status, lines) =
     match escript_path_opt with
@@ -325,10 +327,12 @@ let extract_file (file : string) : Catseye_types.Finding.t list =
     let escript = Stdlib.Filename.concat dir "catseye_extractor" in
     if Stdlib.Sys.file_exists escript then Some escript else None
   in
-  let escript_path_opt = 
-    Option.bind (try_escript (Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor")) (fun _ ->
-      try_escript (Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor"))
-    |> (fun o -> match o with Some _ -> o | None -> try_escript (Stdlib.Filename.concat catseye_root_abs "bin"))
+  let escript_path_opt =
+    List.find_map ~f:try_escript [
+      Stdlib.Filename.concat catseye_root_abs "scripts/elixir-extractor";
+      Stdlib.Filename.concat catseye_root_abs "lib/catseye/elixir-extractor";
+      Stdlib.Filename.concat catseye_root_abs "bin";
+    ]
   in
   let (status, lines) =
     match escript_path_opt with

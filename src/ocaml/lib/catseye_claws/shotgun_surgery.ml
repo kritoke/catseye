@@ -36,13 +36,7 @@ let exempt_class_patterns = [
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
-let contains (str : string) (sub : string) : bool =
-  let rec loop i =
-    if i > Stdlib.String.length str - Stdlib.String.length sub then false
-    else if Stdlib.String.sub str i (Stdlib.String.length sub) = sub then true
-    else loop (i + 1)
-  in
-  loop 0
+let contains = Scope.contains
 
 let is_exempt_class (class_name : string) : bool =
   Stdlib.List.exists (fun pattern -> contains class_name pattern) exempt_class_patterns
@@ -107,9 +101,7 @@ let detect_feature_envy (nodes : Security_node.t list) : envy_target list =
              with Stdlib.Not_found -> ())
        | None -> ())
   ) nodes;
-  
-  Stdlib.Printf.eprintf "[Shotgun] Total entries in table: %d\n" (Stdlib.Hashtbl.length receiver_calls);
-  
+
   let result = Stdlib.ref [] in
   Stdlib.Hashtbl.iter (fun key (locs, count) ->
     if count >= default_envy_threshold then

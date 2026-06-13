@@ -330,7 +330,8 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
       (* Use grammar directly for .so files, dirname for nix store parser dirs *)
       let lib_path = if Stdlib.Filename.check_suffix grammar ".so" then grammar
         else Stdlib.Filename.dirname grammar in
-      let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name gleam -x '%s' 2>/dev/null" lib_path path in
+      let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name gleam -x %s 2>/dev/null"
+        (Stdlib.Filename.quote lib_path) (Stdlib.Filename.quote path) in
       (try
         let ic = Unix.open_process_in cmd in
         let xml_str = Stdlib.Buffer.create 4096 in

@@ -54,12 +54,8 @@ let create_incremental_tracker () = {
 
 (* Simple content hash using first/last chars and length *)
 let compute_content_hash (content : string) =
-  let len = String.length content in
-  if len = 0 then ""
-  else
-    let first = Char.to_int content.[0] in
-    let last = Char.to_int content.[len - 1] in
-    Printf.sprintf "%d_%d_%d" len first last
+  if String.length content = 0 then ""
+  else Stdlib.Digest.to_hex (Stdlib.Digest.string content)
 
 (* Detect which files changed *)
 let detect_file_changes (t : incremental_tracker) 

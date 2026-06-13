@@ -100,7 +100,8 @@ let group_by_file (findings : Finding.t list) (reach : reachability list)
 let print_heatmap (config : t)
     (findings : Finding.t list)
     (reach : reachability list) : unit =
-  if findings = [] then ();
+  if findings = [] then ()
+  else begin
   let groups = group_by_file findings reach in
   let total_live = ref 0 in
   let total_dormant = ref 0 in
@@ -150,3 +151,4 @@ let print_heatmap (config : t)
   if total > 0 then
     Stdlib.Printf.printf "  %d%% of sinks are reachable from entry points\n"
       (!total_live * 100 / total)
+  end

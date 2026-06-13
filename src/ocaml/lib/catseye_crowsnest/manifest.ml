@@ -73,7 +73,7 @@ let parse_shard_yml (path : string) : (shard_dep list, [> `Msg of string ]) Resu
                | c_line :: c_rest ->
                  let c_trim = String.strip c_line in
                  if c_trim = "" then collect_children children c_rest
-                 else if Stdlib.String.length c_line > 0 &&
+                 else if Stdlib.String.length c_line > dep_indent &&
                          (c_line.[dep_indent] = ' ' || c_line.[dep_indent] = '\t') then
                    (* It's a child line *)
                    collect_children (c_trim :: children) c_rest

@@ -205,7 +205,8 @@ let rec walk_expr (n : xml) : expr =
       let rhs = match child_with_field n ~field:"right" with
         | Some r -> walk_expr r
         | _ -> { expr_value = EVar "?"; expr_location = loc } in
-      EBinOp (lhs, "+", rhs)  (* Simplified *)
+      let op = match String.strip n.text with "" -> "+" | op -> op in
+      EBinOp (lhs, op, rhs)
 
     (* Unary operators *)
     | "reference_expression" ->
@@ -366,10 +367,12 @@ let parse_with_grammar ~grammar ~path : (t, PE.parse_error) Result.t =
     (* Check if grammar looks like a native .so (exports tree_sitter_rust) *)
     if Stdlib.Sys.file_exists grammar && not (Stdlib.Sys.is_directory grammar) then
       (* Native parser - use --lib-path with --lang-name *)
-      Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name rust -x '%s' 2>/dev/null" grammar path
+      Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name rust -x %s 2>/dev/null"
+        (Stdlib.Filename.quote grammar) (Stdlib.Filename.quote path)
     else
       (* WASM or compiled grammar - use --grammar-path *)
-      Stdlib.Printf.sprintf "tree-sitter parse --grammar-path '%s' -x '%s' 2>/dev/null" grammar path
+      Stdlib.Printf.sprintf "tree-sitter parse --grammar-path %s -x %s 2>/dev/null"
+        (Stdlib.Filename.quote grammar) (Stdlib.Filename.quote path)
   in
   try
     let ic = Unix.open_process_in cmd in

@@ -190,8 +190,11 @@ let propagate_cross_file (nodes : Security_node.t list) (db : Db.t) : Db.t =
         if arg.Security_node.arg_type = Security_node.ArgVar then
           let source_var = arg.Security_node.value in
           let target_file = node.Security_node.file in
-          (* Check if source is tainted in any OTHER file *)
-          let is_cross_file = Db.is_tainted_anywhere !taint_db_ref source_var in
+          (* Check if source is tainted in any OTHER file (not this one) *)
+          let is_cross_file =
+            Db.is_tainted_anywhere !taint_db_ref source_var
+            && not (Db.is_tainted_in_file !taint_db_ref source_var target_file)
+          in
           if is_cross_file then
             (* Check if target is not already tainted in target file *)
             if not (Db.is_tainted_in_file !taint_db_ref node.Security_node.name target_file) then

@@ -37,20 +37,8 @@ let exempt_class_patterns = [
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
-let contains (str : string) (sub : string) : bool =
-  let slen = Stdlib.String.length str in
-  let slen_sub = Stdlib.String.length sub in
-  if slen_sub > slen then false
-  else
-    let rec check i =
-      if i > slen - slen_sub then false
-      else if Stdlib.String.sub str i slen_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
-
 let is_exempt_class (class_name : string) : bool =
-  Stdlib.List.exists (fun pattern -> contains class_name pattern) exempt_class_patterns
+  Stdlib.List.exists (fun pattern -> Scope.contains class_name pattern) exempt_class_patterns
 
 (* Extract class name from a type reference like "HTTP::Client" → "HTTP::Client" *)
 let extract_class_name (type_ref : string) : string =
@@ -76,7 +64,7 @@ let count_unique_dependencies (nodes : Security_node.t list)
   let deps = Stdlib.Hashtbl.create 32 in
   
   let add_dep name =
-    if contains name "::" then
+    if Scope.contains name "::" then
       let normalized = normalize_class_name name in
       if normalized <> "" then Stdlib.Hashtbl.replace deps normalized true
   in
@@ -85,7 +73,7 @@ let count_unique_dependencies (nodes : Security_node.t list)
     if node.Security_node.file = class_file then
       if node.Security_node.node_type = Security_node.Call then
         let name = node.Security_node.name in
-        if contains name "." then
+        if Scope.contains name "." then
           (try
             let dot_idx = Stdlib.String.index name '.' in
             let receiver = Stdlib.String.sub name 0 dot_idx in

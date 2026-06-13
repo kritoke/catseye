@@ -23,39 +23,10 @@ let ( < ) = Stdlib.( < )
 (** Method names that are inherently multi-parameter and should be exempt
     from LongParameterList checks. These are patterns where many params
     are structurally required by the domain. *)
-let is_exempt_method (name : string) : bool =
-  name = "initialize" ||
-  name = "new" ||
-  (* from_* — factory/constructor methods like from_entity, from_string, from_json *)
-  Stdlib.String.length name >= 5 &&
-  Stdlib.String.sub name 0 5 = "from_" ||
-  Stdlib.String.length name >= 6 &&
-  (let prefix = Stdlib.String.sub name 0 6 in
-   prefix = "decode" || prefix = "parse_" || prefix = "to_json" || prefix = "to_hash") ||
-  (Stdlib.String.length name >= 5 &&
-   let suffix = Stdlib.String.sub name (Stdlib.String.length name - 5) 5 in
-   suffix = "_core") ||
-  (Stdlib.String.length name >= 5 &&
-   let prefix = Stdlib.String.sub name 0 5 in
-   prefix = "build" || prefix = "creat") ||
-  (* handle_* — event/action handlers with domain context *)
-  Stdlib.String.length name >= 7 &&
-  Stdlib.String.sub name 0 7 = "handle_" ||
-  Stdlib.String.length name >= 9 &&
-  (let prefix = Stdlib.String.sub name 0 9 in
-   prefix = "benchmark") ||
-  Stdlib.String.length name >= 4 &&
-  (let prefix = Stdlib.String.sub name 0 4 in
-   prefix = "test")
+let is_exempt_method = Scope.is_exempt_method
 
-(** File paths that should be exempt from certain checks. *)
-let is_benchmark_or_example (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  List.exists ~f:(fun pat ->
-    let plen = Stdlib.String.length pat in
-    Stdlib.String.length lower >= plen &&
-    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
-  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+(* is_benchmark_or_example inherited from Scope *)
+let is_benchmark_or_example = Scope.is_benchmark_or_example
 
 let is_constants_file (file : string) : bool =
   let lower = Stdlib.String.lowercase_ascii file in
@@ -147,7 +118,23 @@ let rec nesting_depth (expr : expr) : int =
     nesting_depth e1
   | EBlock es ->
     List.fold_left ~init:0 ~f:(fun acc e -> Int.max acc (nesting_depth e)) es
-  | EError _ | EUnknown _ | ETryCatchFinally _ | EUse _ ->
+  | ETryCatchFinally t ->
+    let try_d = nesting_depth t.try_body in
+    let rescue_d = Stdlib.List.fold_left (fun acc c ->
+      Int.max acc (nesting_depth c.rescue_body)
+    ) 0 t.rescue_clauses in
+    let ensure_d = match t.ensure_body with
+      | Some e -> nesting_depth e
+      | None -> 0
+    in
+    let else_d = match t.else_body with
+      | Some e -> nesting_depth e
+      | None -> 0
+    in
+    Int.max try_d (Int.max rescue_d (Int.max ensure_d else_d))
+  | EUse (_, e1, e2) ->
+    Int.max (nesting_depth e1) (nesting_depth e2)
+  | EError _ | EUnknown _ ->
     0
 
 (** Check nesting depth for each function scope. *)

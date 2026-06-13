@@ -40,24 +40,6 @@ let decision_patterns =
      clauses in a `case` are mutually exclusive — they don't add
      independent decision paths. Only `case` itself counts as +1. *)
 
-(** Find substring [needle] in [haystack], returning start index or -1. *)
-let find_substring (haystack : string) (needle : string) : int =
-  let hlen = Stdlib.String.length haystack in
-  let nlen = Stdlib.String.length needle in
-  if nlen > hlen then -1
-  else begin
-    let result = ref (-1) in
-    (try
-      for i = 0 to hlen - nlen do
-        if Stdlib.String.sub haystack i nlen = needle then begin
-          result := i;
-          raise Stdlib.Exit
-        end
-      done
-    with Stdlib.Exit -> ());
-    !result
-  end
-
 (** Check if a node name contains a decision pattern.
 
     Uses substring matching because Crystal extractor emits compound names

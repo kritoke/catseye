@@ -253,22 +253,7 @@ let make_dry_finding (subtrees : subtree list) : Catseye_types.Finding.t =
 
 (** File patterns exempt from DRY checks.
     Constants tables, benchmarks, examples are inherently repetitive. *)
-let is_dry_exempt_file (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  let contains sub s =
-    let slen = Stdlib.String.length sub in
-    let rec check i =
-      if i + slen > Stdlib.String.length s then false
-      else if Stdlib.String.sub s i slen = sub then true
-      else check (i + 1)
-    in check 0
-  in
-  Stdlib.List.exists (fun pat -> contains pat lower)
-    [ "/dtos/"; "/dto/"; "/types/"; "/entities/"; "/models/"
-    ; "/bench/"; "/benchmark/"; "/example/"; "/examples/"
-    ; "/spec/"; "/test/"; "/tests/"
-    ; "constants.cr"; "consts.cr"; "enums.cr"; "constants.gl"; "enums.gl"
-    ]
+let is_dry_exempt_file = Scope.is_dry_exempt_file
 
 (* ── Detection ──────────────────────────────────────────────────────── *)
 

@@ -17,9 +17,11 @@ let fingerprint (content : string) : string =
 let file_hash (path : string) : string =
   try
     let ic = Stdlib.open_in path in
-    let content = Stdio.In_channel.input_all ic in
-    Stdlib.close_in ic;
-    fingerprint content
+    Stdlib.Fun.protect
+      ~finally:(fun () -> Stdlib.close_in ic)
+      (fun () ->
+         let content = Stdio.In_channel.input_all ic in
+         fingerprint content)
   with Sys_error _ -> ""
 
 (* ── SQLite-backed persistent cache ─────────────────────────────────── *)

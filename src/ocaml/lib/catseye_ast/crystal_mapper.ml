@@ -6,11 +6,8 @@
    containing EApp nodes for calls, ELet for assignments, etc.
  *)
 
-module PE = Error
+include Crystal_parse_utils
 open Base
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-
 open Types
 
 type security_node = {
@@ -31,14 +28,7 @@ and arg_node = {
   field : string;
 }
 
-(* JSON helpers *)
-let string_of_json = function `String s -> s | _ -> ""
-let int_of_json = function `Int i -> i | _ -> 0
-let list_of_json = function `List l -> l | _ -> []
-let assoc_of_json = function `Assoc l -> l | _ -> []
-
-let rec find_field fields key =
-  match fields with [] -> `Null | (k, v) :: _ when k = key -> v | _ :: r -> find_field r key
+(* JSON helpers inherited from Crystal_parse_utils *)
 
 let parse_arg json = match assoc_of_json json with fields ->
   { arg_type = string_of_json (find_field fields "arg_type");
@@ -56,14 +46,7 @@ let parse_security_node json = match assoc_of_json json with fields ->
     taint = (match find_field fields "taint" with `String s when s <> "" -> Some s | _ -> None);
     sinks = List.map ~f:string_of_json (list_of_json (find_field fields "sinks")); }
 
-(* ── Location helpers ──────────────────────────────────────────────── *)
-
-let make_range line col len = {
-  start = { line; column = col; byte_offset = 0 };
-  end_ = { line; column = col + len; byte_offset = 0 };
-}
-
-let make_loc line = make_range line 0 0
+(* Location helpers inherited from Crystal_parse_utils *)
 
 (* ── Dotted name → expression tree ─────────────────────────────────── *)
 
@@ -282,17 +265,13 @@ let build_items (nodes : security_node list) : item list =
 (* ── Parse via Crystal extractor ───────────────────────────────────── *)
 
 let parse_file ~(extractor_cmd : string) ~(path : string) : (t, PE.parse_error) Result.t =
-  let cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" extractor_cmd path in
-  let ic = Unix.open_process_in cmd in
-  let json_str = Stdlib.Buffer.create 8192 in
-  (try while true do Stdlib.Buffer.add_channel json_str ic 4096 done
-   with Stdlib.End_of_file -> ());
-  let status = Unix.close_process_in ic in
-  match status with
-  | Unix.WEXITED 0 ->
-      let json = Yojson.Safe.from_string (Stdlib.Buffer.contents json_str) in
+  match run_extractor ~timeout_sec:15.0 ~extractor_cmd ~path with
+  | Error e -> Error e
+  | Ok output ->
+    (try
+      let json = Yojson.Safe.from_string output in
       let nodes = match json with `List items -> List.map ~f:parse_security_node items | _ -> [] in
       let items = build_items nodes in
       Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
-  | _ ->
-      Error (PE.make_error ~file:path ~message:"Crystal extractor failed")
+    with _ ->
+      Error (PE.make_error ~file:path ~message:"Crystal extractor: JSON parse error"))

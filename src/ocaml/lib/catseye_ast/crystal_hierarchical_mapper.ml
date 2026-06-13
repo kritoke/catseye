@@ -9,52 +9,13 @@
    path (crystal_mapper.ml) is kept for backward compatibility.
  *)
 
-module PE = Error
+include Crystal_parse_utils
 open Base
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-
 open Types
-
-(* ── JSON helpers ──────────────────────────────────────────────────── *)
-
-let string_of_json = function `String s -> s | _ -> ""
-let int_of_json = function `Int i -> i | _ -> 0
-let list_of_json = function `List l -> l | _ -> []
-let assoc_of_json = function `Assoc l -> l | _ -> []
-
-let rec find_field fields key =
-  match fields with [] -> `Null | (k, v) :: _ when k = key -> v | _ :: r -> find_field r key
-
-let get_str json key = match assoc_of_json json with
-  | fields -> string_of_json (find_field fields key)
-
-let get_int json key = match assoc_of_json json with
-  | fields -> int_of_json (find_field fields key)
-
-let get_obj json key = match assoc_of_json json with
-  | fields ->
-    match find_field fields key with
-    | `Assoc _ as v -> Some v
-    | `Null -> None
-    | _ -> None
-
-let get_list json key = match assoc_of_json json with
-  | fields -> list_of_json (find_field fields key)
-
-let get_opt_obj json key = match assoc_of_json json with
-  | fields ->
-    match find_field fields key with
-    | `Assoc _ as v -> Some v
-    | `Null | _ -> None
-
-let get_type json = get_str json "type"
 
 (* ── Location ──────────────────────────────────────────────────────── *)
 
-let zero_loc =
-  { start = { line = 0; column = 0; byte_offset = 0 };
-    end_ = { line = 0; column = 0; byte_offset = 0 } }
+(* zero_loc inherited from Crystal_parse_utils *)
 
 let loc_of_json json =
   let line = get_int json "line" in
@@ -286,22 +247,35 @@ let rec item_of_json json : item =
   { item_value = value; item_location = loc }
 
 and parse_top_level_exprs (exprs : Yojson.Safe.t list) : item_value =
-  (* Group expressions into a synthetic module with synthetic functions *)
-  (* Each non-def/class/module item becomes part of a synthetic "<toplevel>" function *)
+  (* Group expressions into a synthetic module with synthetic functions.
+     Non-def/class/module expressions are collected into synthetic
+     <toplevel> functions. When a def/class/module is encountered,
+     any pending body is finalized before the new item is added. *)
+  let zero_loc = Crystal_parse_utils.zero_loc in
   let rec group_exprs (exprs : Yojson.Safe.t list) (current_body : Yojson.Safe.t list) (acc : item list) : item list =
     match exprs with
     | [] ->
-      (* Don't create empty functions, just return accumulated items *)
+      (* Finalize any pending body into a synthetic function *)
       if current_body = [] then Stdlib.List.rev acc
-      else List.rev acc  (* Drop empty top-level body *)
+      else
+        let body_expr = { expr_value = EBlock (List.map ~f:expr_of_json (Stdlib.List.rev current_body)); expr_location = zero_loc } in
+        let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
+        Stdlib.List.rev ({ item_value = synth_fn; item_location = zero_loc } :: acc)
     | expr :: rest ->
       let typ = get_type expr in
-      if typ = "def" || typ = "class" || typ = "module" then
-        (* Start new item group *)
-        let new_acc = if current_body = [] then acc else item_of_json expr :: acc in
+      if typ = "def" || typ = "class" || typ = "module" then begin
+        (* First finalize any pending body *)
+        let new_acc =
+          if current_body = [] then acc
+          else
+            let body_expr = { expr_value = EBlock (List.map ~f:expr_of_json (Stdlib.List.rev current_body)); expr_location = zero_loc } in
+            let synth_fn = IFunction ("<toplevel>", [], None, body_expr) in
+            { item_value = synth_fn; item_location = zero_loc } :: acc
+        in
+        (* Then add the new item exactly once *)
         group_exprs rest [] (item_of_json expr :: new_acc)
-      else
-        (* Continue current group *)
+      end else
+        (* Continue accumulating body *)
         group_exprs rest (expr :: current_body) acc
   in
   let items = group_exprs exprs [] [] in
@@ -405,17 +379,12 @@ let parse_items (json : Yojson.Safe.t) : item list =
   | _ -> []
 
 let parse_file ~(extractor_cmd : string) ~(path : string) : (t, PE.parse_error) Result.t =
-  let cmd = Stdlib.Printf.sprintf "%s '%s'" extractor_cmd path in
-  let ic = Unix.open_process_in cmd in
-  let json_str = Stdlib.Buffer.create 8192 in
-  (try while true do Stdlib.Buffer.add_channel json_str ic 4096 done
-   with Stdlib.End_of_file -> ());
-  let status = Unix.close_process_in ic in
-  let output = Stdlib.Buffer.contents json_str in
-  match status with
-  | Unix.WEXITED 0 ->
-    let json = Yojson.Safe.from_string output in
-    let items = parse_items json in
-    Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
-  | _ ->
-    Error (PE.make_error ~file:path ~message:"Crystal extractor failed")
+  match run_extractor ~timeout_sec:15.0 ~extractor_cmd ~path with
+  | Error e -> Error e
+  | Ok output ->
+    (try
+      let json = Yojson.Safe.from_string output in
+      let items = parse_items json in
+      Ok { mod_lang = Crystal; mod_path = path; mod_items = items; parse_errors = [] }
+    with _ ->
+      Error (PE.make_error ~file:path ~message:"Crystal extractor: JSON parse error"))

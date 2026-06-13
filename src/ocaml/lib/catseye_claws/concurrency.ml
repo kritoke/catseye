@@ -193,7 +193,7 @@ let build_scopes (nodes : Security_node.t list) : scope list =
     end else if n.Security_node.node_type = Security_node.Class
               || n.Security_node.node_type = Security_node.Module then
       ()  (* class/module boundaries don't reset scope *)
-    else
+    else if n.Security_node.file = !current_file then
       current_body := n :: !current_body
   ) nodes;
   (match !current_def with

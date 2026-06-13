@@ -240,19 +240,7 @@ let make_dry_finding (windows : window list) : Finding.t =
 (** File patterns that are exempt from DRY checks.
     Constants tables, benchmarks, and examples are inherently repetitive
     and flagging them adds noise, not signal. *)
-let is_dry_exempt_file (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  Stdlib.List.exists (fun pat ->
-    let plen = Stdlib.String.length pat in
-    Stdlib.String.length lower >= plen &&
-    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
-  ) [ "constants.cr"; "consts.cr"; "enums.cr"; "enums.gl"; "constants.gl"
-    ; "/bench/"; "/benchmark/"; "/example/"; "/examples/"
-    ; "/spec/"; "/test/"; "/tests/"
-    (* Auth/user CRUD files naturally have repetitive query patterns *)
-    ; "auth.rs"; "users.rs"; "auth.gl"; "users.gl"
-    (* Rewards files often have similar calculation patterns *)
-    ; "rewards.rs"; "rewards.gl" ]
+let is_dry_exempt_file = Scope.is_dry_exempt_file
 
 (** Detect DRY violations across all files. *)
 let detect (nodes : Security_node.t list) (config : Types.claws_config)

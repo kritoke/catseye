@@ -10,6 +10,19 @@ open Security_node
 let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
+(* Use shared XML parser — types and utilities from Xml_parse *)
+type xml = Xml_parse.xml =
+  { tag : string
+  ; attrs : (string * string) list
+  ; children : xml list
+  ; text : string }
+
+let attr = Xml_parse.attr
+let line_of = Xml_parse.line_of
+let find = Xml_parse.find
+let children_where = Xml_parse.children_where
+let contains = Xml_parse.contains
+
 (* ── Constants ──────────────────────────────────────────────────────── *)
 
 let taint_sources =
@@ -50,38 +63,7 @@ let skip_calls_list =
 
 let skip_set = Set.Poly.of_list skip_calls_list
 
-(* ── Substring helper ──────────────────────────────────────────────── *)
-
-let contains ~sub s =
-  let sublen = String.length sub in
-  let slen = String.length s in
-  sublen > 0 &&
-  let rec loop i =
-    i + sublen <= slen &&
-    (Stdlib.String.sub s i sublen = sub || loop (i + 1))
-  in
-  loop 0
-
-(* ── XML tree ──────────────────────────────────────────────────────── *)
-
-type xml =
-  { tag : string
-  ; attrs : (string * string) list
-  ; children : xml list
-  ; text : string }
-
-let assoc' k alist =
-  match List.find alist ~f:(fun (k',_) -> k' = k) with
-  | Some (_, v) -> v
-  | None -> raise Stdlib.Not_found
-
-let attr (n : xml) (k : string) : string =
-  try assoc' k n.attrs with Stdlib.Not_found -> ""
-
-let line_of (n : xml) : int =
-  match attr n "srow" with
-  | "" -> 0
-  | s -> (try Int.of_string s + 1 with _ -> 0)
+(* ── Crystal-specific XML helpers ───────────────────────────────────── *)
 
 let is_method_call (n : xml) : bool =
   n.tag = "call" || n.tag = "index_call" || n.tag = "field_call"
@@ -94,11 +76,11 @@ let is_method_def (n : xml) : bool =
 let is_macro (n : xml) : bool =
   n.tag = "macro_if" || n.tag = "macro_unless" || n.tag = "macro_for"
 
-(** Deep collect all descendants matching [tag]. *)
-let rec find (n : xml) ~tag : xml list =
+(** Deep collect all descendants matching [tag], skipping macros. *)
+let rec find_skipping_macros (n : xml) ~tag : xml list =
   if is_macro n then []
   else if n.tag = tag then [n]
-  else List.concat_map ~f:(find ~tag) n.children
+  else List.concat_map ~f:(find_skipping_macros ~tag) n.children
 
 (** Find method calls *)
 let rec find_calls (n : xml) : xml list =
@@ -114,10 +96,6 @@ let rec find_defs (n : xml) : xml list =
     n :: List.concat_map ~f:find_defs n.children
   else List.concat_map ~f:find_defs n.children
 
-(** Collect direct children *)
-let children_where (n : xml) ~f : xml list =
-  List.filter n.children ~f:f
-
 (** Get named child tag *)
 let get_child (n : xml) ~(tag : string) : xml option =
   List.find_map n.children ~f:(fun c -> if c.tag = tag then Some c else None)
@@ -127,7 +105,6 @@ let direct_text (n : xml) : string = n.text
 
 (** Strip XML attributes from text - removes tags and attributes that may be included *)
 let strip_xml_attrs (text : string) : string =
-  (* Remove any content that looks like XML attributes at start of text *)
   let remove_attrs s =
     match Stdlib.String.index_opt s '>' with
     | Some idx -> Stdlib.String.sub s (idx + 1) (Stdlib.String.length s - idx - 1)
@@ -135,7 +112,6 @@ let strip_xml_attrs (text : string) : string =
   in
   let text = remove_attrs text in
   let text = Stdlib.String.trim text in
-  (* Remove any leading XML-like content *)
   let text = if String.length text > 0 && text.[0] = '<' then "" else text in
   text
 
@@ -187,141 +163,9 @@ let full_call_name (call : xml) : string =
   | (None, Some meth) -> meth
   | _ -> ""
 
-(* ── Tokenizer ─────────────────────────────────────────────────────── *)
+(* ── XML parsing (delegates to shared module) ─────────────────────── *)
 
-type tok = Open of string * (string * string) list | Close of string | Text of string
-
-let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
-
-let skip_until s pos pred =
-  let len = String.length s in
-  let rec go i = if i < len && not (pred s.[i]) then go (i + 1) else i in
-  let stop = go pos in
-  (Stdlib.String.sub s pos (stop - pos), stop)
-
-let parse_attrs s =
-  let rec go i acc =
-    let len = String.length s in
-    let i = let rec skip j =
-      if j < len && is_ws s.[j] then skip (j + 1) else j in skip i in
-    if i >= len || s.[i] = '/' || s.[i] = '>' then List.rev acc
-    else
-      let (name, i) = skip_until s i (fun c -> c = '=' || is_ws c || c = '>' || c = '/') in
-      if name = "" then go i acc
-      else
-        let i = let rec find_eq j =
-          if j < len && s.[j] <> '=' then find_eq (j + 1) else j in find_eq i in
-        if i >= len || s.[i] <> '=' then go i acc
-        else
-          let i = let rec skip_ws j =
-            if j < len && is_ws s.[j] then skip_ws (j + 1) else j in skip_ws (i + 1) in
-          if i < len && s.[i] = '"' then
-            let (value, i) = skip_until s (i + 1) (fun c -> c = '"') in
-            go (i + 1) ((name, value) :: acc)
-          else go i acc
-  in
-  go 0 []
-
-let tokenize s =
-  let len = String.length s in
-  let rec go pos acc =
-    if pos >= len then List.rev acc  (* Reverse to get document order *)
-    else if s.[pos] <> '<' then begin
-      let (txt, next) = skip_until s pos (fun c -> c = '<') in
-      let trimmed = Stdlib.String.trim txt in
-      if trimmed = "" then go next acc
-      else go next (Text trimmed :: acc)
-    end else if pos + 1 < len && s.[pos + 1] = '?' then begin
-      let (_, next) = skip_until s pos (fun c -> c = '>') in
-      go (next + 1) acc
-    end else if pos + 1 < len && s.[pos + 1] = '/' then begin
-      let (name, next) = skip_until s (pos + 2) (fun c -> c = '>') in
-      go (next + 1) (Close (Stdlib.String.trim name) :: acc)
-    end else if pos + 3 < len && s.[pos + 1] = '!' && s.[pos + 2] = '-' && s.[pos + 3] = '-' then begin
-      let (_, next) = skip_until s (pos + 4) (fun c -> c = '>') in
-      go (next + 1) acc
-    end else begin
-      let (name_rest, next) = skip_until s (pos + 1) (fun c -> c = '>' || is_ws c) in
-      let rest = if next < len && s.[next] = '>' then "" else
-        let (r, _) = skip_until s next (fun c -> c = '>') in r in
-      let attrs = parse_attrs rest in
-      (* Check for self-closing tag *)
-      let tag_name = Stdlib.String.trim name_rest in
-      let is_self_closing = tag_name <> "" && tag_name.[String.length tag_name - 1] = '/' in
-      let tag_name = if is_self_closing then Stdlib.String.sub tag_name 0 (Stdlib.String.length tag_name - 1) else tag_name in
-      go (next + 1) (Open (tag_name, attrs) :: acc)
-    end
-  in
-  go 0 []
-
-(** Build XML tree from tokens *)
-let of_tokens (tokens : tok list) : xml =
-  let rec build (stack : xml list) (toks : tok list) : xml =
-    match toks with
-    | [] ->
-      (match stack with
-       | [] -> { tag = ""; attrs = []; children = []; text = "" }
-       | [x] -> x
-       | _ -> failwith ("Unclosed tags: " ^ Stdlib.String.concat "," (List.map ~f:(fun n -> n.tag) stack)))
-    | Text txt :: rest ->
-      (match stack with
-       | [] -> build [] rest  (* Text outside root - skip *)
-       | parent :: par ->
-         let updated = { parent with text = parent.text ^ txt } in
-         build (updated :: par) rest)
-    | Open (tag, attrs) :: rest ->
-      let node = { tag; attrs; children = []; text = "" } in
-      build (node :: stack) rest
-    | Close tag :: rest ->
-      (match stack with
-       | [] -> failwith ("Unexpected close tag: " ^ tag)
-       | node :: par ->
-         if node.tag <> tag then
-           (* Skip intermediate nodes to find the matching tag *)
-           let rec pop_until found stack' =
-             match stack' with
-             | [] -> failwith ("Could not find matching open tag for " ^ tag)
-             | n :: rest' when n.tag = tag ->
-               (* Found it - build the rest of the tree *)
-               let closed = { n with children = List.rev n.children } in
-               (match rest' with
-                | [] -> closed  (* This is the root *)
-                | parent :: parpar ->
-                  let updated = { parent with children = closed :: parent.children } in
-                  build (updated :: parpar) rest)
-             | n :: rest' ->
-               (* This is an intermediate unclosed node - close it and continue *)
-               let closed_intermediate = { n with children = List.rev n.children } in
-               (match rest' with
-                | [] -> failwith ("Unmatched intermediate tags")
-                | parent :: parpar ->
-                  let updated = { parent with children = closed_intermediate :: parent.children } in
-                  pop_until found (updated :: parpar))
-           in
-           pop_until false stack
-         else
-           let closed = { node with children = List.rev node.children } in
-           (match par with
-            | [] -> closed  (* This is the root *)
-            | parent :: parpar ->
-              let updated = { parent with children = closed :: parent.children } in
-              build (updated :: parpar) rest))
-  in
-  match tokens with
-  | [] -> { tag = ""; attrs = []; children = []; text = "" }
-  | _ ->
-    let root = build [] tokens in
-    (* Handle tree-sitter wrapper: if root is "sources", return its first child *)
-    if root.tag = "sources" && root.children <> [] then
-      Stdlib.List.hd root.children
-    else if root.tag = "" then
-      failwith "Empty XML"
-    else
-      root
-
-let parse_xml (s : string) : xml =
-  let tokens = tokenize s in
-  of_tokens tokens
+let parse_xml = Xml_parse.parse_to_root
 
 (* ── Argument extraction ────────────────────────────────────────────── *)
 
@@ -378,7 +222,7 @@ let extract_defs (root : xml) : t list =
 
 (** TOCTOU: exists? -> read/write pattern *)
 let detect_toctou (root : xml) : t list =
-  let calls = find root ~tag:"call" in
+  let calls = find_skipping_macros root ~tag:"call" in
   let rec find_exists_path nodes : t list =
     match nodes with
     | [] -> []

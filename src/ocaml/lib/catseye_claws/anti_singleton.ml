@@ -26,6 +26,7 @@ module OldList = struct
   let exists = Stdlib.List.exists
   let filter = Stdlib.List.filter
   let map = Stdlib.List.map
+  let mapi = Stdlib.List.mapi
   let length = Stdlib.List.length
   let nth = Stdlib.List.nth
   let sort = Stdlib.List.sort
@@ -86,34 +87,21 @@ let is_exempt_class_var (name : string) : bool =
      suffix = exempt)
   ) exempt_class_var_names
 
-(** Check if a string contains a substring *)
-let contains (str : string) (sub : string) : bool =
-  let slen = Stdlib.String.length str in
-  let slen_sub = Stdlib.String.length sub in
-  if slen_sub > slen then false
-  else
-    let rec check i =
-      if i > slen - slen_sub then false
-      else if Stdlib.String.sub str i slen_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
-
 (** Check if a file is a configuration file (exempt from AntiSingleton) *)
 let is_config_file (file : string) : bool =
   let lower = Stdlib.String.lowercase_ascii file in
-  contains lower "/config/" ||
-  contains lower "_config.cr" ||
-  contains lower "/settings/" ||
-  contains lower ".cr.settings"
+  Scope.contains lower "/config/" ||
+  Scope.contains lower "_config.cr" ||
+  Scope.contains lower "/settings/" ||
+  Scope.contains lower ".cr.settings"
 
 (** Check if a class is a configuration or settings class *)
 let is_config_class (name : string) : bool =
   let lower = Stdlib.String.lowercase_ascii name in
-  contains lower "config" ||
-  contains lower "settings" ||
-  contains lower "constants" ||
-  contains lower "defaults"
+  Scope.contains lower "config" ||
+  Scope.contains lower "settings" ||
+  Scope.contains lower "constants" ||
+  Scope.contains lower "defaults"
 
 (* ── Detection ────────────────────────────────────────────────────── *)
 
@@ -131,12 +119,14 @@ let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_c
     let class_nodes = OldList.filter (fun n ->
       OldList.exists (fun nt -> nt = n.Security_node.node_type) [Security_node.Class; Security_node.Module]
     ) sorted in
-    OldList.concat_map (fun (cn : Security_node.t) ->
+    let indexed_class_nodes = OldList.mapi (fun i cn -> (i, cn)) class_nodes in
+    OldList.concat_map (fun (i, cn : int * Security_node.t) ->
       if is_singleton_class cn.Security_node.name then [] else
       let start_line = cn.Security_node.line in
-      let end_line = match OldList.nth class_nodes (OldList.length class_nodes - 1) with
-        | _ when OldList.length class_nodes = 1 -> Stdlib.Int.max_int
-        | _ -> (try (OldList.nth class_nodes 1).Security_node.line with Invalid_argument _ -> Stdlib.Int.max_int)
+      let end_line =
+        if i + 1 < OldList.length class_nodes then
+          (OldList.nth class_nodes (i + 1)).Security_node.line
+        else Stdlib.Int.max_int
       in
       let class_var_assigns = OldList.filter (fun (n : Security_node.t) ->
         n.Security_node.node_type = Security_node.Assign
@@ -169,7 +159,7 @@ let check_anti_singleton (nodes : Security_node.t list) (_config : Types.claws_c
            dependency = None;
            reachability = None; suggestion = None; }]
       else []
-    ) class_nodes
+    ) indexed_class_nodes
   ) (Map.Poly.to_alist by_file)
 
 (* ── Analyzer ─────────────────────────────────────────────────────── *)

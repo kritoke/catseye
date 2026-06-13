@@ -74,9 +74,9 @@ let extract_severity block =
   let lines = split_on_newline block in
   List.find_map lines ~f:(fun line ->
     if String.is_prefix (trim line) ~prefix:"severity=" then
-      let rest = String.sub (trim line) ~pos:8 ~len:(String.length (trim line) - 8) in
+      let rest = String.sub (trim line) ~pos:9 ~len:(String.length (trim line) - 9) in
       let rest = trim rest in
-      (* Remove quotes if present *)
+      (* Remove quotes if present: severity="High" → rest = "High" *)
       let rest = if String.length rest >= 2 && rest.[0] = '"' then
         String.sub rest ~pos:1 ~len:(String.length rest - 2) |> trim
       else rest in
@@ -97,11 +97,11 @@ let extract_languages block =
       else if String.length t > 0 && t.[0] = '}' then
         ()
       else if String.is_prefix t ~prefix:"include \"" then
-        let lang = String.sub t ~pos:8 ~len:(String.length t - 9) in
+        let lang = String.sub t ~pos:9 ~len:(String.length t - 10) in
         includes := lang :: !includes;
         parse_lang_section in_langs in_excludes rest
       else if String.is_prefix t ~prefix:"exclude \"" then
-        let lang = String.sub t ~pos:8 ~len:(String.length t - 9) in
+        let lang = String.sub t ~pos:9 ~len:(String.length t - 10) in
         excludes := lang :: !excludes;
         parse_lang_section in_langs in_excludes rest
       else
@@ -184,10 +184,7 @@ let extract_sinks block =
         current_sanitizers := san :: !current_sanitizers;
         parse_sinks_section rest
       else if String.is_prefix t ~prefix:"fix \"" then
-        let fix_str = String.sub t ~pos:5 ~len:(String.length t - 5) in
-        let fix_str = if String.length fix_str >= 2 && fix_str.[0] = '"' then
-          String.sub fix_str ~pos:1 ~len:(String.length fix_str - 2)
-        else fix_str in
+        let fix_str = String.sub t ~pos:5 ~len:(String.length t - 6) in
         current_fix := Some (trim fix_str);
         parse_sinks_section rest
       else
@@ -214,7 +211,7 @@ let extract_sources block =
           match parts with
           | [] -> ("", None)
           | p :: rest_parts ->
-            let name_raw = String.sub p ~pos:0 ~len:(String.length p - 1) in
+            let name_raw = String.sub p ~pos:1 ~len:(String.length p - 2) in
             let field = List.find_map rest_parts ~f:(fun part ->
               if String.is_prefix part ~prefix:"field=" then
                 Some (String.sub part ~pos:6 ~len:(String.length part - 6))

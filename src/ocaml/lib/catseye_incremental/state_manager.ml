@@ -180,8 +180,7 @@ let compute_session_changes (old : session) (new_map : File_map.t) =
     removed_files = removed; last_scan_at = Unix.gettimeofday () }
 
 (* Cache integration stubs *)
-let load_from_cache (_cache : unit) (path : string) =
-  Stdio.eprintf "[incremental] cache lookup for %s\n" path;
+let load_from_cache (_cache : unit) (_path : string) =
   None
 
 (* API helpers *)

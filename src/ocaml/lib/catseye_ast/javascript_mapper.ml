@@ -48,7 +48,17 @@ let rec walk_expr (n : xml) (file : string) : expr =
   let v = match n.tag with
     | "identifier" | "property_identifier" | "shorthand_property_identifier" | "type_identifier" ->
       EVar n.text
-    | "number" | "string" | "template_string" | "regex" | "undefined" ->
+    | "number" ->
+      (try
+        let _ = Stdlib.int_of_string n.text in
+        ELiteral (LInt n.text)
+      with _ ->
+      try
+        let _ = Stdlib.float_of_string n.text in
+        ELiteral (LFloat n.text)
+      with _ ->
+        ELiteral (LString n.text))
+    | "string" | "template_string" | "regex" | "undefined" ->
       ELiteral (LString n.text)
     | "true" -> ELiteral (LBool true)
     | "false" -> ELiteral (LBool false)
@@ -363,7 +373,8 @@ let resolve_ts_grammar () : string option =
   Tree_sitter_xml.resolve_grammar ~lang:"typescript" ~env_var:"TREE_SITTER_TYPESCRIPT_GRAMMAR"
 
 let parse_with_grammar ~grammar ~lang ~path : (t, PE.parse_error) Result.t =
-  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name %s -x '%s' 2>/dev/null" grammar lang path in
+  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name %s -x %s 2>/dev/null"
+    (Stdlib.Filename.quote grammar) lang (Stdlib.Filename.quote path) in
   try
     let ic = Unix.open_process_in cmd in
     let xml_str = Stdlib.Buffer.create 4096 in

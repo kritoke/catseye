@@ -12,6 +12,19 @@ let ( > ) = Stdlib.( > )
 let ( <= ) = Stdlib.( <= )
 let ( >= ) = Stdlib.( >= )
 
+(* Use shared XML parser — types and utilities from Xml_parse *)
+type xml = Xml_parse.xml =
+  { tag : string
+  ; attrs : (string * string) list
+  ; children : xml list
+  ; text : string }
+
+let attr = Xml_parse.attr
+let line_of = Xml_parse.line_of
+let find = Xml_parse.find
+let children_where = Xml_parse.children_where
+let contains = Xml_parse.contains
+
 (* ── Constants ──────────────────────────────────────────────────────── *)
 
 let taint_sources =
@@ -43,152 +56,9 @@ let skip_calls =
   ; "random_suffix"; "secure_random"
   ; "facet_pi_server_util.random_suffix" ]
 
-(* ── XML tree ──────────────────────────────────────────────────────── *)
+(* ── Substring helper (from Xml_parse) ────────────────────────────── *)
 
-type xml =
-  { tag : string
-  ; attrs : (string * string) list
-  ; children : xml list
-  ; text : string }
-
-let attr (n : xml) (k : string) : string =
-  try Stdlib.List.assoc k n.attrs with Stdlib.Not_found -> ""
-
-let line_of (n : xml) : int =
-  match attr n "srow" with "" -> 0 | s -> (try Int.of_string s + 1 with _ -> 0)
-
-(** Deep collect all descendants matching [tag]. *)
-let rec find (n : xml) ~tag : xml list =
-  (if n.tag = tag then [n] else []) @ List.concat_map ~f:(find ~tag) n.children
-
-(** Collect only *direct* children matching a predicate. *)
-let children_where (n : xml) ~f : xml list =
-  List.filter ~f n.children
-
-(* ── Tokenizer ─────────────────────────────────────────────────────── *)
-
-type tok = Open of string * (string * string) list | Close of string | Text of string
-
-let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
-
-(** Skip to the first char satisfying [pred], returning the skipped substring. *)
-let skip_until s pos pred =
-  let len = String.length s in
-  let start = pos in
-  let rec go i = if i < len && not (pred s.[i]) then go (i + 1) else i in
-  let stop = go start in
-  (Stdlib.String.sub s start (stop - start), stop)
-
-(** Parse name=value pairs from inside a tag. Respects quoting. *)
-let parse_attrs s =
-  let rec go i acc =
-    let len = String.length s in
-    (* skip whitespace *)
-    let i = let rec skip j =
-      if j < len && is_ws s.[j] then skip (j + 1) else j in skip i in
-    if i >= len || s.[i] = '/' || s.[i] = '>' then List.rev acc
-    else
-      (* name *)
-      let (name, i) = skip_until s i (fun c -> c = '=' || is_ws c || c = '>' || c = '/') in
-      if name = "" then go i acc
-      else
-        let i = let rec find_eq j =
-          if j < len && s.[j] <> '=' then find_eq (j + 1) else j in find_eq i in
-        if i >= len || s.[i] <> '=' then go i acc
-        else
-          let i = let rec skip_ws j =
-            if j < len && is_ws s.[j] then skip_ws (j + 1) else j in skip_ws (i + 1) in
-          if i < len && s.[i] = '"' then
-            let (value, i) = skip_until s (i + 1) (fun c -> c = '"') in
-            go (i + 1) ((name, value) :: acc)
-          else go i acc
-  in
-  go 0 []
-
-(** Tokenize XML string into a flat token list. *)
-let tokenize s =
-  let len = String.length s in
-  let rec go pos acc =
-    if pos >= len then List.rev acc
-    else if s.[pos] <> '<' then begin
-      let (txt, next) = skip_until s pos (fun c -> c = '<') in
-      let trimmed = String.strip txt in
-      if trimmed = "" then go next acc
-      else go next (Text trimmed :: acc)
-    end else if pos + 1 < len && s.[pos + 1] = '?' then begin
-      (* XML declaration *)
-      let (_, next) = skip_until s pos (fun c -> c = '>') in
-      go (next + 1) acc
-    end else if pos + 1 < len && s.[pos + 1] = '/' then begin
-      (* closing tag *)
-      let (name, next) = skip_until s (pos + 2) (fun c -> c = '>') in
-      go (next + 1) (Close (String.strip name) :: acc)
-    end else if pos + 3 < len && s.[pos + 1] = '!' && s.[pos + 2] = '-' && s.[pos + 3] = '-' then begin
-      (* comment *)
-      let rec find_end i =
-        if i + 2 >= len then len
-        else if s.[i] = '-' && s.[i + 1] = '-' && s.[i + 2] = '>' then i + 3
-        else find_end (i + 1) in
-      go (find_end (pos + 4)) acc
-    end else begin
-      (* opening tag *)
-      let (tag, i) = skip_until s (pos + 1) (fun c -> is_ws c || c = '>' || c = '/') in
-      if tag = "" then go (pos + 1) acc
-      else begin
-        let (raw_attrs, i) = skip_until s i (fun c -> c = '>') in
-        (* Check for self-closing, respecting quotes *)
-        let self_close =
-          let alen = String.length raw_attrs in
-          alen > 0 && raw_attrs.[alen - 1] = '/' in
-        let attrs = parse_attrs raw_attrs in
-        let acc = Open (tag, attrs) :: acc in
-        go (i + 1) (if self_close then Close tag :: acc else acc)
-      end
-    end
-  in
-  go 0 []
-
-(* ── Parser: tokens → xml tree (functional recursive descent) ─────── *)
-
-(** Build xml nodes from token array starting at [pos].
-    Returns (nodes, next_pos). *)
-let parse_xml s =
-  let arr = Stdlib.Array.of_list (tokenize s) in
-  let len = Stdlib.Array.length arr in
-  let rec build pos =
-    if pos >= len then ([], pos)
-    else match arr.(pos) with
-    | Text _ -> build (pos + 1)
-    | Close _ -> ([], pos)  (* caller consumes *)
-    | Open (tag, attrs) ->
-      let (children, text, pos') = collect (pos + 1) tag in
-      let (rest, pos'') = build pos' in
-      ({ tag; attrs; children; text } :: rest, pos'')
-  and collect pos close_tag =
-    let rec go pos acc last_text =
-      if pos >= len then (List.rev acc, last_text, pos)
-      else match arr.(pos) with
-      | Text t -> go (pos + 1) acc t
-      | Close ct when ct = close_tag -> (List.rev acc, last_text, pos + 1)
-      | Close _ -> (List.rev acc, last_text, pos)  (* mismatched — stop *)
-      | Open _ ->
-        let (nodes, pos') = build pos in
-        go pos' (List.rev_append nodes acc) last_text
-    in
-    go pos [] ""
-  in
-  fst (build 0)
-
-(* ── Substring helper ──────────────────────────────────────────────── *)
-
-let contains ~sub s =
-  let slen = String.length sub in
-  let slen_s = String.length s in
-  slen > 0 &&
-  let rec loop i =
-    i + slen <= slen_s && (Stdlib.String.sub s i slen = sub || loop (i + 1))
-  in
-  loop 0
+(* contains is now inherited from Xml_parse *)
 
 (* ── Arg extraction ────────────────────────────────────────────────── *)
 
@@ -327,7 +197,8 @@ let grammar_path () =
   | Some path -> Ok path
   | None ->
     (* Auto-discover: check user tree-sitter directory first (has WASM/so parsers) *)
-    let so_path = "/home/kritoke/.tree-sitter/gleam.so" in
+    let home = try Stdlib.Sys.getenv "HOME" with Stdlib.Not_found -> "" in
+    let so_path = Stdlib.Filename.concat home ".tree-sitter/gleam.so" in
     if Stdlib.Sys.file_exists so_path then Ok so_path
     else begin
       (* Fall back to nix store - use maxdepth 3 to find parsers in subdirs *)
@@ -385,7 +256,7 @@ let extract file_path =
     Stdlib.really_input ic content 0 len;
     Stdlib.close_in ic;
     Stdlib.Sys.remove tmp_file;
-    let doc = parse_xml (Stdlib.Bytes.to_string content) in
+    let doc = Xml_parse.parse_to_list (Stdlib.Bytes.to_string content) in
     (* Find source_file by recursive descent *)
     let rec find_sf = function
       | [] -> []

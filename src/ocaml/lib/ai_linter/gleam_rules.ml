@@ -525,7 +525,8 @@ let detect_result_in_map (m : t) =
           match pat with
           | PType ("Result", _) -> true
           | _ -> false
-        ) branches || returns_result (snd (List.hd branches))
+        ) branches
+        || List.exists (fun (_, body) -> returns_result body) branches
     | EApp (fn, _) ->
         let name = expr_name fn in
         (match Type_inference.lookup_gleam name with

@@ -67,8 +67,8 @@ let rec walk_expr (n : xml) (file : string) : expr =
     | "integer" | "float" ->
       ELiteral (LString (text_of n))
     | "true" -> ELiteral (LBool true)
-    | "false" | "()" -> ELiteral (LBool false)
-    | "unit" -> ELiteral LUnit
+    | "false" -> ELiteral (LBool false)
+    | "()" | "unit" -> ELiteral LUnit
     
     (* Function/apply *)
     | "application_expression" ->
@@ -317,7 +317,9 @@ let parse_file ~(path : string) : (t, PE.parse_error) Result.t =
   | None ->
     Error (PE.make_error ~file:path ~message:"OCaml tree-sitter grammar not found. Set TREE_SITTER_OCAML_GRAMMAR or install tree-sitter-ocaml.")
   | Some grammar ->
-    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name ocaml -x '%s' 2>/dev/null" grammar path in
+    let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name ocaml -x %s 2>/dev/null"
+      (Stdlib.Filename.quote grammar)
+      (Stdlib.Filename.quote path) in
     try
       let ic = Unix.open_process_in cmd in
       let xml_str = Stdlib.Buffer.create 8192 in

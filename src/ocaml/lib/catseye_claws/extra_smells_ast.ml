@@ -38,40 +38,9 @@ let make_finding (file : string) (line : int) (lang : string) (rule : string)
 (** Method names exempt from LongMethod checks.
     These naming patterns indicate idiomatic functions that tend to be
     naturally larger (query methods, data transformations, builders). *)
-let is_exempt_method (name : string) : bool =
-  (* Standard constructors *)
-  name = "initialize" || name = "new"
-  (* From/Parse patterns (serialization/deserialization) *)
-  || Stdlib.String.length name >= 5 && Stdlib.String.sub name 0 5 = "from_"
-  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "decode" || p = "parse_")
-  (* Builder patterns *)
-  || Stdlib.String.length name >= 5 && (let p = Stdlib.String.sub name 0 5 in p = "build" || p = "creat")
-  (* Handler patterns *)
-  || Stdlib.String.length name >= 7 && Stdlib.String.sub name 0 7 = "handle_"
-  (* Test patterns *)
-  || Stdlib.String.length name >= 4 && Stdlib.String.sub name 0 4 = "test"
-  (* Rust getter patterns - idiomatic query methods *)
-  || Stdlib.String.length name >= 4 && Stdlib.String.sub name 0 4 = "get_"
-  (* Rust compute/query/populate patterns - aggregate functions that are naturally larger *)
-  || Stdlib.String.length name >= 8 && (let p = Stdlib.String.sub name 0 8 in p = "compute_" || p = "populate" || p = "aggregate")
-  (* Rust query patterns *)
-  || Stdlib.String.length name >= 6 && Stdlib.String.sub name 0 6 = "query_"
-  (* Rust update/validate/revert patterns - often contain many validations/operations *)
-  || Stdlib.String.length name >= 7 && (let p = Stdlib.String.sub name 0 7 in p = "update_" || p = "archive_" || p = "revert_")
-  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "delay_" || p = "grant_")
-  (* Rust badge/check patterns *)
-  || Stdlib.String.length name >= 6 && (let p = Stdlib.String.sub name 0 6 in p = "check_" || p = "badge_")
-  (* Rust validate pattern (contains, not prefix) *)
-  || Stdlib.String.length name >= 8 && Stdlib.String.sub name (Stdlib.String.length name - 8) 8 = "_validate"
+let is_exempt_method = Scope.is_exempt_method
 
-let is_bench_or_example (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  Stdlib.List.exists (fun pat ->
-    let rec contains s i =
-      i + Stdlib.String.length pat <= Stdlib.String.length s &&
-      (Stdlib.String.sub s i (Stdlib.String.length pat) = pat || contains s (i + 1))
-    in contains lower 0
-  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"]
+let is_bench_or_example = Scope.is_benchmark_or_example
 
 (* ── LongMethod ─────────────────────────────────────────────────────── *)
 
@@ -289,8 +258,8 @@ let check_data_clumps (scopes : Ast_scope.ast_scope list)
 (* ── FlagArgument ───────────────────────────────────────────────────── *)
 
 let flag_prefixes = [
-  "is_"; "should_"; "enable_"; "disable_"; "use_"; "include_";
-  "has_"; "allow_"; "force_"; "skip_"; "no_"; "with_";
+  "should_"; "enable_"; "disable_"; "use_"; "include_";
+  "allow_"; "force_"; "skip_"; "no_"; "with_";
 ]
 let flag_names = ["verbose"; "debug"; "dry_run"; "strict"; "quiet"]
 

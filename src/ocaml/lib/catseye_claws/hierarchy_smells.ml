@@ -29,23 +29,10 @@ let refused_bequest_min_loc = 10
 
 (* ── Helper ───────────────────────────────────────────────────────── *)
 
-(** Check if a string contains a substring *)
-let contains (str : string) (sub : string) : bool =
-  let slen = Stdlib.String.length str in
-  let slen_sub = Stdlib.String.length sub in
-  if slen_sub > slen then false
-  else
-    let rec check i =
-      if i > slen - slen_sub then false
-      else if Stdlib.String.sub str i slen_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
-
 (** Check if a class name suggests it's abstract (Crystal convention) *)
 let is_abstract_class (name : string) : bool =
   let lower = Stdlib.String.lowercase_ascii name in
-  contains lower "abstract"
+  Scope.contains lower "abstract"
 
 (* ── Class Registry Building ────────────────────────────────────────── *)
 
@@ -81,7 +68,14 @@ let build_registry (nodes : Security_node.t list) :
 
       let method_names = Stdlib.List.map (fun n -> n.Security_node.name) methods_in_class in
       let parent = Security_node.get_metadata cn "parent" in
-      let loc = end_line - start_line in
+      let loc =
+        if end_line >= 1000000 then
+          let max_line = Stdlib.List.fold_left (fun acc (n : Security_node.t) ->
+            Stdlib.max acc n.Security_node.line
+          ) start_line sorted in
+          max_line + 1 - start_line
+        else end_line - start_line
+      in
       let name = cn.Security_node.name in
       let is_abstract = is_abstract_class name in
 

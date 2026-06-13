@@ -37,45 +37,10 @@ let make_finding (def : Security_node.t) (rule : string) (severity : string)
 (** Method names that are inherently multi-parameter and should be exempt
     from LongParameterList checks. These are patterns where many params
     are structurally required by the domain. *)
-let is_exempt_method (name : string) : bool =
-  (* Constructors *)
-  name = "initialize" ||
-  name = "new" ||
-  (* from_* — factory/constructor methods like from_entity, from_string, from_json *)
-  Stdlib.String.length name >= 5 &&
-  Stdlib.String.sub name 0 5 = "from_" ||
-  (* Binary format parsers — params map to format fields *)
-  Stdlib.String.length name >= 6 &&
-  (let prefix = Stdlib.String.sub name 0 6 in
-   prefix = "decode" || prefix = "parse_" || prefix = "to_json" || prefix = "to_hash") ||
-  (* Private helpers — extracted for dedup, params are required *)
-  (Stdlib.String.length name >= 5 &&
-   let suffix = Stdlib.String.sub name (Stdlib.String.length name - 5) 5 in
-   suffix = "_core") ||
-  (* Factory/builder patterns *)
-  (Stdlib.String.length name >= 5 &&
-   let prefix = Stdlib.String.sub name 0 5 in
-   prefix = "build" || prefix = "creat") ||
-  (* Event/action handlers — domain context requires many params *)
-  Stdlib.String.length name >= 7 &&
-  Stdlib.String.sub name 0 7 = "handle_" ||
-  (* Benchmark methods — self-contained harnesses *)
-  Stdlib.String.length name >= 9 &&
-  (let prefix = Stdlib.String.sub name 0 9 in
-   prefix = "benchmark") ||
-  (* Test methods *)
-  Stdlib.String.length name >= 4 &&
-  (let prefix = Stdlib.String.sub name 0 4 in
-   prefix = "test")
+let is_exempt_method = Scope.is_exempt_method
 
-(** File paths that should be exempt from certain checks. *)
-let is_benchmark_or_example (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  List.exists ~f:(fun pat ->
-    let plen = Stdlib.String.length pat in
-    Stdlib.String.length lower >= plen &&
-    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
-  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+(* is_benchmark_or_example inherited from Scope *)
+let is_benchmark_or_example = Scope.is_benchmark_or_example
 
 let is_constants_file (file : string) : bool =
   let lower = Stdlib.String.lowercase_ascii file in
@@ -121,29 +86,11 @@ let scope_creators =
      matches — they don't represent nested control flow. A `case` with
      15 `when` branches is a flat decision tree, not depth 15. *)
 
-(** Find substring [needle] in [haystack], returning start index or -1. *)
-let find_substring (haystack : string) (needle : string) : int =
-  let hlen = Stdlib.String.length haystack in
-  let nlen = Stdlib.String.length needle in
-  if nlen > hlen then -1
-  else begin
-    let result = ref (-1) in
-    (try
-      for i = 0 to hlen - nlen do
-        if Stdlib.String.sub haystack i nlen = needle then begin
-          result := i;
-          raise Stdlib.Exit
-        end
-      done
-    with Stdlib.Exit -> ());
-    !result
-  end
-
 (** Check if a node name contains a scope-creating pattern. *)
 let is_scope_creator (name : string) : bool =
   let lower = Stdlib.String.lowercase_ascii name in
   List.exists ~f:(fun pat ->
-    let idx = find_substring lower pat in
+    let idx = Scope.find_substring lower pat in
     if idx < 0 then false
     else begin
       let before_ok = idx = 0 || let c = lower.[idx - 1] in c = ' ' || c = '.' || c = '_' in

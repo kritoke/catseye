@@ -14,7 +14,7 @@ let json_escape s =
     | '\n' -> Buffer.add_string b "\\n"
     | '\r' -> Buffer.add_string b "\\r"
     | '\t' -> Buffer.add_string b "\\t"
-    | c when Char.to_int c < 32 -> Buffer.add_char b c
+    | c when Char.to_int c < 32 -> Buffer.add_string b (Stdlib.Printf.sprintf "\\u%04x" (Char.to_int c))
     | c -> Buffer.add_char b c
   );
   Buffer.contents b

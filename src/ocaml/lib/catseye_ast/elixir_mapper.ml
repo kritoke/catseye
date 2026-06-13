@@ -184,8 +184,9 @@ let run_extractor_single (abs_file_path : string) : string option =
 (* ── Parse file ───────────────────────────────────────────────────── *)
 
 let parse_file ~(path : string) ~(extractor_cmd : string) : (t, PE.parse_error) Result.t =
+  temp_counter := 0;
   let _extractor_cmd = extractor_cmd in
-  if not (Stdlib.Filename.check_suffix path ".ex" || Stdlib.Filename.check_suffix path ".exs") then
+  if not (Stdlib.Filename.check_suffix path ".ex" || Stdlib.Filename.check_suffix path ".exs" || Stdlib.Filename.check_suffix path ".heex") then
     Error (PE.make_error ~file:path ~message:"Not an Elixir file")
   else
     let abs_path = get_realpath path in

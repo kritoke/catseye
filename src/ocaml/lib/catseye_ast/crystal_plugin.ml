@@ -21,21 +21,13 @@ let plugin ~(extractor_cmds : Catseye_types.Extractor_cmds.t) : Language_plugin.
   );
 
   extract_file = Some (fun path ->
-    let full_cmd = Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" 
-      (Stdlib.Filename.quote extractor_cmds.flat) 
-      (Stdlib.Filename.quote path) in
-    try
-      let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full full_cmd (Unix.environment ()) in
-      let output = Stdlib.Buffer.create 4096 in
-      (try while true do Stdlib.Buffer.add_channel output stdout_ch 4096 done
-       with Stdlib.End_of_file -> ());
-      let _ = Unix.close_process_full (stdout_ch, stdin_ch, stderr_ch) in
-      let json_str = Stdlib.Buffer.contents output in
-      if json_str <> "" then
-        try Some (Catseye_types.Security_node.decode_many (Yojson.Safe.from_string json_str))
+    match Crystal_parse_utils.run_extractor ~timeout_sec:15.0 ~extractor_cmd:extractor_cmds.flat ~path with
+    | Error _ -> None
+    | Ok output ->
+      if output <> "" then
+        try Some (Catseye_types.Security_node.decode_many (Yojson.Safe.from_string output))
         with _ -> None
       else None
-    with _ -> None
   );
 
   taint_sources = ["params"; "request"; "env"; "ARGV"];

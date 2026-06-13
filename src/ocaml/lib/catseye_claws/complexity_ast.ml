@@ -66,7 +66,12 @@ let rec count_decisions (expr : expr) : int =
     count_decisions e1
   | EBlock es ->
     OldList.fold_left (fun acc e -> acc + count_decisions e) 0 es
-  | EError _ | EUnknown _ | ETryCatchFinally _ ->
+  | ETryCatchFinally t ->
+    count_decisions t.try_body
+    + Stdlib.List.fold_left (fun acc c -> acc + count_decisions c.rescue_body) 0 t.rescue_clauses
+    + (match t.ensure_body with Some e -> count_decisions e | None -> 0)
+    + (match t.else_body with Some e -> count_decisions e | None -> 0)
+  | EError _ | EUnknown _ ->
     0
 
 (** Run complexity analysis on AST scopes. *)

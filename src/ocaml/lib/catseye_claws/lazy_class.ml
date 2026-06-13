@@ -24,18 +24,8 @@ open Catseye_types
 
 (* ── Helpers ──────────────────────────────────────────────────────── *)
 
-(** Check if a string contains a substring *)
-let contains (str : string) (sub : string) : bool =
-  let slen = Stdlib.String.length str in
-  let slen_sub = Stdlib.String.length sub in
-  if slen_sub > slen then false
-  else
-    let rec check i =
-      if i > slen - slen_sub then false
-      else if Stdlib.String.sub str i slen_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
+(* contains inherited from Scope *)
+let contains = Scope.contains
 
 (** Check if file is a config/structure file *)
 let is_config_file (file : string) : bool =

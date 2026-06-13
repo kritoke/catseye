@@ -26,13 +26,7 @@ let make_finding ~rule ~severity ~file ~line ~message ~flow ?(lang = "crystal") 
 (* ── Long Method ────────────────────────────────────────────────────── *)
 
 (** Check if a file is a benchmark, example, or test file. *)
-let is_bench_or_example (file : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii file in
-  Stdlib.List.exists (fun pat ->
-    let plen = Stdlib.String.length pat in
-    Stdlib.String.length lower >= plen &&
-    Stdlib.String.sub lower (Stdlib.String.length lower - plen) plen = pat
-  ) ["/bench/"; "/benchmark/"; "/example/"; "/examples/"; "/spec/"; "/test/"; "/tests/"]
+let is_bench_or_example = Scope.is_benchmark_or_example
 
 (** Method names that should be exempt from LongMethod checks. *)
 let is_long_method_exempt (name : string) : bool =

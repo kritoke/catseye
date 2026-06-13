@@ -29,18 +29,6 @@ let default_method_count_critical = 25
 
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
-let contains (str : string) (sub : string) : bool =
-  let slen = Stdlib.String.length str in
-  let slen_sub = Stdlib.String.length sub in
-  if slen_sub > slen then false
-  else
-    let rec check i =
-      if i > slen - slen_sub then false
-      else if Stdlib.String.sub str i slen_sub = sub then true
-      else check (i + 1)
-    in
-    check 0
-
 (* ── Analyzer ─────────────────────────────────────────────────────── *)
 
 let analyze (nodes : Security_node.t list) (config : Types.claws_config)
