@@ -5,29 +5,20 @@
    No IUnknown or string-prefix matching.
  *)
 
+include Crystal_rules_helpers
 open Base
+(* Restore Stdlib modules after open Base shadows them *)
 module List = Stdlib.List
 module String = Stdlib.String
-module Hashtbl = Stdlib.Hashtbl
-module Printf = Stdlib.Printf
-module Int = Stdlib.Int
-module Char = Stdlib.Char
-
-(* String comparison operators *)
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-let ( < ) = Stdlib.( < )
-let ( > ) = Stdlib.( > )
-let ( <= ) = Stdlib.( <= )
-let ( >= ) = Stdlib.( >= )
-
 open Catseye_ast.Types
 
 module T = Types
 
 (* ── Expression tree helpers ────────────────────────────────────────── *)
+(* expr_name inherited from Crystal_rules_helpers *)
 
-(** Recursively walk an expression, collecting all function applications *)
+(** Recursively walk an expression, collecting all function applications.
+    Gleam-specific: does not recurse into fn expression (unlike collect_app_names). *)
 let rec collect_apps (expr : expr) : (string * int) list =
   match expr.expr_value with
   | EApp (fn, args) ->
@@ -43,15 +34,7 @@ let rec collect_apps (expr : expr) : (string * int) list =
   | EList es -> List.concat_map collect_apps es
   | EFn (_, body) -> collect_apps body
   | _ -> []
-
-(** Get the full name of an expression (e.g., "List.wrap", "Result.is_ok") *)
-and expr_name (e : expr) : string =
-  match e.expr_value with
-  | EVar name -> name
-  | EFieldAccess (receiver, field) ->
-      let prefix = expr_name receiver in
-      if prefix = "" then field else prefix ^ "." ^ field
-  | _ -> ""
+(* expr_name inherited from Crystal_rules_helpers *)
 
 (** Check if expression contains an app matching a predicate *)
 let rec has_app_named (expr : expr) (module_name : string option) (fn_name : string) : bool =
@@ -1342,40 +1325,25 @@ let detect_use_candidates (m : t) =
 
 (** Rule: Hardcoded Secrets *)
 let detect_hardcoded_secrets (m : t) =
-  let secret_prefixes = [
-    "sk_"; "sk_live_"; "sk_test_";
-    "ghp_"; "gho_"; "ghu_"; "ghs_";
-    "AKIA"; "ASIA";
-    "AIza";
-    "xoxb-"; "xoxp-"; "xoxa-";
-    "eyJ";
-  ] in
-  let is_likely_secret (s : string) =
-    String.length s >= 20 &&
-    List.exists (fun prefix ->
-      String.length prefix <= String.length s &&
-      String.sub s 0 (String.length prefix) = prefix
-    ) secret_prefixes
-  in
-  let rec collect_string_literals (e : expr) : (string * int) list =
+  let rec collect_secrets (e : expr) : (string * int) list =
     match e.expr_value with
     | ELiteral (LString s) when is_likely_secret s ->
         [(s, e.expr_location.start.line)]
     | ELiteral _ -> []
     | EApp (fn, args) ->
-        collect_string_literals fn @ List.concat_map collect_string_literals args
+        collect_secrets fn @ List.concat_map collect_secrets args
     | ELet (_, e1, e2) | ELetAssert (_, e1, e2) ->
-        collect_string_literals e1 @ collect_string_literals e2
+        collect_secrets e1 @ collect_secrets e2
     | EIf (_, then_, else_) ->
-        collect_string_literals then_ @
-        (match else_ with Some e -> collect_string_literals e | None -> [])
-    | EBlock es -> List.concat_map collect_string_literals es
+        collect_secrets then_ @
+        (match else_ with Some e -> collect_secrets e | None -> [])
+    | EBlock es -> List.concat_map collect_secrets es
     | _ -> []
   in
   List.filter_map (fun item ->
     match item.item_value with
     | IFunction (name, _, _, body) ->
-        (match collect_string_literals body with
+        (match collect_secrets body with
          | (s, line) :: _ ->
              let masked = String.sub s 0 (min 8 (String.length s)) ^ "..." in
              Some (Printf.sprintf

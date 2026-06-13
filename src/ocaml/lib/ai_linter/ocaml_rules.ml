@@ -1,6 +1,6 @@
 (* src/ocaml/lib/ai_linter/ocaml_rules.ml
    OCaml-specific AST rules for antipattern and AI hallucination detection.
-   
+
    Key areas:
    1. AI hallucinated functions (Haskell/Scala/Python APIs used in OCaml)
    2. Unsafe patterns: Obj.magic, Marshal.from_channel, unsafe operations
@@ -8,54 +8,13 @@
    4. Best practices: avoid exceptions, use Result, proper module structure
  *)
 
-open Base
-module List = Stdlib.List
-module String = Stdlib.String
-module Hashtbl = Stdlib.Hashtbl
-module Printf = Stdlib.Printf
-
-(* String comparison operators *)
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-
+include Crystal_rules_helpers
 open Catseye_ast.Types
 
 module T = Types
 
-(* ── Expression helpers ─────────────────────────────────────────────── *)
-
-let rec expr_name (e : expr) : string =
-  match e.expr_value with
-  | EVar name -> name
-  | EFieldAccess (recv, field) ->
-    let prefix = expr_name recv in
-    if prefix = "" then field else prefix ^ "." ^ field
-  | _ -> ""
-
-let rec collect_app_names (e : expr) : (string * int) list =
-  match e.expr_value with
-  | EApp (fn, args) ->
-    let name = expr_name fn in
-    (name, e.expr_location.start.line) :: List.concat_map collect_app_names (fn :: args)
-  | EBlock es -> List.concat_map collect_app_names es
-  | ELet (_, e1, e2) -> collect_app_names e1 @ collect_app_names e2
-  | EIf (cond, then_, else_) ->
-    collect_app_names cond @ collect_app_names then_ @
-    (match else_ with Some e2 -> collect_app_names e2 | None -> [])
-  | ECase (scrut, branches) ->
-    collect_app_names scrut @ List.concat (List.map (fun (_, e) -> collect_app_names e) branches)
-  | EFn (_, body) -> collect_app_names body
-  | EFieldAccess (recv, _) -> collect_app_names recv
-  | _ -> []
-
-let rec walk_items_for_apps (items : item list) : (string * int) list =
-  List.concat_map (fun item ->
-    match item.item_value with
-    | IFunction (_, _, _, body) -> collect_app_names body
-    | IConstant (_, _, body) -> collect_app_names body
-    | IModule (_, subs) -> walk_items_for_apps subs
-    | _ -> []
-  ) items
+(* ── Expression helpers (shared via Crystal_rules_helpers) ─────────── *)
+(* expr_name, collect_app_names_comprehensive, walk_items_for_apps inherited *)
 
 (* ── 1. AI Hallucinated Functions ───────────────────────────────────── *)
 

@@ -9,38 +9,16 @@
    5. Security: file operations, SQL, hardcoded values
  *)
 
-open Base
+include Crystal_rules_helpers
 open Catseye_ast.Types
 open Types
-
-(* Expose stdlib functions that may be shadowed *)
-module List = Stdlib.List
-module String = Stdlib.String
-module Hashtbl = Stdlib.Hashtbl
-module Printf = Stdlib.Printf
-module Char = Stdlib.Char
-
-(* String comparison operators *)
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-let ( < ) = Stdlib.( < )
-let ( > ) = Stdlib.( > )
-let ( <= ) = Stdlib.( <= )
-let ( >= ) = Stdlib.( >= )
-
-(* Expose stdlib functions that may be shadowed *)
 
 (* ── Helpers ──────────────────────────────────────────────────────── *)
 
 let is_test_or_bench (file : string) : bool =
-let lower = String.lowercase_ascii file in
-(* Check for common test/benchmark patterns: suffix and path markers *)
-List.exists (fun pat ->
-let plen = String.length pat in
-String.length lower >= plen &&
-let suffix = String.sub lower (String.length lower - plen) plen in
-pat = suffix || (String.length lower >= 5 && String.sub lower 0 5 = "test_")
-) ["_test.rs"; "_bench.rs"; "_tests.rs"; "/test/"; "/bench/"; "/tests/"]
+  is_test_file file ||
+  let lower = String.lowercase_ascii file in
+  name_ends_with_any lower ["_test.rs"; "_bench.rs"; "_tests.rs"]
 
 (* ── Hallucinated Functions Detection ─────────────────────────────── *)
 

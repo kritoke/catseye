@@ -1,6 +1,6 @@
 (* src/ocaml/lib/ai_linter/javascript_rules.ml
    JavaScript/TypeScript AST rules for antipattern and AI hallucination detection.
-   
+
    Categories:
    1. AI hallucinated methods (Python/Ruby/Java APIs used in JS)
    2. Security antipatterns (eval, prototype pollution, incomplete sanitization)
@@ -8,47 +8,13 @@
    4. Code quality (loose equality, promise chain hell, deprecated APIs)
  *)
 
-open Base
-module List = Stdlib.List
-module String = Stdlib.String
-module Hashtbl = Stdlib.Hashtbl
-module Printf = Stdlib.Printf
-
-(* String comparison operators *)
-let ( = ) = Stdlib.( = )
-let ( <> ) = Stdlib.( <> )
-
+include Crystal_rules_helpers
 open Catseye_ast.Types
 
 module T = Types
 
-(* ── Expression helpers ─────────────────────────────────────────────── *)
-
-let rec expr_name (e : expr) : string =
-  match e.expr_value with
-  | EVar name -> name
-  | EFieldAccess (recv, field) ->
-    let prefix = expr_name recv in
-    if prefix = "" then field else prefix ^ "." ^ field
-  | _ -> ""
-
-let rec collect_app_names (e : expr) : (string * int) list =
-  match e.expr_value with
-  | EApp (fn, args) ->
-    let name = expr_name fn in
-    (name, e.expr_location.start.line) :: List.concat_map collect_app_names (fn :: args)
-  | EBlock es -> List.concat_map collect_app_names es
-  | ELet (_, e1, e2) -> collect_app_names e1 @ collect_app_names e2
-  | EIf (cond, then_, else_) ->
-    collect_app_names cond @ collect_app_names then_ @
-    (match else_ with Some e2 -> collect_app_names e2 | None -> [])
-  | ECase (scrut, branches) ->
-    collect_app_names scrut @ List.concat (List.map (fun (_, e) -> collect_app_names e) branches)
-  | ETuple es -> List.concat_map collect_app_names es
-  | EList es -> List.concat_map collect_app_names es
-  | EFn (_, body) -> collect_app_names body
-  | EFieldAccess (recv, _) -> collect_app_names recv
-  | _ -> []
+(* ── Expression helpers (shared via Crystal_rules_helpers) ─────────── *)
+(* expr_name, collect_app_names_comprehensive inherited *)
 
 let rec collect_binops (e : expr) : (string * int) list =
   match e.expr_value with
@@ -75,14 +41,7 @@ let rec collect_var_names (e : expr) : (string * int) list =
   | EFn (_, body) -> collect_var_names body
   | _ -> []
 
-let rec walk_items_for_apps (items : item list) : (string * int) list =
-  List.concat_map (fun item ->
-    match item.item_value with
-    | IFunction (_, _, _, body) -> collect_app_names body
-    | IConstant (_, _, body) -> collect_app_names body
-    | IModule (_, subs) -> walk_items_for_apps subs
-    | _ -> []
-  ) items
+(* walk_items_for_apps inherited from Crystal_rules_helpers *)
 
 let rec walk_items_for_binops (items : item list) : (string * int) list =
   List.concat_map (fun item ->

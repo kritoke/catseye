@@ -1,9 +1,13 @@
 (* src/ocaml/lib/ai_linter/crystal_rules_helpers.ml
-   Shared helpers for crystal rule detectors
+   Shared helpers for ALL language rule detectors.
 
-   Provides is_test_or_spec_file, list_sort_uniq, and the AST walking
-   primitives (get_name_chain, get_full_name, collect_app_names) used
-   by every category module.
+   Included by crystal_rules.ml, gleam_rules.ml, javascript_rules.ml,
+   ocaml_rules.ml, svelte_rules.ml, and rust_rules.ml.
+
+   Provides: module aliases, operators, string helpers, file path helpers,
+   expression walking (expr_name, collect_app_names, walk_items_for_apps),
+   detector combinators (map_functions, iter/map_subexpressions),
+   and hardcoded-secrets detection.
 
    All rules operate on CatseyeAST.t using typed pattern matching.
    Uses the shared Types.finding type from types.ml.
@@ -193,3 +197,90 @@ let collect_string_literals (e : expr) : (expr * string) list =
     | ELiteral (LString s) -> [(e, s)]
     | _ -> []
   ) e
+
+(* ── Language-agnostic helpers (used by all language rule files) ────── *)
+
+(** Simple expression name: EVar → name, EFieldAccess → dotted name.
+    This is the common version used by gleam/js/ocaml/svelte rules.
+    Crystal uses get_full_name (which uses get_name_chain) instead. *)
+let rec expr_name (e : expr) : string =
+  match e.expr_value with
+  | EVar name -> name
+  | EFieldAccess (recv, field) ->
+    let prefix = expr_name recv in
+    if prefix = "" then field else prefix ^ "." ^ field
+  | _ -> ""
+
+(** Comprehensive collect_app_names covering all expression variants.
+    This is the union of all language-specific implementations:
+    EApp, EBlock, ELet, ELetAssert, EIf, ECase, ETuple, EList, EFn,
+    ETryCatchFinally, EFieldAccess.
+    Uses expr_name (simple dotted name) for function identification. *)
+let rec collect_app_names_comprehensive (e : expr) : (string * int) list =
+  match e.expr_value with
+  | EApp (fn, args) ->
+    let name = expr_name fn in
+    (name, e.expr_location.start.line)
+      :: List.concat_map collect_app_names_comprehensive (fn :: args)
+  | EBlock es -> List.concat_map collect_app_names_comprehensive es
+  | ELet (_, e1, e2) -> collect_app_names_comprehensive e1 @ collect_app_names_comprehensive e2
+  | ELetAssert (_, e1, e2) -> collect_app_names_comprehensive e1 @ collect_app_names_comprehensive e2
+  | EIf (cond, then_, else_) ->
+    collect_app_names_comprehensive cond @ collect_app_names_comprehensive then_ @
+    (match else_ with Some e -> collect_app_names_comprehensive e | None -> [])
+  | ECase (scrut, branches) ->
+    collect_app_names_comprehensive scrut
+    @ List.concat (List.map (fun (_, e) -> collect_app_names_comprehensive e) branches)
+  | ETuple es -> List.concat_map collect_app_names_comprehensive es
+  | EList es -> List.concat_map collect_app_names_comprehensive es
+  | EFn (_, body) -> collect_app_names_comprehensive body
+  | EFieldAccess (recv, _) -> collect_app_names_comprehensive recv
+  | ETryCatchFinally { try_body; rescue_clauses; ensure_body; else_body; _ } ->
+    let rescue = List.concat_map (fun rc -> collect_app_names_comprehensive rc.rescue_body) rescue_clauses in
+    let ensure = match ensure_body with Some e -> collect_app_names_comprehensive e | None -> [] in
+    let else_ = match else_body with Some e -> collect_app_names_comprehensive e | None -> [] in
+    collect_app_names_comprehensive try_body @ rescue @ ensure @ else_
+  | _ -> []
+
+(** Walk all items in a module, collecting app names from function bodies,
+    constants, and nested modules. Used by ocaml_rules, svelte_rules, etc. *)
+let rec walk_items_for_apps (items : item list) : (string * int) list =
+  List.concat_map (fun item ->
+    match item.item_value with
+    | IFunction (_, _, _, body) -> collect_app_names_comprehensive body
+    | IConstant (_, _, body) -> collect_app_names_comprehensive body
+    | IModule (_, subs) -> walk_items_for_apps subs
+    | _ -> []
+  ) items
+
+(** Language-agnostic test file detection.
+    Checks path markers only (no language-specific suffixes).
+    Language rules can layer their own extension checks on top. *)
+let is_test_file (file : string) : bool =
+  let lower = String.lowercase_ascii file in
+  let path_markers = ["/test/"; "/spec/"; "/benchmark/"; "/bench/"; "/example/"; "/examples/"; "/tests/"] in
+  let name_prefixes = ["test_"; "spec_"] in
+  List.exists (string_contains lower) path_markers
+  || List.exists (fun p -> name_starts_with_any lower [p]) name_prefixes
+
+(* ── Hardcoded secrets detection ─────────────────────────────────────── *)
+
+(** Secret prefixes that indicate a hardcoded credential/API key.
+    Shared across all language rule files. *)
+let secret_prefixes = [
+  "sk_"; "sk_live_"; "sk_test_";
+  "ghp_"; "gho_"; "ghu_"; "ghs_";
+  "AKIA"; "ASIA";
+  "AIza";
+  "xoxb-"; "xoxp-"; "xoxa-";
+  "eyJ";
+  "-----BEGIN RSA PRIVATE KEY-----";
+]
+
+(** Check if a string looks like a secret (prefix match + min length). *)
+let is_likely_secret (s : string) : bool =
+  String.length s >= 20 &&
+  List.exists (fun prefix ->
+    String.length prefix <= String.length s &&
+    String.sub s 0 (String.length prefix) = prefix
+  ) secret_prefixes
