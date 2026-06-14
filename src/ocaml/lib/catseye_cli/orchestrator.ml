@@ -436,8 +436,11 @@ let run (config : t) : int =
          if config.format = Terminal then
            Crowsnest_format.print_crows_nest config results
        | _ -> ());
-      Format.printf "No source files found in %s\n" config.target_dir;
-      Stdlib.exit 0
+      if config.format = Terminal then begin
+        Format.printf "No source files found in %s\n" config.target_dir;
+        Stdlib.exit 0
+      end
+      (* For machine-readable formats, fall through to produce valid empty output *)
     end;
     let cr_count = List.length (List.filter ~f:(fun s -> s.lang = "crystal") sources) in
   let gleam_count = List.length (List.filter ~f:(fun s -> s.lang = "gleam") sources) in
@@ -553,9 +556,12 @@ let run (config : t) : int =
     (List.rev !all_nodes, !cache_hits)
   ) in
   if nodes = [] && not config.ai_lint && not config.claws then begin
-    Catseye_engine.Cache.close cache;
-    Format.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
-    Stdlib.exit 0
+    if config.format = Terminal then begin
+      Catseye_engine.Cache.close cache;
+      Format.printf "\nNo AST nodes extracted. Nothing to analyze.\n";
+      Stdlib.exit 0
+    end
+    (* For machine-readable formats, fall through to produce valid empty output *)
   end;
 
   (* Step 2b: AST cache — avoid re-parsing files for CFG and Claws paths *)
