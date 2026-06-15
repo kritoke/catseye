@@ -34,12 +34,46 @@ let exempt_class_patterns = [
   "StateStore";
 ]
 
+(* Stdlib / external types that cannot be refactored into.
+   Feature Envy advises "move the behavior into the envied object". That is
+   impossible when the envied object is a stdlib type or a third-party shard
+   type you do not own — the high call counts reflect necessary adapter /
+   translation code, not a misplaced responsibility. We must not advise
+   monkey-patching vendored types. *)
+let stdlib_or_external_types = [
+  (* Crystal stdlib *)
+  "File"; "Dir"; "FileUtils"; "Path";
+  "YAML"; "JSON"; "XML"; "CSV";
+  "STDERR"; "STDOUT"; "STDIN"; "IO";
+  "HTTP"; "URI"; "URL"; "Socket"; "OpenSSL"; "Crypto";
+  "Regex"; "Random"; "Process"; "ENV"; "ARGV";
+  "UUID"; "Base64"; "Digest"; "Log";
+  "System"; "Runtime"; "GC"; "Channel"; "Mutex"; "Fiber";
+  (* Common third-party shard types (cannot extend with domain logic).
+     Note: both the bare and namespaced forms appear in real code, so we
+     list both - `LiquidAny` (bare) and `Liquid` (catches `Liquid::Any`). *)
+  "Liquid"; "LiquidAny";
+]
+
 (* ── Helpers ───────────────────────────────────────────────────────── *)
 
 let contains = Scope.contains
 
 let is_exempt_class (class_name : string) : bool =
   Stdlib.List.exists (fun pattern -> contains class_name pattern) exempt_class_patterns
+
+(** Whether a receiver is a stdlib / external type we cannot move behavior
+    into. Matches the full name (e.g. `YAML`) and also any namespaced type
+    whose top-level module is stdlib/external (e.g. `YAML::Any`,
+    `Liquid::Any`, `File::Info`) — you cannot move domain logic into a
+    type owned by the stdlib or a vendored shard, regardless of nesting. *)
+let is_stdlib_or_external (name : string) : bool =
+  let top_module =
+    match Stdlib.String.index_opt name ':' with
+    | Some i -> Stdlib.String.sub name 0 i
+    | None -> name
+  in
+  Stdlib.List.exists (fun t -> name = t || top_module = t) stdlib_or_external_types
 
 (* Extract class name from a call like "Config.get" -> "Config" or "@logger.info" -> "Logger" *)
 let rec extract_class_name (call_name : string) : string option =
@@ -111,7 +145,9 @@ let detect_feature_envy (nodes : Security_node.t list) : envy_target list =
             n.Security_node.node_type = Security_node.Class 
             && n.Security_node.file = file
           ) nodes in
-          if has_class && not (is_exempt_class receiver) then
+          if has_class
+             && not (is_exempt_class receiver)
+             && not (is_stdlib_or_external receiver) then
             result := { receiver; call_count = count; locations = locs } :: !result
       | _ -> ()
   ) receiver_calls;
