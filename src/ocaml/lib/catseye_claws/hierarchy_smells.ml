@@ -29,11 +29,6 @@ let refused_bequest_min_loc = 10
 
 (* ── Helper ───────────────────────────────────────────────────────── *)
 
-(** Check if a class name suggests it's abstract (Crystal convention) *)
-let is_abstract_class (name : string) : bool =
-  let lower = Stdlib.String.lowercase_ascii name in
-  Scope.contains lower "abstract"
-
 (* ── Class Registry Building ────────────────────────────────────────── *)
 
 let build_registry (nodes : Security_node.t list) :
@@ -67,6 +62,11 @@ let build_registry (nodes : Security_node.t list) :
       ) sorted in
 
       let method_names = Stdlib.List.map (fun n -> n.Security_node.name) methods_in_class in
+      let abstract_method_names =
+        Stdlib.List.filter_map (fun (n : Security_node.t) ->
+          if Security_node.has_metadata_flag n "abstract" then Some n.Security_node.name
+          else None
+        ) methods_in_class in
       let parent = Security_node.get_metadata cn "parent" in
       let loc =
         if end_line >= 1000000 then
@@ -77,7 +77,7 @@ let build_registry (nodes : Security_node.t list) :
         else end_line - start_line
       in
       let name = cn.Security_node.name in
-      let is_abstract = is_abstract_class name in
+      let is_abstract = Class_graph.is_abstract_node cn in
 
       class_infos := {
         Class_graph.name = name;
@@ -85,6 +85,7 @@ let build_registry (nodes : Security_node.t list) :
         Class_graph.line = cn.Security_node.line;
         Class_graph.parent = parent;
         Class_graph.methods = method_names;
+        Class_graph.abstract_methods = abstract_method_names;
         Class_graph.loc = loc;
         Class_graph.is_abstract = is_abstract;
       } :: !class_infos
@@ -253,6 +254,21 @@ let detect_refused_parent_bequest
          | None -> methods)
       | None -> []
   in
+
+  (* Abstract ancestor methods represent a *contract* the child must
+     fulfill. Overriding them is polymorphism working as intended, not a
+     refused bequest — so the smell detector skips them. *)
+  let rec get_abstract_ancestor_methods name visited =
+    if Stdlib.List.mem name visited then []
+    else
+      match Stdlib.List.find_opt (fun i -> i.Class_graph.name = name) infos with
+      | Some ci ->
+        let abst = ci.Class_graph.abstract_methods in
+        (match ci.Class_graph.parent with
+         | Some p -> abst @ get_abstract_ancestor_methods p (name :: visited)
+         | None -> abst)
+      | None -> []
+  in
   
   Stdlib.List.concat_map (fun (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
@@ -260,8 +276,14 @@ let detect_refused_parent_bequest
       (match Stdlib.List.find_opt (fun i -> i.Class_graph.name = parent_name) infos with
        | Some _parent ->
          let ancestor_methods = get_ancestor_methods parent_name [] in
+         let abstract_ancestor_methods = get_abstract_ancestor_methods parent_name [] in
          Stdlib.List.concat_map (fun method_name ->
 if not (Stdlib.List.mem method_name ancestor_methods) then [] else
+           if Stdlib.List.mem method_name abstract_ancestor_methods then [] else
+           (* overriding an abstract def fulfills a contract, not refuses bequest *)
+           if method_name = "initialize" then [] else
+           (* constructors refine initialization (often via super), not a
+              refused bequest; the smell explicitly excludes initializers *)
             let file_nodes = Map.Poly.find by_file info.Class_graph.file |> Option.value ~default:[] in
            let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
            let all_classes = Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Class) sorted in

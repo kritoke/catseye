@@ -36,6 +36,7 @@ type class_info = {
   line : int;            (** Line number of class definition *)
   parent : string option; (** Parent class name if any *)
   methods : string list; (** Method names defined in this class *)
+  abstract_methods : string list; (** Methods declared `abstract def` (no body) *)
   loc : int;             (** Lines of code (end - start) *)
   is_abstract : bool;    (** Whether class is abstract *)
 }
@@ -46,10 +47,21 @@ type class_info = {
 let get_parent (node : Security_node.t) : string option =
   Security_node.get_metadata node "parent"
 
-(** Check if a class name suggests it's abstract (Crystal convention) *)
+(** Check if a class name suggests it's abstract (Crystal convention).
+    This is a fallback heuristic for extractors that don't emit the
+    `abstract` metadata flag; prefer [is_abstract_node] when a node is
+    available. *)
 let is_abstract_class (name : string) : bool =
   let lower = Stdlib.String.lowercase_ascii name in
   Scope.contains lower "abstract"
+
+(** Check if a class node is abstract.
+    Consults the `abstract` metadata emitted by the Crystal extractor
+    (`abstract class Foo`); falls back to the name heuristic for
+    extractors that don't emit the flag. *)
+let is_abstract_node (node : Security_node.t) : bool =
+  Security_node.has_metadata_flag node "abstract"
+  || is_abstract_class node.Security_node.name
 
 (* ── Class Graph Building ───────────────────────────────────────────── *)
 
@@ -90,6 +102,15 @@ let build_class_graph (nodes : Security_node.t list) : (string, class_info) Map.
       ) sorted in
 
       let method_names = OldList.map (fun n -> n.Security_node.name) methods_in_class in
+      (* Methods declared `abstract def` have no body; tracking them lets
+         hierarchy smell detectors distinguish contract fulfillment from
+         refused bequest. *)
+      let abstract_method_names =
+        Stdlib.List.filter_map (fun (n : Security_node.t) ->
+          if Security_node.has_metadata_flag n "abstract" then Some n.Security_node.name
+          else None
+        ) methods_in_class
+      in
       let parent = get_parent cn in
       let loc =
         if end_line >= 1000000 then
@@ -99,7 +120,7 @@ let build_class_graph (nodes : Security_node.t list) : (string, class_info) Map.
           max_line + 1 - start_line
         else end_line - start_line
       in
-      let is_abstract = is_abstract_class cn.Security_node.name in
+      let is_abstract = is_abstract_node cn in
 
       class_infos := {
         name = cn.Security_node.name;
@@ -107,6 +128,7 @@ let build_class_graph (nodes : Security_node.t list) : (string, class_info) Map.
         line = cn.Security_node.line;
         parent;
         methods = method_names;
+        abstract_methods = abstract_method_names;
         loc;
         is_abstract;
       } :: !class_infos
