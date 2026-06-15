@@ -182,8 +182,8 @@ cd catseye
 mkdir -p bin
 
 # Build Crystal extractors (optional, for faster Crystal parsing)
-crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release
-crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release
+crystal build src/extractor/crystal/extractor.cr -o bin/catseye-crystal-extractor --release
+crystal build src/extractor/crystal/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release
 
 # Build OCaml engine
 cd src/ocaml
@@ -231,7 +231,7 @@ npx tree-sitter generate src/parser.c --no-bindgen
 Crystal is optional but provides faster parsing. If you don't have Crystal:
 
 - The scanner falls back to tree-sitter for Crystal files
-- Or use `crystal run src/extractor/extractor.cr` as a workaround
+- Or use `crystal run src/extractor/crystal/extractor.cr` as a workaround
 
 ### ARM64 (Apple Silicon / aarch64)
 

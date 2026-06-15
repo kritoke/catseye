@@ -493,7 +493,9 @@ catseye/
 │   │       ├── crystal/*.kdl                  # Crystal security rules
 │   │       ├── javascript.kdl                 # JS/TS security rules
 │   │       └── gleam/*.kdl                    # Gleam security rules
-│   └── extractor/extractor.cr           # Crystal AST extractor
+│   └── extractor/
+│       ├── crystal/                  # Crystal AST extractors (extractor.cr, hierarchical_extractor.cr)
+│       └── fsharp/                   # F# AST extractor (.NET)
 ├── scripts/elixir-extractor/           # Elixir AST extractor (escript)
 ├── test/samples/                        # Test corpus (Crystal, JS, Svelte)
 ├── flake.nix                            # Nix dev shell (all grammars)

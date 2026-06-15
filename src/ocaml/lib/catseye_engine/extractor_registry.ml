@@ -84,14 +84,14 @@ let resolve_one
           (* 6. Search source relative to executable directory (not CWD) *)
           let exe_dir = Stdlib.Filename.dirname (Stdlib.Sys.executable_name) in
           (match source_relative with
-          | [] -> "crystal run " ^ exe_dir ^ "/../src/extractor/" ^ exe_name ^ ".cr --"
+          | [] -> "crystal run " ^ exe_dir ^ "/../src/extractor/crystal/" ^ exe_name ^ ".cr --"
           | first :: _ ->
             let source_path = exe_dir ^ "/../" ^ first in
             if Stdlib.Sys.file_exists source_path then
               "crystal run " ^ source_path ^ " --"
             else
               (* 7. Hard fallback: use exe_dir as base *)
-              "crystal run " ^ exe_dir ^ "/../src/extractor/" ^ exe_name ^ ".cr --"))
+              "crystal run " ^ exe_dir ^ "/../src/extractor/crystal/" ^ exe_name ^ ".cr --"))
 
 (* ── Registry type ──────────────────────────────────────────────────── *)
 
@@ -108,11 +108,11 @@ type t = {
 let create ?(flat_env = None) ?(hier_env = None) () : t =
   let flat_cmd = resolve_one flat_env
     "catseye-crystal-extractor"
-    ["src/extractor/extractor.cr"]
+    ["src/extractor/crystal/extractor.cr"]
   in
   let hier_cmd = resolve_one hier_env
     "catseye-hierarchical-extractor"
-    ["src/extractor/hierarchical_extractor.cr"]
+    ["src/extractor/crystal/hierarchical_extractor.cr"]
   in
   { flat_cmd; hier_cmd;
     flat_is_compiled = is_compiled_binary flat_cmd;

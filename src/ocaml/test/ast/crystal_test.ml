@@ -1,9 +1,9 @@
 let () =
   Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR"
-    "crystal run /workspaces/catseye/src/extractor/hierarchical_extractor.cr --";
+    "crystal run /workspaces/catseye/src/extractor/crystal/hierarchical_extractor.cr --";
   let cmds = {
-    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
-    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/hierarchical_extractor.cr --";
+    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/crystal/extractor.cr --";
+    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/crystal/hierarchical_extractor.cr --";
   } in
 
   let test_file path label =

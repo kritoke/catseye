@@ -17,6 +17,6 @@ type t = {
 
 (** Default commands using crystal run *)
 let default = {
-  flat = "crystal run src/extractor/extractor.cr --";
-  hier = "crystal run src/extractor/hierarchical_extractor.cr --";
+  flat = "crystal run src/extractor/crystal/extractor.cr --";
+  hier = "crystal run src/extractor/crystal/hierarchical_extractor.cr --";
 }

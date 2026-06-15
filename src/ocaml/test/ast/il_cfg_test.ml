@@ -6,11 +6,11 @@ open Catseye_il.Of_catseye_ast
 open Catseye_il.Il_types
 
 let () =
-  Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+  Unix.putenv "CATSEYE_CRYSTAL_EXTRACTOR" "crystal run /workspaces/catseye/src/extractor/crystal/extractor.cr --";
   Unix.putenv "TREE_SITTER_GLEAM_GRAMMAR" "/workspaces/catseye";
   let cmds = {
-    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
-    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/extractor.cr --";
+    Catseye_types.Extractor_cmds.flat = "crystal run /workspaces/catseye/src/extractor/crystal/extractor.cr --";
+    Catseye_types.Extractor_cmds.hier = "crystal run /workspaces/catseye/src/extractor/crystal/extractor.cr --";
   } in
 
   (* Test with synthetic AST that has real branching *)

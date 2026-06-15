@@ -16,7 +16,7 @@ let ( <> ) = Stdlib.( <> )
 (** Extractor specification for languages with external extractors. *)
 type extractor_spec = {
   binary_name : string;             (* "catseye-crystal-extractor" *)
-  source_relative : string list;    (* ["src/extractor/extractor.cr"] *)
+  source_relative : string list;    (* ["src/extractor/crystal/extractor.cr"] *)
   env_var : string;                 (* "CATSEYE_CRYSTAL_EXTRACTOR" *)
   hierarchical : bool;              (* Has a hierarchical extractor too? *)
 }

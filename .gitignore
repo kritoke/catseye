@@ -78,7 +78,7 @@ bin/catseye-crystal-extractor
 bin/catseye-hierarchical-extractor
 2850827PREFIX/
 .pi-lens/
-src/extractor/extractor
+src/extractor/crystal/extractor
 
 .opencode/
 # Local Pi runtime state

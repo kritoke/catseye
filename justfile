@@ -15,8 +15,8 @@ alias s := scan
 build:
     @mkdir -p bin
     @echo "  Compiling Crystal extractors..."
-    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
-    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
+    crystal build src/extractor/crystal/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || true
+    crystal build src/extractor/crystal/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
     @echo "  Generating embedded rules (OCaml)..."
     cd src/ocaml && dune exec -- tools/generate_rules/main.exe rules lib/catseye_rules/default_rules.ml
     @echo "  Compiling OCaml..."
@@ -33,8 +33,8 @@ nix-build:
 
 build-release:
     @mkdir -p bin
-    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "  ⚠ Crystal not found"
-    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
+    crystal build src/extractor/crystal/extractor.cr -o bin/catseye-crystal-extractor --release 2>/dev/null || echo "  ⚠ Crystal not found"
+    crystal build src/extractor/crystal/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release 2>/dev/null || true
     cd src/ocaml && dune exec -- tools/generate_rules/main.exe rules lib/catseye_rules/default_rules.ml
     @echo "  Compiling OCaml (release)..."
     cd src/ocaml && dune build --profile release && cp -f _build/default/bin/main.exe /workspaces/catseye/bin/catseye-ocaml
@@ -46,8 +46,8 @@ build-release:
 
 build-extractors:
     @mkdir -p bin
-    crystal build src/extractor/extractor.cr -o bin/catseye-crystal-extractor --release
-    crystal build src/extractor/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release
+    crystal build src/extractor/crystal/extractor.cr -o bin/catseye-crystal-extractor --release
+    crystal build src/extractor/crystal/hierarchical_extractor.cr -o bin/catseye-hierarchical-extractor --release
     @echo "✓ Built extractors → bin/catseye-crystal-extractor, bin/catseye-hierarchical-extractor"
 
 # ── Test ──────────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ feedback-scan dir db=FACET_DB:
 
 # Run Crystal extractor on a single file (debug)
 extract file:
-    CRYSTAL_HAS_WRAPPER=1 crystal run src/extractor/extractor.cr -- {{file}}
+    CRYSTAL_HAS_WRAPPER=1 crystal run src/extractor/crystal/extractor.cr -- {{file}}
 
 clean:
     rm -rf src/ocaml/_build bin/

@@ -23,7 +23,7 @@ let () =
   in
   
   (* Run crystal extractor on vulnerable.cr *)
-  let cmd = "CRYSTAL_HAS_WRAPPER=1 crystal run ../../src/extractor/extractor.cr -- ../../test/samples/vulnerable.cr 2>/dev/null" in
+  let cmd = "CRYSTAL_HAS_WRAPPER=1 crystal run ../../src/extractor/crystal/extractor.cr -- ../../test/samples/vulnerable.cr 2>/dev/null" in
   let (stdout_ch, stdin_ch, stderr_ch) = Unix.open_process_full cmd (Unix.environment ()) in
   let output = Buffer.create 4096 in
   (try while true do Buffer.add_channel output stdout_ch 4096 done

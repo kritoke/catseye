@@ -1,7 +1,7 @@
 (* src/ocaml/lib/catseye_ast/crystal_hierarchical_mapper.ml
    Hierarchical Crystal JSON → CatseyeAST.t
 
-   Parses the nested JSON produced by hierarchical_extractor.cr directly
+   Parses the nested JSON produced by src/extractor/crystal/hierarchical_extractor.cr directly
    into CatseyeAST.t expressions. No heuristic reconstruction needed —
    if/else, case/when, class/module all have proper nesting in the JSON.
 
