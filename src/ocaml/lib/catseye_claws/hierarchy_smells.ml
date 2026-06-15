@@ -337,10 +337,46 @@ if not (Stdlib.List.mem method_name ancestor_methods) then [] else
     | None -> []
   ) infos
 
+(* Short name: last segment after "::" (e.g. "Processor::Layout" -> "Layout") *)
+let short_class_name (name : string) : string =
+  match Stdlib.String.rindex_opt name ':' with
+  | Some i -> Stdlib.String.sub name (i + 1) (Stdlib.String.length name - i - 1)
+  | None -> name
+
+(* Check if any body node references a concrete child subclass name.
+   Matches both the qualified name ("Processor::Layout") and the short
+   name ("Layout") via constant reference, method-call receiver, or arg. *)
+let base_references_child (body_nodes : Security_node.t list) (child_name : string) : bool =
+  let short = short_class_name child_name in
+  let use_short = Stdlib.String.length short >= 3 in
+  let matches_prefix name target =
+    let tlen = Stdlib.String.length target in
+    Stdlib.String.length name > tlen
+    && Stdlib.String.sub name 0 tlen = target
+    && Stdlib.String.get name tlen = '.'
+  in
+  Stdlib.List.exists (fun (n : Security_node.t) ->
+    let name = n.Security_node.name in
+    name = child_name
+    || (use_short && name = short)
+    || matches_prefix name child_name
+    || (use_short && matches_prefix name short)
+    || Stdlib.List.exists
+         (fun (a : Security_node.arg) ->
+           a.Security_node.value = child_name
+           || (use_short && a.Security_node.value = short))
+         n.Security_node.args
+  ) body_nodes
+
 let detect_base_class_knows_derived
+    (nodes : Security_node.t list)
     (infos : Class_graph.class_info list)
     (_parent_to_children : (string, string list) Map.Poly.t)
     : Finding.t list =
+  (* Note: abstract-ness is intentionally NOT consulted here. An abstract
+     base that hardcodes a concrete subclass reference is still a smell
+     (abstract bases should use polymorphism, not type switches). The rule
+     only requires evidence of literal coupling, regardless of abstractness. *)
   let parent_children = Stdlib.List.fold_left (fun acc (info : Class_graph.class_info) ->
     match info.Class_graph.parent with
     | Some parent ->
@@ -348,26 +384,53 @@ let detect_base_class_knows_derived
       Map.Poly.set acc ~key:parent ~data:(info :: siblings)
     | None -> acc
   ) Map.Poly.empty infos in
+
+  (* Group nodes by file for body inspection *)
+  let by_file = Stdlib.List.fold_left (fun acc (n : Security_node.t) ->
+    let existing = Map.Poly.find acc n.Security_node.file |> Option.value ~default:[] in
+    Map.Poly.set acc ~key:n.Security_node.file ~data:(n :: existing)
+  ) Map.Poly.empty nodes in
+
   Stdlib.List.concat_map (fun (info : Class_graph.class_info) ->
     match Map.Poly.find parent_children info.Class_graph.name with
     | Some children when Stdlib.List.length children >= 3 ->
-      [{ Finding.rule = "BaseClassKnowsDerivedClass";
-         severity = "Low";
-         file = info.Class_graph.file;
-         line = info.Class_graph.line;
-         message = Stdlib.Printf.sprintf
-           "Class '%s' has %d direct children. Consider if it references them directly (factory pattern, type checks with 'is_a?', etc.). Base classes should not know their specific derived types."
-           info.Class_graph.name (Stdlib.List.length children);
-         flow = [ {
-           Finding.file = info.Class_graph.file;
-           line = info.Class_graph.line;
-           message = Stdlib.Printf.sprintf "Definition of '%s' (%d children: %s)"
-             info.Class_graph.name (Stdlib.List.length children)
-             (Stdlib.String.concat ", " (Stdlib.List.map (fun c -> c.Class_graph.name) (Stdlib.List.rev children)));
-         } ];
-         language = "crystal";
-         dependency = None;
-         reachability = None; suggestion = None; }]
+      (* Compute the base class body line range *)
+      let file_nodes = Map.Poly.find by_file info.Class_graph.file |> Option.value ~default:[] in
+      let sorted = Stdlib.List.sort (fun a b -> Int.compare a.Security_node.line b.Security_node.line) file_nodes in
+      let all_classes = Stdlib.List.filter (fun n ->
+        n.Security_node.node_type = Security_node.Class) sorted in
+      let class_start = info.Class_graph.line in
+      let class_end =
+        let rec find_next = function
+          | [] -> 999999
+          | c :: _ when c.Security_node.line > class_start -> c.Security_node.line
+          | _ :: rest -> find_next rest
+        in find_next all_classes
+      in
+      let body_nodes = Stdlib.List.filter (fun n ->
+        n.Security_node.line >= class_start && n.Security_node.line < class_end) sorted in
+      (* Check if any concrete subclass is referenced in the base body *)
+      let child_names = Stdlib.List.map (fun c -> c.Class_graph.name) children in
+      let referenced = Stdlib.List.filter (fun cn -> base_references_child body_nodes cn) child_names in
+      (match referenced with
+       | [] -> []  (* no coupling evidence — polymorphism, not a smell *)
+       | _ ->
+         [{ Finding.rule = "BaseClassKnowsDerivedClass";
+            severity = "Low";
+            file = info.Class_graph.file;
+            line = info.Class_graph.line;
+            message = Stdlib.Printf.sprintf
+              "Class '%s' references its subclass(es) [%s] directly. Base classes should not depend on concrete derived types — consider polymorphism or a factory."
+              info.Class_graph.name (Stdlib.String.concat ", " referenced);
+            flow = [ {
+              Finding.file = info.Class_graph.file;
+              line = info.Class_graph.line;
+              message = Stdlib.Printf.sprintf "Definition of '%s' (%d children)"
+                info.Class_graph.name (Stdlib.List.length children);
+            } ];
+            language = "crystal";
+            dependency = None;
+            reachability = None; suggestion = None; }])
     | _ -> []
   ) infos
 
@@ -422,7 +485,7 @@ let analyze (nodes : Security_node.t list) (_config : Types.claws_config)
   let deep_inheritance_findings = detect_deep_inheritance infos graph in
   let tradition_breaker_findings = detect_tradition_breaker infos parent_to_children in
   let refused_bequest_findings = detect_refused_parent_bequest nodes infos parent_to_children in
-  let base_knows_derived_findings = detect_base_class_knows_derived infos parent_to_children in
+  let base_knows_derived_findings = detect_base_class_knows_derived nodes infos parent_to_children in
   let parallel_inheritance_findings = detect_parallel_inheritance infos parent_to_children in
   
   base_class_findings @ speculative_findings @ deep_inheritance_findings @ tradition_breaker_findings @ refused_bequest_findings @ base_knows_derived_findings @ parallel_inheritance_findings

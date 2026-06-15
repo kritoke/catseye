@@ -73,10 +73,28 @@ let () =
   in
   assert (refused = []);
 
-  (* BaseClassKnowsDerivedClass is deliberately NOT touched by this change:
-     it fires on child-count alone. Asserting it here documents that the
-     abstract-awareness fix does not affect it, and makes the test's sole
-     finding self-explaining in CI output. *)
-  assert (has "BaseClassKnowsDerivedClass");
+  (* BaseClassKnowsDerivedClass now requires coupling evidence: the base
+     must literally reference a subclass name. This abstract base uses only
+     abstract defs, no references to A/B/C, so it must NOT be flagged. *)
+  assert (not (has "BaseClassKnowsDerivedClass"));
 
-  Stdlib.Printf.printf "OK: abstract base and contract-fulfilling overrides not flagged\n"
+  Stdlib.Printf.printf "OK: abstract base, contract-fulfilling overrides, and no-coupling base not flagged\n";
+
+  (* ── Positive control: base that DOES reference a subclass ──────────
+     This confirms the rule still catches real coupling. A base with >=3
+     children that hardcodes a subclass reference MUST be flagged. *)
+  let coupled_nodes = [
+    mk S.Class "Factory" 1 [];
+    (* The base body references Dog directly — this is real coupling *)
+    mk S.Call "Factory.create" 2 [];
+    mk S.Call "Dog.new" 3 [];          (* hardcoded subclass reference *)
+    mk S.Class "Dog"  6 [("parent","Factory")];
+    mk S.Class "Cat" 10 [("parent","Factory")];
+    mk S.Class "Fish" 14 [("parent","Factory")];
+  ] in
+  let coupled_findings = Catseye_claws.Hierarchy_smells.analyze coupled_nodes config in
+  let coupled_has rule =
+    Stdlib.List.exists (fun (f : Catseye_types.Finding.t) -> f.rule = rule) coupled_findings
+  in
+  assert (coupled_has "BaseClassKnowsDerivedClass");
+  Stdlib.Printf.printf "OK: base with hardcoded subclass reference IS flagged (positive control)\n"
