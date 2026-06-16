@@ -8,10 +8,18 @@ open Catseye_types
 open Security_node
 let ( = ) = Stdlib.( = )
 
+(* Cache schema version. Bump when extraction output semantics change:
+   new metadata fields (e.g. abstract, has_timeout_config), changed field
+   meanings, or JSON schema changes. This invalidates the on-disk cache so
+   an upgraded extractor never returns stale nodes from a previous version.
+   Version 1 = pre-versioning (bare content hash, no prefix). *)
+let cache_schema_version = 2
+
 (** Blake3-inspired fast hash for file content fingerprinting.
-    Uses OCaml's Hashtbl.hash — swap for real Blake3 when bindings available. *)
+    Uses OCaml's Hashtbl.hash — swap for real Blake3 when bindings available.
+    Prefixes the schema version so bumping it invalidates stale entries. *)
 let fingerprint (content : string) : string =
-  Stdlib.Printf.sprintf "%08x" (Hashtbl.hash content)
+  Stdlib.Printf.sprintf "v%d:%08x" cache_schema_version (Hashtbl.hash content)
 
 (** Compute fingerprint for a file. *)
 let file_hash (path : string) : string =
