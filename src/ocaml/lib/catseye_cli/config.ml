@@ -131,14 +131,14 @@ let get_string_list table path =
         match Table.find (Toml.Min.key k) tbl with
         | TArray (NodeString lst) -> Some lst
         | _ -> None
-      with Not_found_s _ -> None)
+      with Not_found_s _ | Not_found -> None)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> None
-      with Not_found_s _ -> None)
+      with Not_found_s _ | Not_found -> None)
   in
   descend table keys
 
@@ -153,14 +153,14 @@ let get_int table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TInt n -> n
         | _ -> default
-      with Not_found_s _ -> default)
+      with Not_found_s _ | Not_found -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found_s _ -> default)
+      with Not_found_s _ | Not_found -> default)
   in
   descend table keys
 
@@ -175,14 +175,14 @@ let get_string table path default =
         match Table.find (Toml.Min.key k) tbl with
         | TString s -> s
         | _ -> default
-      with Not_found_s _ -> default)
+      with Not_found_s _ | Not_found -> default)
     | k :: rest ->
       (try
         let open Toml.Types in
         match Table.find (Toml.Min.key k) tbl with
         | TTable t -> descend t rest
         | _ -> default
-      with Not_found_s _ -> default)
+      with Not_found_s _ | Not_found -> default)
   in
   descend table keys
 
@@ -321,7 +321,13 @@ let load_toml (path : string) (cfg : t) : t =
       ai_suppress = parse_glob_list_to_map toml_lines "ai.suppress";
       taint_suppress = parse_glob_list_to_map toml_lines "taint.suppress";
     }
-  with _ -> cfg
+  with e ->
+    (* Don't let a malformed .catseye.toml crash the whole scan, but surface
+       the failure so users know their config was ignored rather than
+       silently dropping it (the original `with _ -> cfg` masked real bugs). *)
+    Stdlib.Printf.eprintf "[config] warning: %s load failed: %s - using defaults\n%!"
+      path (Printexc.to_string e);
+    cfg
 
 (** Check if Crystal toolchain is available.
     Looks for the crystal binary on PATH, or a pre-compiled extractor binary. *)
