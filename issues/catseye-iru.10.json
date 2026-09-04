@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-04T11:14:08Z",
+  "description": "gleam_rules.ml mixes four concerns: expression-tree helpers, ~37 live detectors spanning hallucinations/error-handling/style/complexity/security, the registration table all(), and analyze_module. The repo already has an established layout for this in the Crystal linter (crystal_rules_complexity/_security/_style/_quality/_exception_safety/... with crystal_rules.ml as the entry point). Mirror it for Gleam: gleam_rules_hallucinations.ml (wrong-language constructs, fake stdlib functions), gleam_rules_error_handling.ml (let assert, ignored/discarded results, assert density), gleam_rules_style.ml (redundant bool/case/let constructs, concat chains), gleam_rules_complexity.ml (nesting, pipeline length, tuple abuse), keeping gleam_rules.ml as the thin registration entry (all() + analyze_module). Do this after the fold refactor so files stay small from day one.",
+  "id": "catseye-iru.10",
+  "labels": [],
+  "parent": "catseye-iru",
+  "priority": 3,
+  "status": "open",
+  "title": "SRP: split gleam_rules.ml into thematic rule modules",
+  "type": "task",
+  "updated_at": "2026-09-04T11:14:08Z"
+}
