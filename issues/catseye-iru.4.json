@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-iru.9"
+  ],
   "created": "2026-09-04T11:14:07Z",
   "description": "gleam_rules.ml detect_ignored_result (~line 288) collects ALL applications in a function body (collect_apps) and reports the first one whose name resolves in Type_inference.lookup_gleam as Result-returning. It does not check whether the call result is actually scrutinized by a case expression or bound and handled — so any function that calls int.parse/dict.get/etc. anywhere, even with correct case handling, is flagged 'Use case expression to handle both Ok and Error'. Likely a major false-positive source. Fix options: only flag when the EApp appears in a context whose value is dropped (non-final statement position, ELet PDiscard already covered by detect_discard_result — consider merging the two rules). Add fixture tests for handled vs unhandled cases.",
   "id": "catseye-iru.4",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "detect_ignored_result: flags Result calls even when handled",
   "type": "bug",
-  "updated_at": "2026-09-04T11:14:07Z"
+  "updated_at": "2026-09-04T11:14:09Z"
 }
