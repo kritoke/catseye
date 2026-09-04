@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-04T11:14:06Z",
+  "description": "The only test touching Gleam_rules is a printf smoke test (src/ocaml/test/ast/catseye_ast_test.ml:54). 41 registered rules have zero behavioral assertions. Before any refactor of gleam_rules.ml we need golden tests: parse tests/fixtures/gleam/**/*.gleam samples via the existing gleam parser, run Gleam_rules.analyze_module, and assert exact (rule_id, line) findings per fixture. Cover at least: let-assert (test vs non-test file), panic/todo, single-branch case, unused let, hardcoded secrets, pipeline-steps-overload. Prerequisite for the traversal/fold and module-split refactor tickets.",
+  "id": "catseye-iru.1",
+  "labels": [],
+  "parent": "catseye-iru",
+  "priority": 2,
+  "status": "open",
+  "title": "Golden-fixture tests for Gleam AI-linter rules",
+  "type": "task",
+  "updated_at": "2026-09-04T11:14:06Z"
+}
