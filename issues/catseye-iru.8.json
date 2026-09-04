@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-04T11:14:07Z",
+  "description": "gleam_rules.ml detect_use_candidates (line 1285) handles empty arg lists with 'try List.hd (List.rev args) with Failure _ -\u003e {fabricated EUnit node with fake zeroed location}'. Catching an exception to produce a sentinel node is fragile and hides bugs. Replace with an explicit pattern match on args (function [] -\u003e ... | _ -\u003e last element) or an option-returning helper. Pure readability/robustness change, no behavior shift.",
+  "id": "catseye-iru.8",
+  "labels": [],
+  "parent": "catseye-iru",
+  "priority": 3,
+  "status": "open",
+  "title": "detect_use_candidates: replace sentinel-expr exception hack",
+  "type": "task",
+  "updated_at": "2026-09-04T11:14:07Z"
+}
