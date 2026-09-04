@@ -11,7 +11,8 @@
     "catseye-iru.8"
   ],
   "blocks": [
-    "catseye-iru.10"
+    "catseye-iru.10",
+    "catseye-iru.11"
   ],
   "created": "2026-09-04T11:14:08Z",
   "description": "gleam_rules.ml contains ~30 bespoke recursive expression traversals (collect_apps, has_app_named, collect_field_access_suffix, collect_errors, collect_var_refs, plus an inline 'let rec' walker inside nearly every detector) plus ~35 copies of the 'List.filter_map IFunction over mod_items' module-item loop. Crystal_rules_helpers — already 'include'd by this file — provides map_functions, iter_subexpressions, map_subexpressions, collect_app_names_comprehensive, collect_string_literals for exactly this. Each hand-rolled traversal also covers a different subset of nodes (some descend into EFn/ETuple/ECase branches, some don't), producing both false negatives (panic/todo inside case branches or lambdas missed by collect_var_refs; shadows in call args missed by find_shadows) and false positives (find_unused/collect_vars never enter EFn bodies, so a binding used only inside a lambda is reported unused). Plan: (1) extend helpers with a complete fold (make sure ETuple/EList children are visited — iter_subexpressions currently misses them), (2) rewrite each detector as a single-node predicate over the fold, deleting ~700 lines, (3) unify the IFunction iteration on map_functions, (4) golden fixtures must pass unchanged except for the intentionally fixed FP/FN cases (document any diff).",
