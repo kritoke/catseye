@@ -2,7 +2,8 @@
   "assignee": "",
   "blocked_by": [
     "catseye-iru.1",
-    "catseye-iru.2"
+    "catseye-iru.2",
+    "catseye-iru.3"
   ],
   "blocks": [],
   "created": "2026-09-04T11:14:08Z",
@@ -14,5 +15,5 @@
   "status": "open",
   "title": "DRY: rewrite Gleam detectors on shared traversal fold",
   "type": "task",
-  "updated_at": "2026-09-04T11:14:08Z"
+  "updated_at": "2026-09-04T11:14:09Z"
 }
