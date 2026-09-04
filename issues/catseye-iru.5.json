@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-iru.9"
+  ],
   "created": "2026-09-04T11:14:07Z",
   "description": "gleam_rules.ml: detect_non_exhaustive_case (line 256, Warning 'Case expression has only 1 branch — likely missing Error variant') and detect_redundant_single_case (line 929, Hint 'Case with only one branch — use a let binding instead') both fire on the same single-branch case, emitting contradictory advice. If the scrutinee is Result/Option-producing, the missing-variant warning is right and the let-binding advice is wrong; otherwise the redundant-case hint is right. Consolidate into one rule that inspects the scrutinee, or make redundant_single_case skip cases the other rule claims. Update golden fixtures accordingly.",
   "id": "catseye-iru.5",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Consolidate contradictory single-branch case rules",
   "type": "task",
-  "updated_at": "2026-09-04T11:14:07Z"
+  "updated_at": "2026-09-04T11:14:09Z"
 }
