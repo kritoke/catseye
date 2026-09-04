@@ -1,7 +1,9 @@
 {
   "assignee": "",
   "blocked_by": [],
-  "blocks": [],
+  "blocks": [
+    "catseye-iru.9"
+  ],
   "created": "2026-09-04T11:14:07Z",
   "description": "Four detectors are defined but never registered in all() — ~180 lines of unreachable code that mislead readers and risk accidental re-registration: detect_rust_fn (line 182, removed for 100% FP), detect_unused_import (line 307, 'Gleam tree-sitter module parsing is broken'), detect_redundant_pipeline (line 373, '|\u003e is idiomatic, 100% FP'), detect_complex_pipeline (line 688, unregistered near-duplicate of detect_pipeline_steps_overload with identical message text). Delete them; the disabling rationale is already captured in comments next to the all() entries — move any still-relevant rationale into those comments. Deleting before the traversal refactor shrinks the rewrite surface.",
   "id": "catseye-iru.6",
@@ -11,5 +13,5 @@
   "status": "open",
   "title": "Delete dead detectors from gleam_rules.ml",
   "type": "task",
-  "updated_at": "2026-09-04T11:14:07Z"
+  "updated_at": "2026-09-04T11:14:09Z"
 }
