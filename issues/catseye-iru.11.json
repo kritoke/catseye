@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-04T11:14:08Z",
+  "description": "Small readability/consistency items in gleam_rules.ml, best done during the fold refactor: (1) detect_implicit_return_discard (line 411) hand-rolls suffix matching instead of String.ends_with (used ~40 lines later in detect_debug_in_library), and its lowercase-only side_effect_calls list never matches capitalized modules (IO.println vs io.println — FN) while suffix matching over-matches (custom_io.println); replace with exact dotted-name equality. (2) The 28-line 'Use Expression Candidate' doc comment (lines ~1195-1225) sits above detect_list_flatten_singleton/detect_todo_with_message instead of its actual function detect_use_candidates (line 1285) — move it. (3) Reporting policy is inconsistent: most rules report only the first hit per function ('| hit :: _'), detect_debug_in_library and detect_repeated_string_literal report all — pick one policy via shared helpers. (4) 'module T = Types' + 'open Catseye_ast.Types' + qualified Types.finding is triple-redundant qualification; unify.",
+  "id": "catseye-iru.11",
+  "labels": [],
+  "parent": "catseye-iru",
+  "priority": 3,
+  "status": "open",
+  "title": "Gleam rules readability polish",
+  "type": "task",
+  "updated_at": "2026-09-04T11:14:08Z"
+}
