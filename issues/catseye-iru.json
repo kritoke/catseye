@@ -3,12 +3,12 @@
   "blocked_by": [],
   "blocks": [],
   "created": "2026-09-04T11:14:06Z",
-  "description": "src/ocaml/lib/ai_linter/gleam_rules.ml is the largest source file in the repo (1414 lines, 41 detectors). Audit found DRY/SRP violations and several reliability bugs. Plan: fix behavioral bugs first (small, localized), add golden tests to lock behavior, then consolidate traversal boilerplate onto the shared fold, then split into thematic modules mirroring the crystal_rules_* layout. Audit notes: https://gist — none; full detail lives in child tickets.",
+  "description": "src/ocaml/lib/ai_linter/gleam_rules.ml is the largest source file in the repo (1414 lines, 41 detectors). Audit found DRY/SRP violations and several reliability bugs. Plan: fix behavioral bugs first (small, localized), add golden tests to lock behavior, then consolidate traversal boilerplate onto the shared fold, then split into thematic modules mirroring the crystal_rules_* layout. Full detail lives in child tickets.",
   "id": "catseye-iru",
   "labels": [],
   "priority": 2,
   "status": "open",
   "title": "gleam_rules.ml: refactor for readability \u0026 reliability",
   "type": "epic",
-  "updated_at": "2026-09-04T11:14:06Z"
+  "updated_at": "2026-09-04T11:18:12Z"
 }
