@@ -1,0 +1,15 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-04T11:14:07Z",
+  "description": "gleam_rules.ml detect_debug_in_library (line 447): docstring claims it only fires 'outside examples/ or tests/ directories', but is_library_code is hardcoded true with a dead 'let _ = path' — so io.debug in test/example files is flagged. Either implement the filter via shared Crystal_rules_helpers.is_test_file or drop the dead scaffolding and fix the docstring to match behavior. Add fixture under tests/fixtures/gleam/test/ to pin the chosen behavior.",
+  "id": "catseye-iru.7",
+  "labels": [],
+  "parent": "catseye-iru",
+  "priority": 3,
+  "status": "open",
+  "title": "detect_debug_in_library: remove always-true is_library_code",
+  "type": "task",
+  "updated_at": "2026-09-04T11:14:07Z"
+}
