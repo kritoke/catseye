@@ -19,9 +19,15 @@
   "id": "catseye-iru.9",
   "labels": [],
   "parent": "catseye-iru",
+  "comments": [
+    {
+      "text": "While landing iru.1 golden tests: finding line conventions are inconsistent per rule (some report the expression line, others the function-declaration line — e.g. todo-with-message reports the decl line while todo-in-code reports the todo line for the same construct). Unify location reporting during the fold rewrite; golden expectations in gleam_golden_test will pin the change.",
+      "timestamp": "2026-09-06T16:33:00Z"
+    }
+  ],
   "priority": 2,
   "status": "open",
   "title": "DRY: rewrite Gleam detectors on shared traversal fold",
   "type": "task",
-  "updated_at": "2026-09-04T11:14:10Z"
+  "updated_at": "2026-09-06T16:33:00Z"
 }
