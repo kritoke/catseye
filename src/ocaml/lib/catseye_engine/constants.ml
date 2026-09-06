@@ -12,6 +12,13 @@ let known_sources = [
   "event"; "payload"; "body"; "data"; "msg"; "message";
   "headers"; "cookie"; "session";
   "form"; "form_data"; "raw_params";
+  (* Nim stdlib taint sources *)
+  "os.getEnv"; "os.getEnvOrDefault"; "os.commandLineParams"; "os.paramStr"; "os.paramCount";
+  "stdin.readLine"; "readLine"; "readFile";
+  "httpclient.getContent"; "httpclient.postContent"; "httpclient.get"; "httpclient.post";
+  "net.recv"; "net.recvFrom"; "net.recvLine"; "asyncnet.recv"; "asyncnet.recvLine";
+  "streams.readLine"; "streams.readAll"; "streams.readStr";
+  "uri.parseUri"; "json.parseJson";
 ]
 
 let known_sanitizers = [

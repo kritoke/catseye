@@ -7,7 +7,7 @@ let ( = ) = Stdlib.( = )
 let ( <> ) = Stdlib.( <> )
 
 (** Supported languages *)
-type lang = Gleam | Crystal | Svelte | TypeScript | JavaScript | Rust | OCaml | Elixir | FSharp | Other of string
+type lang = Gleam | Crystal | Svelte | TypeScript | JavaScript | Rust | OCaml | Elixir | FSharp | Nim | Other of string
 
 let lang_to_string = function
   | Gleam -> "gleam"
@@ -19,6 +19,7 @@ let lang_to_string = function
   | OCaml -> "ocaml"
   | Elixir -> "elixir"
   | FSharp -> "fsharp"
+  | Nim -> "nim"
   | Other s -> s
 
 (** Source position *)

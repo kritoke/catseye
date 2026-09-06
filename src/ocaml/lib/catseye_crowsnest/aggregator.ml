@@ -185,6 +185,46 @@ let audit (manifests : manifest list) ?(cache : Cache.t option) ()
           level;
         } :: !results
       ) deps
+    | Nimble (path, deps) | Nimble_lock (path, deps) ->
+      (* Nim deps (nimble.lock wins when present — see Manifest). No
+         staleness source (no registry API like Hex) — OSV only. *)
+      List.iter ~f:(fun (dep : Manifest.shard_dep) ->
+        let version = match dep.version with
+          | Some v -> v
+          | None -> "*"
+        in
+        let cached_osv = match cache with
+          | Some c -> Cache.lookup_osv c "nim" dep.name version
+          | None -> None
+        in
+        let osv_result = match cached_osv with
+          | Some json -> Osv.parse_osv_response json
+          | None ->
+            let r = Osv.query "nim" dep.name version in
+            (match cache, r with
+             | Some c, (Vulnerabilities _ | No_known_cves) ->
+               let json = Printf.sprintf
+                 {|{"_osv_status":"%s"}|}
+                 (match r with
+                  | No_known_cves -> "clean"
+                  | Vulnerabilities _ -> "has_vulns"
+                  | Query_failed _ -> "failed")
+               in
+               Cache.store_osv c "nim" dep.name version json
+             | _ -> ());
+            r
+        in
+        let osv_level = level_of_osv osv_result in
+        results := {
+          name = dep.name;
+          version = dep.version;
+          ecosystem = "nim";
+          source_file = path;
+          osv = osv_result;
+          staleness = None;
+          level = osv_level;
+        } :: !results
+      ) deps
   ) manifests;
 
   (* Sort: Critical first, then Warning, then Clean *)

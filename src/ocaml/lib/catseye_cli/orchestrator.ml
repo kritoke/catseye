@@ -70,7 +70,7 @@ let run_list_rules (config : Config.t) : int =
 
 let extract_file (config : t) (src : source_file) : Security_node.t list option =
   (* JS/TS/Svelte/OCaml always use AST bridge — they have no flat extractor *)
-  let use_bridge = config.ast_bridge || match src.lang with "javascript" | "typescript" | "svelte" | "ocaml" | "elixir" | "fsharp" -> true | _ -> false in
+  let use_bridge = config.ast_bridge || match src.lang with "javascript" | "typescript" | "svelte" | "ocaml" | "elixir" | "fsharp" | "nim" -> true | _ -> false in
   if use_bridge then begin
     (* Bridge path: parse → CatseyeAST.t → Security_node.t *)
     try
@@ -192,7 +192,7 @@ let extract_with_log (config : t) (src : source_file)
 
 (* ── Banner ─────────────────────────────────────────────────────────── *)
 
-let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (svelte_count : int) (ocaml_count : int) (ex_count : int) (fs_count : int) (dep_count : int) =
+let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : int) (ts_count : int) (svelte_count : int) (ocaml_count : int) (ex_count : int) (fs_count : int) (nim_count : int) (dep_count : int) =
   Format.printf "
   %sCatseye v%s%s
 " (styled (bold ^ cyan) config "") version (styled reset config "");
@@ -207,6 +207,7 @@ let print_banner (config : t) (cr_count : int) (gleam_count : int) (js_count : i
   let lang_parts = if ocaml_count > 0 then (Printf.sprintf "%d OCaml" ocaml_count) :: lang_parts else lang_parts in
   let lang_parts = if ex_count > 0 then (Printf.sprintf "%d Elixir" ex_count) :: lang_parts else lang_parts in
   let lang_parts = if fs_count > 0 then (Printf.sprintf "%d F#" fs_count) :: lang_parts else lang_parts in
+  let lang_parts = if nim_count > 0 then (Printf.sprintf "%d Nim" nim_count) :: lang_parts else lang_parts in
   let files_str = match lang_parts with
     | [] -> "0 files"
     | parts -> String.concat ~sep:", " (List.rev parts)
@@ -364,6 +365,8 @@ let crows_nest_to_json (target_dir : string) (results : Catseye_crowsnest.Aggreg
       let (path, kind) = match m with
         | Catseye_crowsnest.Manifest.Shard_yml (p, _) -> (p, "shard.yml")
         | Catseye_crowsnest.Manifest.Gleam_toml (p, _) -> (p, "gleam.toml")
+        | Catseye_crowsnest.Manifest.Nimble (p, _) -> (p, "nimble")
+        | Catseye_crowsnest.Manifest.Nimble_lock (p, _) -> (p, "nimble.lock")
       in
       `Assoc [("path", `String path); ("kind", `String kind)]
     ) (Catseye_crowsnest.Manifest.find_manifests_recursive
@@ -450,8 +453,9 @@ let run (config : t) : int =
   let ocaml_count = List.length (List.filter ~f:(fun s -> s.lang = "ocaml") sources) in
   let ex_count = List.length (List.filter ~f:(fun s -> s.lang = "elixir") sources) in
   let fs_count = List.length (List.filter ~f:(fun s -> s.lang = "fsharp") sources) in
+  let nim_count = List.length (List.filter ~f:(fun s -> s.lang = "nim") sources) in
   let dep_count = List.length (List.filter ~f:(fun s -> s.is_dependency) sources) in
-  if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count svelte_count ocaml_count ex_count fs_count dep_count;
+  if config.format = Terminal then print_banner config cr_count gleam_count js_count ts_count svelte_count ocaml_count ex_count fs_count nim_count dep_count;
   if config.format = Terminal && not config.crystal_available then
     Format.eprintf "  [info] Crystal toolchain not detected — Crystal extraction disabled\n%!";
 
@@ -738,6 +742,8 @@ let run (config : t) : int =
             List.map ~f:(convert_ai_finding ~lang:"ocaml") (Ai_linter.Ocaml_rules.analyze_module mod_)
            | Elixir ->
             List.map ~f:(convert_ai_finding ~lang:"elixir") (Ai_linter.Elixir_rules.analyze_module mod_)
+           | Nim ->
+            List.map ~f:(convert_ai_finding ~lang:"nim") (Ai_linter.Nim_rules.analyze_module mod_)
            | _ -> [])
       with exn -> Format.eprintf "AI lint error: %s\n" (Exn.to_string exn); [])
     ) sources in
@@ -888,6 +894,20 @@ let run (config : t) : int =
       end;
       all_findings @ elixir_findings @ extractor_findings
     end else all_findings in
+
+  (* Step 4f: nimalyzer integration — optional Nim analysis *)
+  let all_findings =
+    let nim_findings = Nimalyzer.run_if_configured
+      ~enabled:config.nimalyzer_enabled
+      ~config_path:config.nimalyzer_config_path
+      ~is_terminal:(config.format = Terminal)
+      ~language:"nim"
+    in
+    if config.format = Terminal && nim_findings <> [] then begin
+      List.iter ~f:(print_finding config) nim_findings;
+      Format.printf "\n  Found %d nimalyzer findings\n\n" (List.length nim_findings)
+    end;
+    all_findings @ nim_findings in
 
   (* Apply --suppress from CLI and [taint.suppress] from .catseye.toml *)
   let all_findings =

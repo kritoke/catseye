@@ -20,9 +20,14 @@ type hex_dep = {
   version : string option;
 }
 
+(* Nim deps reuse shard_dep: { name; github; version } carries exactly what a
+   nimble requires/lock entry needs (github = "user/repo" for URL requires). *)
+
 type manifest =
   | Shard_yml of string * shard_dep list
   | Gleam_toml of string * hex_dep list
+  | Nimble of string * shard_dep list         (* *.nimble *)
+  | Nimble_lock of string * shard_dep list    (* nimble.lock, exact versions *)
 
 (* ── shard.yml parser (simple YAML subset) ──────────────────────────── *)
 
@@ -186,6 +191,125 @@ let parse_gleam_toml (path : string) : (hex_dep list, [> `Msg of string ]) Resul
   with Sys_error msg ->
     Error (`Msg (Printf.sprintf "Failed to read %s: %s" path msg))
 
+(* ── .nimble parser (INI-like subset) ────────────────────────────────
+
+   Only `requires "…"` lines matter. Three accepted forms:
+     requires "httpbeast"                      → bare name
+     requires "httpbeast >= 1.0"               → name + version constraint
+     requires "https://github.com/user/repo"   → dep name = repo name        *)
+
+let parse_nimble_requires_value (raw : string) : shard_dep option =
+  (* raw is the text inside the quotes *)
+  let trimmed = String.strip raw in
+  if trimmed = "" then None
+  else if String.is_prefix ~prefix:"http" trimmed then begin
+    (* URL form: last path segment is the repo, second-to-last the owner *)
+    let segments =
+      Stdlib.List.filter (fun s -> String.strip s <> "") (String.split ~on:'/' trimmed) in
+    let rev = Stdlib.List.rev segments in
+    let repo = match rev with
+      | last :: _ -> String.strip last
+      | [] -> ""
+    in
+    let owner = match rev with
+      | _ :: o :: _ -> String.strip o
+      | _ -> ""
+    in
+    if repo = "" then None
+    else Some { name = repo; version = None;
+                github = if owner = "" then None else Some (owner ^ "/" ^ repo) }
+  end
+  else
+    (* bare name or "name >= 1.0" / "name#hash" *)
+    match Stdlib.String.index_opt trimmed ' ' with
+    | Some sp when sp > 0 ->
+      let name = String.sub trimmed ~pos:0 ~len:sp in
+      let version = String.strip (String.sub trimmed ~pos:(sp + 1)
+                                    ~len:(String.length trimmed - sp - 1)) in
+      Some { name; version = if version = "" then None else Some version; github = None }
+    | _ -> Some { name = trimmed; version = None; github = None }
+
+let parse_nimble (path : string) : (shard_dep list, [> `Msg of string ]) Result.t =
+  try
+    let ic = Stdlib.open_in path in
+    let lines = ref [] in
+    (try while true do
+        let line = Stdlib.input_line ic in
+        lines := line :: !lines
+      done
+    with End_of_file -> ());
+    Stdlib.close_in ic;
+    let lines = List.rev !lines in
+    let deps = ref [] in
+    List.iter ~f:(fun line ->
+      let t = String.strip line in
+      if String.is_prefix ~prefix:"requires" t then begin
+        (* Extract every double-quoted string on this line *)
+        let rec grab acc i =
+          let len = String.length t in
+          if i >= len then List.rev acc
+          else if t.[i] = '"' then begin
+            let rec find_close j =
+              if j >= len then len
+              else if t.[j] = '"' then j
+              else find_close (j + 1)
+            in
+            let close = find_close (i + 1) in
+            let inside = String.sub t ~pos:(i + 1) ~len:(close - i - 1) in
+            grab (inside :: acc) (close + 1)
+          end
+          else grab acc (i + 1)
+        in
+        let quoted = grab [] 0 in
+        List.iter ~f:(fun q ->
+          match parse_nimble_requires_value q with
+          | Some d -> deps := d :: !deps
+          | None -> ()) quoted
+      end)
+      lines;
+    Ok (List.rev !deps)
+  with Sys_error msg ->
+    Error (`Msg (Printf.sprintf "Failed to read %s: %s" path msg))
+
+(* ── nimble.lock parser (JSON) ────────────────────────────────────────
+
+   Structure: { "version": 2, "packages": { "name": { "name": …, "version": … } } }
+   Exact locked versions; callers prefer these over .nimble constraints.   *)
+
+let parse_nimble_lock (path : string) : (shard_dep list, [> `Msg of string ]) Result.t =
+  try
+    let json = Yojson.Safe.from_file path in
+    let packages =
+      match json with
+      | `Assoc fields ->
+        (match Stdlib.List.assoc_opt "packages" fields with
+         | Some (`Assoc pkgs) -> pkgs
+         | _ -> [])
+      | _ -> []
+    in
+    let to_str v =
+      match v with `String s -> s | _ -> "" in
+    let deps = Stdlib.List.filter_map (fun (key, v) ->
+      match v with
+      | `Assoc fields ->
+        let name =
+          match Stdlib.List.assoc_opt "name" fields with
+          | Some (`String s) when s <> "" -> s
+          | _ -> key
+        in
+        let version =
+          match Stdlib.List.assoc_opt "version" fields with
+          | Some (`String s) -> Some s
+          | _ -> None
+        in
+        if name = "" then None else Some { name; version; github = None }
+      | _ -> None
+    ) packages in
+    Ok deps
+  with
+  | Sys_error msg -> Error (`Msg (Printf.sprintf "Failed to read %s: %s" path msg))
+  | Yojson.Json_error msg -> Error (`Msg (Printf.sprintf "Invalid JSON in %s: %s" path msg))
+
 (* ── Manifest auto-detection ────────────────────────────────────────── *)
 
 let find_manifests (dir : string) : manifest list =
@@ -201,6 +325,35 @@ let find_manifests (dir : string) : manifest list =
     match parse_gleam_toml gleam_path with
     | Ok deps -> results := Gleam_toml (gleam_path, deps) :: !results
     | Error _ -> ()
+  end;
+  (* Nim: nimble.lock wins when both lock and .nimble exist (locked versions
+     are exact); otherwise parse the .nimble requires lines. *)
+  let lock_path = Stdlib.Filename.concat dir "nimble.lock" in
+  let has_lock = Stdlib.Sys.file_exists lock_path in
+  if has_lock then begin
+    match parse_nimble_lock lock_path with
+    | Ok deps -> results := Nimble_lock (lock_path, deps) :: !results
+    | Error _ -> ()
+  end
+  else begin
+    (* Discover *.nimble (choose the first alphabetically if several) *)
+    let entries = (try Stdlib.Sys.readdir dir with Sys_error _ -> [||]) in
+    let is_nimble_file (e : string) : bool =
+      String.is_suffix e ~suffix:".nimble"
+      && not (Stdlib.Sys.is_directory (Stdlib.Filename.concat dir e))
+    in
+    let nimble_files =
+      Stdlib.Array.to_list entries
+      |> Stdlib.List.filter is_nimble_file
+      |> Stdlib.List.sort (fun (a : string) (b : string) -> Stdlib.compare a b)
+    in
+    (match nimble_files with
+     | first :: _ ->
+       let p = Stdlib.Filename.concat dir first in
+       (match parse_nimble p with
+        | Ok deps -> results := Nimble (p, deps) :: !results
+        | Error _ -> ())
+     | [] -> ())
   end;
   List.rev !results
 

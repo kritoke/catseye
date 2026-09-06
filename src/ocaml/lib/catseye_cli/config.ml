@@ -60,6 +60,8 @@ type t = {
   recurse : bool;  (* Recurse into subdirectories (default: true) *)
   elixir_enabled : bool;  (* Enable Elixir tool integration *)
   elixir_tools : string list;  (* Which Elixir tools to run *)
+  nimalyzer_enabled : bool;  (* Enable nimalyzer integration for Nim *)
+  nimalyzer_config_path : string option;  (* Path to nimalyzer.cfg, None = auto-discover *)
   list_rules : bool;  (* List all rules in AI-friendly format *)
   list_rules_format : output_format;  (* Output format for rules listing *)
   list_rules_lang : string option;  (* Filter rules by language *)
@@ -103,6 +105,8 @@ let default = {
   ai_suppress = Map.empty (module String);
   elixir_enabled = false;
   elixir_tools = ["sobelow"; "credo"; "reach"];
+  nimalyzer_enabled = false;
+  nimalyzer_config_path = None;
   list_rules = false;
   list_rules_format = Json;  (* AI format defaults to JSON *)
   list_rules_lang = None;
@@ -320,6 +324,11 @@ let load_toml (path : string) (cfg : t) : t =
       };
       ai_suppress = parse_glob_list_to_map toml_lines "ai.suppress";
       taint_suppress = parse_glob_list_to_map toml_lines "taint.suppress";
+      nimalyzer_enabled = get_bool table "nimalyzer.enabled" cfg.nimalyzer_enabled;
+      nimalyzer_config_path =
+        (match get_string table "nimalyzer.config_path" "" with
+         | "" -> cfg.nimalyzer_config_path
+         | path -> Some path);
     }
   with e ->
     (* Don't let a malformed .catseye.toml crash the whole scan, but surface
@@ -378,6 +387,42 @@ let init_elixir (cfg : t) : t =
   else
     cfg
 
+(** Check if nimalyzer is available on PATH. *)
+and detect_nimalyzer () : bool =
+  try
+    let ic = Unix.open_process_in "which nimalyzer 2>/dev/null" in
+    let output = In_channel.input_lines ic |> String.concat ~sep:"\n" in
+    let _ = Unix.close_process_in ic in
+    not (String.is_empty (String.strip output))
+  with _ -> false
+
+(** Auto-discover nimalyzer.cfg in project root. *)
+and find_nimalyzer_cfg (target_dir : string) : string option =
+  let candidate = Stdlib.Filename.concat target_dir "nimalyzer.cfg" in
+  if Stdlib.Sys.file_exists candidate then Some candidate
+  else None
+
+(** Initialize nimalyzer support if toolchain is available and config exists. *)
+let init_nimalyzer (cfg : t) : t =
+  if cfg.nimalyzer_enabled then
+    (* Already enabled via TOML — just verify toolchain *)
+    if detect_nimalyzer () then cfg
+    else begin
+      Stdlib.Printf.eprintf "[config] nimalyzer enabled but binary not found on PATH\n%!";
+      { cfg with nimalyzer_enabled = false }
+    end
+  else if detect_nimalyzer () then begin
+    (* Auto-enable if nimalyzer.cfg exists in target *)
+    let cfg_path = match cfg.nimalyzer_config_path with
+      | Some p -> Some p
+      | None -> find_nimalyzer_cfg cfg.target_dir
+    in
+    match cfg_path with
+    | Some _ -> { cfg with nimalyzer_enabled = true; nimalyzer_config_path = cfg_path }
+    | None -> cfg
+  end else
+    cfg
+
 (** Load config: CLI args → TOML overlay → Toolchain detection → final config. *)
 let load (cli : t) : t =
   let toml_path = match cli.config_path with
@@ -388,4 +433,4 @@ let load (cli : t) : t =
     | None -> cli
     | Some path -> load_toml path cli
   in
-  init_crystal (init_elixir with_toml)
+  init_crystal (init_elixir (init_nimalyzer with_toml))

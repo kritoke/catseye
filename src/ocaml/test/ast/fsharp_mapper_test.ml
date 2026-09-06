@@ -43,6 +43,7 @@ let () =
       Printf.printf "OK: parsed %s (%s)\n" mod_.mod_path
         (match mod_.mod_lang with
          | FSharp -> "FSharp"
+         | Nim -> "Nim"
          | _ -> "unexpected lang");
       Printf.printf "Items: %d\n" (List.length mod_.mod_items);
 

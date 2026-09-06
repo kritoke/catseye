@@ -60,6 +60,7 @@ let build (modules : Catseye_ast.Types.t list) : ast_scope list =
       | OCaml -> "ocaml"
       | Elixir -> "elixir"
       | FSharp -> "fsharp"
+      | Nim -> "nim"
       | Other s -> s
     in
     collect_scopes mod_.mod_items mod_.mod_path lang None

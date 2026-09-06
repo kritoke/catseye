@@ -24,6 +24,7 @@
   svelte_rules
   ocaml_rules
    rust_rules
-   elixir_rules)
+   elixir_rules
+   nim_rules)
  (libraries base stdio sexplib0 sexplib catseye_ast catseye_types)
  (flags (:standard -w -27-26-50-6)))

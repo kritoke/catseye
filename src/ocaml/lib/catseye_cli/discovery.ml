@@ -163,7 +163,7 @@ let auto_exclude_dirs (root : string) (base_exclude : string list) : string list
   in
   dedup [] combined
 
-let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"; ".fs"; ".fsx"; ".fsi"]) (dir : string) (exclude : string list) : source_file list =
+let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(extensions=[".cr"; ".gleam"; ".js"; ".jsx"; ".mjs"; ".cjs"; ".ts"; ".tsx"; ".svelte"; ".ml"; ".mli"; ".rs"; ".ex"; ".exs"; ".heex"; ".fs"; ".fsx"; ".fsi"; ".nim"; ".nims"]) (dir : string) (exclude : string list) : source_file list =
   (* Check if this is a Crystal project with shard.yml *)
   let has_shard = Stdlib.Sys.file_exists (Stdlib.Filename.concat dir "shard.yml") in
   let shard_deps = 
@@ -245,6 +245,7 @@ let discover_sources ?(include_deps=false) ?(lang_filter=All) ?(recurse=true) ?(
             | ".rs" -> "rust"
             | ".ex" | ".exs" | ".heex" -> "elixir"
             | ".fs" | ".fsx" | ".fsi" -> "fsharp"
+            | ".nim" | ".nims" -> "nim"
             | _ -> "unknown"
           in
           (* Apply lang_filter *)

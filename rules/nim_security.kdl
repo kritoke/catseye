@@ -1,0 +1,228 @@
+rule "NimCommandInjection" severity="High" {
+    sinks {
+        sink "os.execCmd" arg=0 {
+            sanitizer "osproc.execProcess"
+            sanitizer "strutils.quoteShell"
+            sanitizer "strutils.quoteShellWindows"
+            sanitizer "strutils.quoteShellPosix"
+            fix "Use osproc.execProcess with explicit argument list instead of shell interpolation"
+        }
+        sink "execCmd" arg=0 {
+            sanitizer "quoteShell"
+            fix "Use execProcess with explicit argument list instead of shell interpolation"
+        }
+        sink "os.execShellCmd" arg=0 {
+            sanitizer "strutils.quoteShell"
+            fix "Use osproc.execProcess with explicit argument list instead of execShellCmd"
+        }
+        sink "execShellCmd" arg=0 {
+            sanitizer "quoteShell"
+            fix "Use execProcess with explicit argument list instead of execShellCmd"
+        }
+        sink "osproc.startProcess" arg=0 {
+            sanitizer "strutils.quoteShell"
+            fix "Validate and sanitize command arguments before passing to startProcess"
+        }
+        sink "startProcess" arg=0 {
+            sanitizer "quoteShell"
+            fix "Validate and sanitize command arguments before passing to startProcess"
+        }
+        sink "osproc.execProcess" arg=0 {
+            sanitizer "strutils.quoteShell"
+            fix "Validate command arguments — execProcess still allows command injection via crafted paths"
+        }
+        sink "execProcess" arg=0 {
+            sanitizer "quoteShell"
+            fix "Validate command arguments"
+        }
+        sink "os.shell" arg=0 {
+            fix "Avoid os.shell — use osproc.execProcess with explicit argument list"
+        }
+    }
+    message "Potential command injection via {sink}. User-controlled input may be interpolated into shell commands."
+}
+
+rule "NimPathTraversal" severity="High" {
+    sinks {
+        sink "system.open" arg=0 {
+            sanitizer "os.isValidFilename"
+            sanitizer "os.normalizedPath"
+            sanitizer "os.absolutePath"
+            fix "Validate path with os.isValidFilename() and normalize with os.normalizedPath()"
+        }
+        sink "open" arg=0 {
+            sanitizer "isValidFilename"
+            sanitizer "normalizedPath"
+            fix "Validate path with isValidFilename() before opening"
+        }
+        sink "system.readFile" arg=0 {
+            sanitizer "os.isValidFilename"
+            sanitizer "os.normalizedPath"
+            fix "Validate path with os.isValidFilename() before reading"
+        }
+        sink "readFile" arg=0 {
+            sanitizer "isValidFilename"
+            sanitizer "normalizedPath"
+            fix "Validate path with isValidFilename() before reading"
+        }
+        sink "system.writeFile" arg=0 {
+            sanitizer "os.isValidFilename"
+            sanitizer "os.normalizedPath"
+            fix "Validate path with os.isValidFilename() before writing"
+        }
+        sink "writeFile" arg=0 {
+            sanitizer "isValidFilename"
+            sanitizer "normalizedPath"
+            fix "Validate path with isValidFilename() before writing"
+        }
+        sink "os.removeFile" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate path before removing files"
+        }
+        sink "removeFile" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate path before removing files"
+        }
+        sink "os.removeDir" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate path before removing directories"
+        }
+        sink "removeDir" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate path before removing directories"
+        }
+        sink "os.createDir" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate path before creating directories"
+        }
+        sink "createDir" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate path before creating directories"
+        }
+        sink "os.copyFile" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate both source and destination paths"
+        }
+        sink "copyFile" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate both source and destination paths"
+        }
+        sink "os.moveFile" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate both source and destination paths"
+        }
+        sink "moveFile" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate both source and destination paths"
+        }
+        sink "os.symlink" arg=0 {
+            sanitizer "os.isValidFilename"
+            fix "Validate target path before creating symlinks"
+        }
+        sink "symlink" arg=0 {
+            sanitizer "isValidFilename"
+            fix "Validate target path before creating symlinks"
+        }
+    }
+    message "File operation on {sink} with potentially user-controlled path. Path traversal may allow access to arbitrary files."
+}
+
+rule "NimSSRF" severity="Medium" {
+    sinks {
+        sink "httpclient.getContent" arg=0 {
+            sanitizer "uri.parseUri"
+            sanitizer "net.isValid"
+            fix "Validate URL scheme and host before making HTTP requests"
+        }
+        sink "httpclient.postContent" arg=0 {
+            sanitizer "uri.parseUri"
+            fix "Validate URL scheme and host before making HTTP requests"
+        }
+        sink "httpclient.get" arg=0 {
+            sanitizer "uri.parseUri"
+            fix "Validate URL before making HTTP GET request"
+        }
+        sink "httpclient.post" arg=0 {
+            sanitizer "uri.parseUri"
+            fix "Validate URL before making HTTP POST request"
+        }
+    }
+    message "HTTP request to {sink} with potentially user-controlled URL. SSRF may allow access to internal services."
+}
+
+rule "NimSQLInjection" severity="Critical" {
+    sinks {
+        sink "db_sqlite.getValue" arg=0 {
+            sanitizer "db_sqlite"
+            fix "Use parameterized queries with ? placeholders instead of string interpolation"
+        }
+        sink "db_sqlite.getRow" arg=0 {
+            sanitizer "db_sqlite"
+            fix "Use parameterized queries with ? placeholders"
+        }
+        sink "db_sqlite.getAllRows" arg=0 {
+            sanitizer "db_sqlite"
+            fix "Use parameterized queries with ? placeholders"
+        }
+        sink "db_sqlite.exec" arg=1 {
+            sanitizer "db_sqlite"
+            fix "Use parameterized queries with ? placeholders"
+        }
+        sink "db_postgres.getValue" arg=0 {
+            sanitizer "db_postgres"
+            fix "Use parameterized queries with $1, $2 placeholders"
+        }
+        sink "db_postgres.exec" arg=1 {
+            sanitizer "db_postgres"
+            fix "Use parameterized queries with $1, $2 placeholders"
+        }
+        sink "db_mysql.getValue" arg=0 {
+            sanitizer "db_mysql"
+            fix "Use parameterized queries with ? placeholders"
+        }
+        sink "db_mysql.exec" arg=1 {
+            sanitizer "db_mysql"
+            fix "Use parameterized queries with ? placeholders"
+        }
+    }
+    message "SQL query at {sink} may be vulnerable to SQL injection. Use parameterized queries."
+}
+
+rule "NimDeserialization" severity="Medium" {
+    sinks {
+        sink "marshal.load" arg=0 {
+            fix "Avoid marshal.load with untrusted data — use JSON or a safe serialization format"
+        }
+        sink "marshal.store" arg=0 {
+            fix "Ensure serialized data is stored securely"
+        }
+    }
+    message "Deserialization via {sink} with potentially untrusted data. Unsafe deserialization can lead to code execution."
+}
+
+rule "NimUncheckedException" severity="Low" {
+    sinks {
+        sink "os.getEnv" arg=0 {
+            fix "Use os.getEnvOrDefault or check for empty string after getEnv"
+        }
+    }
+    message "os.getEnv raises OSError when environment variable is missing. Use getEnvOrDefault or handle the exception."
+}
+
+rule "NimMissingTimeout" severity="Medium" {
+    sinks {
+        sink "net.recv" arg=0 {
+            fix "Set a timeout on the socket before calling recv"
+        }
+        sink "net.recvLine" arg=0 {
+            fix "Set a timeout on the socket before calling recvLine"
+        }
+        sink "httpclient.getContent" arg=0 {
+            fix "Consider setting an HTTP timeout via HttpClient configuration"
+        }
+        sink "httpclient.postContent" arg=0 {
+            fix "Consider setting an HTTP timeout via HttpClient configuration"
+        }
+    }
+    message "Network operation {sink} without explicit timeout. May hang indefinitely."
+}
