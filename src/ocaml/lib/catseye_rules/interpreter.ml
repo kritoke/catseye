@@ -171,25 +171,46 @@ let has_sanitized_args (node : Security_node.t) (sanitizers : string list) : boo
 
 (** Check if the arg at a specific position is tainted.
     When [sink.arg_pos] is [Some n], only arg index [n] is checked for taint.
-    When [None], any tainted arg suffices (backward compatible). *)
+    When [None], any tainted arg suffices (backward compatible).
+
+    Composite arguments (e.g. `"ls " & param`) arrive as an ArgUnknown
+    placeholder whose value embeds the decomposed variable names,
+    `<expr:param>`; those embedded names are checked here so taint flows
+    through binary-operator arguments. *)
 let arg_pos_tainted (node : Security_node.t) (sink : sink_def)
     (tainted_vars : string list) : bool =
+  let matches_tainted v =
+    List.exists ~f:(fun tv ->
+      v = tv
+      || (String.length v > String.length tv
+          && String.sub v ~pos:0 ~len:(String.length tv) = tv
+          && v.[String.length tv] = '.')
+    ) tainted_vars
+  in
+  (* Var names embedded in a composite placeholder value "<expr:a;b>" *)
+  let embedded_vars value =
+    let prefix = "<expr:" in
+    if String.is_prefix value ~prefix && String.is_suffix value ~suffix:">" then
+      String.split (String.sub value ~pos:(String.length prefix)
+                      ~len:(String.length value - String.length prefix - 1)) ~on:';'
+    else []
+  in
   match sink.arg_pos with
   | None -> true  (* No position restriction *)
   | Some pos ->
     (* Check that the arg at position [pos] is a tainted variable *)
     let args = node.Security_node.args in
     if pos >= List.length args then false
-    else
+    else begin
       let arg = Option.value_exn (List.nth args pos) in
-      (arg.Security_node.arg_type = Security_node.ArgVar
-       || arg.Security_node.arg_type = Security_node.ArgCall)
-      && List.exists ~f:(fun tv ->
-        arg.Security_node.value = tv
-        || (String.length arg.Security_node.value > String.length tv
-            && String.sub arg.Security_node.value ~pos:0 ~len:(String.length tv) = tv
-            && arg.Security_node.value.[String.length tv] = '.')
-      ) tainted_vars
+      if arg.Security_node.arg_type = Security_node.ArgVar
+         || arg.Security_node.arg_type = Security_node.ArgCall then
+        matches_tainted arg.Security_node.value
+      else if arg.Security_node.arg_type = Security_node.ArgUnknown then
+        (* Composite placeholder: any embedded decomposed var may be tainted *)
+        List.exists ~f:matches_tainted (embedded_vars arg.Security_node.value)
+      else false
+    end
 
 (** Get variable names from args *)
 let var_names_from_args (args : Security_node.arg list) : string =

@@ -96,6 +96,47 @@ else if n.Security_node.node_type = Security_node.Call && n.Security_node.taint 
   )
   |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db
 
+(* Seed from source-call results: when a variable is assigned the result
+   of a known source call (e.g. `let x = os.getEnv(...)` or `let body = request(...)`),
+   the target variable is tainted. This matters for AST-bridge languages
+   (Gleam, OCaml, JS, Rust, Nim) whose extractors don't pre-flag taint on
+   individual nodes the way Crystal's does. The assign node carries the
+   call name as an ArgCall, so we seed the target when that call is a source. *)
+let seed_from_source_calls ?(extra_sources = []) (nodes : Security_node.t list)
+    (db : Db.t) : Db.t =
+  nodes
+  |> Stdlib.List.filter (fun n -> n.Security_node.node_type = Security_node.Assign)
+  |> Stdlib.List.filter (fun n ->
+    Stdlib.List.exists (fun a ->
+      a.Security_node.arg_type = Security_node.ArgCall
+      && is_source ~extra:extra_sources a.Security_node.value
+      && not (is_sanitizer ~extra:[] a.Security_node.value)
+    ) n.Security_node.args
+  )
+  |> Stdlib.List.filter (fun n ->
+    not (Db.is_tainted_in_file db n.Security_node.name n.Security_node.file)
+  )
+  |> Stdlib.List.map (fun n ->
+    let source_call =
+      n.Security_node.args
+      |> Stdlib.List.find (fun a ->
+        a.Security_node.arg_type = Security_node.ArgCall
+        && is_source ~extra:extra_sources a.Security_node.value)
+      |> fun a -> a.Security_node.value
+    in
+    { Db.var_name = n.Security_node.name
+    ; file = n.Security_node.file
+    ; line = n.Security_node.line
+    ; description = n.Security_node.name ^ " assigned from source call: " ^ source_call
+    ; source_var = source_call
+    ; field = None
+    ; status = Db.Tainted { source = source_call
+                           ; field = None
+                           ; origin = Db.Known_source source_call }
+    }
+  )
+  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db
+
 (* Seed from extractor-flagged assignments (taint=true) *)
 let seed_from_taint_flags (nodes : Security_node.t list) (db : Db.t) : Db.t =
   nodes
@@ -166,7 +207,8 @@ let seed_elixir_module_attrs (nodes : Security_node.t list) (db : Db.t) : Db.t =
 let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t) : Db.t =
   let db' = seed_from_params nodes extra_sources db in
   let db'' = seed_from_taint_flags nodes db' in
-  let db''' = seed_elixir_module_attrs nodes db'' in
+  let db''' = seed_from_source_calls ~extra_sources nodes db'' in
+  let db'''' = seed_elixir_module_attrs nodes db''' in
   (* Seed from scent metadata: assignments carrying scent=true are also tainted *)
   nodes
   |> Stdlib.List.filter (fun n ->
@@ -194,4 +236,4 @@ let seed_sources ?(extra_sources = []) (nodes : Security_node.t list) (db : Db.t
                         ; origin = Known_source ("scent:" ^ n.Security_node.name) }
     }
   )
-  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db'''
+  |> Stdlib.List.fold_left (fun acc record -> Db.add_record acc record) db''''

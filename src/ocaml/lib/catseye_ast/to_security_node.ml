@@ -62,6 +62,26 @@ let rec pattern_to_arg (pat : pattern) : Security_node.arg =
 let patterns_to_args (pats : pattern list) : Security_node.arg list =
   List.map ~f:pattern_to_arg pats
 
+(* ── Composite-arg decomposition (composite-arg-taint-propagation) ──────
+
+   When a call argument is a composite expression (a binary/unary operator
+   chain — e.g. Nim's `"ls " & param` or Crystal-style interpolation), the
+   flat security-node model would otherwise hide the constituent variables
+   behind a single ArgUnknown and taint never reaches the sink. Walk the
+   composite and collect every EVar so the call node can carry them as extra
+   ArgVar entries. Depth-bounded to 16 to guard against adversarial nesting. *)
+
+let rec var_refs_in_composite ?(depth = 0) (e : expr) : string list =
+  if depth > 16 then []
+  else
+    match e.expr_value with
+    | EVar v -> [ v ]
+    | EBinOp (l, _, r) ->
+      var_refs_in_composite ~depth:(depth + 1) l
+      @ var_refs_in_composite ~depth:(depth + 1) r
+    | EUnOp (_, x) -> var_refs_in_composite ~depth:(depth + 1) x
+    | _ -> []
+
 (* ── Expression name extraction ─────────────────────────────────────── *)
 
 (* expr_full_name inherited from Types *)
@@ -90,26 +110,47 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
     List.concat_map ~f:(fun (_, e) -> walk_expr e file lang) fields
   | EApp (fn, args) ->
     let fn_name = expr_full_name fn in
-    let fn_args = List.map ~f:(fun a ->
-      match a.expr_value with
-      | EVar v -> make_arg ~arg_type:Security_node.ArgVar ~value:v
-      | ELiteral lit ->
-        let value = match lit with
-          | LString s -> s
-          | LInt i -> i
-          | LFloat f -> f
-          | LBool b -> Stdlib.string_of_bool b
-          | LUnit -> "()"
-          | LNull -> "nil"
-          | LChar c -> String.make 1 c
-        in
-        make_arg ~arg_type:Security_node.ArgLiteral ~value
-      | _ ->
-        let inner_name = expr_full_name a in
-        if inner_name <> "" then
-          make_arg ~arg_type:Security_node.ArgCall ~value:inner_name
-        else
-          make_arg ~arg_type:Security_node.ArgUnknown ~value:"<expr>"
+    (* Each argument maps to its existing representation, PLUS — for composite
+       (EBinOp/EUnOp) arguments — one extra ArgVar per variable hidden inside,
+       so taint reaches sinks through string concat/arithmetic composites.
+       Non-composite args (plain var, literal, direct call) are unchanged. *)
+    let fn_args = List.concat_map ~f:(fun a ->
+      let composite_vars = match a.expr_value with
+        | EBinOp _ | EUnOp _ -> var_refs_in_composite a
+        | _ -> []
+      in
+      let base = match a.expr_value with
+        | EVar v -> [ make_arg ~arg_type:Security_node.ArgVar ~value:v ]
+        | ELiteral lit ->
+          let value = match lit with
+            | LString s -> s
+            | LInt i -> i
+            | LFloat f -> f
+            | LBool b -> Stdlib.string_of_bool b
+            | LUnit -> "()"
+            | LNull -> "nil"
+            | LChar c -> String.make 1 c
+          in
+          [ make_arg ~arg_type:Security_node.ArgLiteral ~value ]
+        | _ ->
+          let inner_name = expr_full_name a in
+          if inner_name <> "" then
+            [ make_arg ~arg_type:Security_node.ArgCall ~value:inner_name ]
+          else if composite_vars <> [] then
+            (* Composite with embedded variables: encode their names in the
+               placeholder so the interpreter's arg-position taint check can
+               still fire for `sink … arg=N` rules (which look only at args[N]).
+               The plain ArgVars are also appended below for positionless and
+               message-substitution paths. *)
+            [ make_arg ~arg_type:Security_node.ArgUnknown
+                ~value:("<expr:" ^ String.concat ~sep:";" composite_vars ^ ">") ]
+          else
+            [ make_arg ~arg_type:Security_node.ArgUnknown ~value:"<expr>" ]
+      in
+      match composite_vars with
+      | [] -> base
+      | vars ->
+        base @ List.map ~f:(fun v -> make_arg ~arg_type:Security_node.ArgVar ~value:v) vars
     ) args in
     let call_node = make_node
       ~node_type:Security_node.Call ~name:fn_name ~args:fn_args
@@ -149,6 +190,14 @@ let rec walk_expr (e : expr) (file : string) (lang : string)
           | LChar c -> String.make 1 c
         in
         [make_arg ~arg_type:Security_node.ArgLiteral ~value]
+      | EApp (fn, _) ->
+        (* let x = foo(args): link the assign to the call so taint from a
+           source call (e.g. os.getEnv, request) propagates into x.
+           expr_full_name only handles EVar/EFieldAccess, so handle EApp here. *)
+        let fn_name = expr_full_name fn in
+        if fn_name <> "" then
+          [make_arg ~arg_type:Security_node.ArgCall ~value:fn_name]
+        else []
       | _ ->
         let inner_name = expr_full_name e1 in
         if inner_name <> "" then
