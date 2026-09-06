@@ -1,0 +1,14 @@
+{
+  "assignee": "",
+  "blocked_by": [],
+  "blocks": [],
+  "created": "2026-09-06T16:33:00Z",
+  "description": "Discovered while building gleam_golden_test (catseye-iru.1): dune runs test executables with cwd inside _build/default/test/ast, but nim_mapper_test/nim_nimalyzer_test/nim_detectors_test/nimble_manifest_test resolve fixtures via relative paths like tests/fixtures/nim/sample.nim — which don't exist from that cwd — and then exit 0 with 'SKIP: sample file not found'. The entire Nim test batch committed with the Nim feature is running VACUOUSLY in dune runtest (verified: running _build/default/test/ast/nim_mapper_test.exe directly prints SKIP). Fix: adopt gleam_golden_test's resolution — walk up from cwd until the fixture dir exists (CATSEYE_* env override), and treat a MISSING fixture as a hard failure (exit 1); keep the graceful skip only for 'grammar not installed' parse errors. Applies to every test/ast executable that reads repo fixtures.",
+  "id": "catseye-5pm",
+  "labels": [],
+  "priority": 2,
+  "status": "open",
+  "title": "Nim/ast tests silently SKIP: fixture paths don't resolve from dune sandbox cwd",
+  "type": "bug",
+  "updated_at": "2026-09-06T16:33:00Z"
+}
