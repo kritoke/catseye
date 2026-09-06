@@ -144,11 +144,17 @@ let run_capture (full_cmd : string) : string option =
 
 (** Extract using the flat extractor. Returns raw JSON string. *)
 let extract_flat (r : t) ~(path : string) : string option =
-  run_capture (Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" r.flat_cmd path)
+  (* SECURITY: quote the scanned path — it is attacker-controlled (a malicious
+     repo may contain metacharacter-named files). flat_cmd stays unquoted: it is
+     config-derived and may be a multi-word command (e.g. `crystal run … --`). *)
+  run_capture (Stdlib.Printf.sprintf "%s %s 2>/dev/null"
+    r.flat_cmd (Stdlib.Filename.quote path))
 
 (** Extract using the hierarchical extractor. Returns raw JSON string. *)
 let extract_hier (r : t) ~(path : string) : string option =
-  run_capture (Stdlib.Printf.sprintf "%s '%s' 2>/dev/null" r.hier_cmd path)
+  (* SECURITY: same as extract_flat — quote the path, not the multi-word cmd. *)
+  run_capture (Stdlib.Printf.sprintf "%s %s 2>/dev/null"
+    r.hier_cmd (Stdlib.Filename.quote path))
 
 (* ── Pool management ────────────────────────────────────────────────── *)
 

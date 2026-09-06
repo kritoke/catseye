@@ -281,7 +281,12 @@ let parse_xml_file (path : string) : xml =
     | Ok p -> p
     | Error (`Msg e) -> failwith ("Grammar error: " ^ e)
   in
-  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path '%s' --lang-name crystal -x '%s'" lib_path path in
+  (* SECURITY: quote both interpolated values — the scanned file path is
+     attacker-controlled (a malicious repo may contain a file named
+     `'; evil; '.cr`). Filename.quote escapes embedded quotes; raw '%s'
+     interpolation allowed shell command injection. Mirrors gleam.ml. *)
+  let cmd = Stdlib.Printf.sprintf "tree-sitter parse --lib-path %s --lang-name crystal -x %s"
+    (Stdlib.Filename.quote lib_path) (Stdlib.Filename.quote path) in
   let ic = Unix.open_process_in cmd in
   let buf = Stdlib.Buffer.create 32768 in
   (try while true do Stdlib.Buffer.add_channel buf ic 4096 done with Stdlib.End_of_file -> ());
