@@ -480,18 +480,25 @@ let detect_debug_in_library (m : t) =
     This produces a List(Result) which needs further handling.
     Use list.try_map or handle the results explicitly. *)
 let detect_result_in_map (m : t) =
+  (* Only genuine list.map/map applications count (bare `map` covers
+     `import gleam/list.{map}`). The previous version matched ANY single-argument
+     call whose argument was a lambda returning Result, so unrelated callbacks
+     (e.g. each(items, fn(x) { ... })) were mislabeled "list.map with
+     Result-returning lambda" — and genuine list.map(items, fn) two-argument
+     calls fell through the single-arg match entirely. Gate on the callee name
+     and accept the lambda in last-argument position. *)
+  let is_map_call (name : string) = name = "list.map" || name = "map" in
   let rec find_result_maps (e : expr) : (string * string * int) list =
     match e.expr_value with
     | EApp (fn, args) ->
         let name = expr_name fn in
-        let hits = (match args with
-          | [fn_arg] ->
-              (* Check if fn_arg is an anonymous function that returns Result *)
-              (match fn_arg.expr_value with
-               | EFn (_, body) when returns_result body ->
-                   [(name, "lambda", e.expr_location.start.line)]
-               | _ -> [])
-          | _ -> [])
+        let hits =
+          if is_map_call name then
+            (match List.rev args with
+             | { expr_value = EFn (_, body); _ } :: _ when returns_result body ->
+                 [(name, "lambda", e.expr_location.start.line)]
+             | _ -> [])
+          else []
         in
         hits @ List.concat_map find_result_maps args
     | EBlock es -> List.concat_map find_result_maps es
