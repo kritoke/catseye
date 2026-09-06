@@ -285,18 +285,49 @@ let detect_non_exhaustive_case (m : t) =
     Uses type inference DB to detect calls to Result-returning functions
     where the return value is not captured in a case expression. *)
 let detect_ignored_result (m : t) =
+  (* Only flag Result-returning calls whose value is actually DROPPED: a bare
+     call in non-final statement position of a block (Gleam discards these
+     values silently). The previous version collected every application in
+     the body, so even properly handled calls — case fetch() { ... } or
+     let x = fetch() — were reported as ignored. `let _ = fetch()` remains
+     the domain of the discard-result rule (no overlap, no double report). *)
+  let dropped_result_apps (e : expr) : (string * int) list =
+    let rec walk (e : expr) : (string * int) list =
+      match e.expr_value with
+      | EBlock es ->
+          let n = List.length es in
+          List.concat_map
+            (fun (i, stmt) ->
+              if i = n - 1 then walk stmt (* final expr is the block's value *)
+              else
+                match stmt.expr_value with
+                | EApp (fn, _) ->
+                    let name = expr_name fn in
+                    (match Type_inference.lookup_gleam name with
+                     | Some { Type_inference.kind = Result; _ } ->
+                         [(name, stmt.expr_location.start.line)]
+                     | _ -> [])
+                | _ -> walk stmt)
+            (List.mapi (fun i x -> (i, x)) es)
+      (* the RHS of a binding is captured by the pattern, not dropped *)
+      | ELet (_, e1, e2) | ELetAssert (_, e1, e2) -> walk e1 @ walk e2
+      | EFn (_, body) -> walk body
+      | EIf (_, then_, else_) ->
+          walk then_ @ (match else_ with Some e -> walk e | None -> [])
+      | ECase (_, branches) -> List.concat_map (fun (_, b) -> walk b) branches
+      | _ -> []
+    in
+    walk e
+  in
   List.filter_map (fun item ->
     match item.item_value with
     | IFunction (_, _, _, body) ->
-        let apps = collect_apps body in
-        List.find_map (fun (name, line) ->
-          match Type_inference.lookup_gleam name with
-          | Some { Type_inference.kind = Result; type_name; doc } ->
-              Some (Printf.sprintf
-                "%s returns %s — %s. Use case expression to handle both Ok and Error"
-                name type_name doc, line)
-          | _ -> None
-        ) apps
+        (match dropped_result_apps body with
+         | (name, line) :: _ ->
+             Some (Printf.sprintf
+               "%s returns a Result and its value is dropped — use case expression (or let _ = if intentional) to handle both Ok and Error"
+               name, line)
+         | [] -> None)
     | _ -> None
   ) m.mod_items
 
