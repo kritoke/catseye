@@ -1,5 +1,5 @@
 {
-  "assignee": "",
+  "assignee": "kritoke",
   "blocked_by": [],
   "blocks": [
     "catseye-iru.9"
@@ -10,8 +10,8 @@
   "labels": [],
   "parent": "catseye-iru",
   "priority": 2,
-  "status": "open",
+  "status": "in_progress",
   "title": "detect_let_assert: is_test_file never matches real paths",
   "type": "bug",
-  "updated_at": "2026-09-04T11:14:08Z"
+  "updated_at": "2026-09-06T16:11:50Z"
 }
