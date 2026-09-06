@@ -118,7 +118,7 @@ let query (ecosystem : string) (package : string) (version : string)
     Stdlib.close_out oc;
 
     let cmd = Printf.sprintf
-      "curl -s -S --max-time 10 -X POST https://api.osv.dev/v1/query -d @%s -o %s 2>/dev/null"
+      "curl -s -S -f --max-time 10 -X POST https://api.osv.dev/v1/query -d @%s -o %s 2>/dev/null"
       (Stdlib.Filename.quote tmp_in) (Stdlib.Filename.quote tmp_out)
     in
     let exit_code = Stdlib.Sys.command cmd in
