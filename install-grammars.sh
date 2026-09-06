@@ -13,7 +13,7 @@ echo ""
 
 # Method 1: Via tree-sitter CLI (recommended)
 if command -v tree-sitter &>/dev/null; then
-	for lang in javascript typescript rust gleam; do
+	for lang in javascript typescript rust gleam nim; do
 		echo "  Installing $lang (via tree-sitter CLI)..."
 		if tree-sitter install-language "$lang" 2>/dev/null; then
 			echo "    ✓ $lang installed"
@@ -43,4 +43,4 @@ echo "✓ Grammar installation complete"
 echo "  Location: $GRAMMAR_DIR"
 echo "  Set CATSEYE_GRAMMAR_DIR to customize"
 echo ""
-echo "Supported languages: javascript, typescript, rust, gleam, svelte, ocaml"
+echo "Supported languages: javascript, typescript, rust, gleam, svelte, ocaml, nim"

@@ -2,7 +2,7 @@
 
 **Multi-language static security analysis with taint tracking, code smell detection, and AI antipattern linting.**
 
-Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust, Elixir, and F#** — with language-specific security rules and antipattern databases for each.
+Supports **Crystal, Gleam, JavaScript, TypeScript, Svelte, OCaml, Rust, Elixir, F#, and Nim** — with language-specific security rules and antipattern databases for each.
 
 > **v0.4.4** - OCaml idiomatic rules, updated Crystal/Gleam/Svelte detectors, OCaml verbose-option detection
 
@@ -48,7 +48,7 @@ EOF
 **Requirements:**
 
 - **OCaml** 5.x + **Dune** 3.x
-- **tree-sitter** CLI + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust)
+- **tree-sitter** CLI + language grammars (JS, TS, Svelte, OCaml, Gleam, Rust, Nim)
 - **Crystal** 1.x (optional — needed only for native Crystal extractor)
 - **.NET SDK** 10.0+ (optional — needed only for F# support; the nix dev shell provides this)
 - OCaml libs: yojson, cmdliner, bos, rresult, logs, fmt, toml, kdl, ocamlgraph
@@ -68,6 +68,7 @@ just test
 ```
 
 **F# support:** If you have .NET SDK 10.0+ installed, `just build` will also build the F# extractor. To scan F# files, set the extractor path:
+
 ```bash
 export CATSEYE_FSHARP_EXTRACTOR=bin/catseye-fsharp-extractor
 catseye-ocaml --lang fsharp path/to/fsharp/project
@@ -115,6 +116,7 @@ catseye-ocaml --list-rules --lang javascript --output rules.json
 | OCaml      | `.ml` `.mli`               |    ✅ Basic    |      ✅ 18 rules      | ✅ 16 detectors | tree-sitter                    |
 | Rust       | `.rs`                      |    ✅ Basic    |    ✅ 3 detectors     | ✅ 16 detectors | tree-sitter (native)           |
 | F#         | `.fs` `.fsx` `.fsi`        |    ✅ Basic    |          —            | ✅ 16 detectors | FCS extractor (.NET)           |
+| Nim        | `.nim` `.nims`             |  ✅ 7 rules    |   ✅ 5 detectors      | ✅ 16 detectors | tree-sitter + nimalyzer (opt.) |
 
 ## CLI Reference
 
@@ -137,9 +139,9 @@ catseye [options] <directory>
   --cfg-max-blocks <n>       max blocks per function CFG (default: 500)
   --cfg-timeout-ms <ms>      timeout per function CFG build (default: 5000)
   --predator-vision          enable reachability analysis (live/dormant/safe)
-  --crows-nest               enable supply chain audit (Crystal shard.yml + Gleam gleam.toml only; very limited CVE data)
+  --crows-nest               enable supply chain audit (Crystal shard.yml + Gleam gleam.toml + Nim nimble; very limited CVE data — OSV has no nim ecosystem yet)
   --claws                    enable code smell detection
-  --ai-lint                  enable AI antipattern detection (Crystal, Gleam, Svelte, OCaml, Rust)
+  --ai-lint                  enable AI antipattern detection (Crystal, Gleam, Svelte, OCaml, Rust, Nim)
   --suppress <rules>         comma-separated rule IDs to suppress (e.g., unused-let,InsecureRandom)
   --include-deps             include shard dependencies in scan (Crystal only)
   --no-recurse               don't recurse into subdirectories (applies to all languages)
@@ -272,12 +274,13 @@ All 16 code smell detectors use **AST-native analysis** via `CatseyeAST.t` — t
 
 ### Supply Chain Audit (`--crows-nest`)
 
-> ⚠️ **Very limited.** Only supports Crystal `shard.yml` and Gleam `gleam.toml`. No JavaScript/TypeScript (npm/pnpm/yarn), Python, Ruby, Rust, Go, or other ecosystems. CVE data via [OSV.dev](https://osv.dev) has **very limited coverage** — most packages return no vulnerabilities even when known issues exist. Use dedicated tools like `npm audit`, `cargo audit`, or `safety` for real supply chain auditing.
+> ⚠️ **Very limited.** Only supports Crystal `shard.yml`, Gleam `gleam.toml`, and Nim `*.nimble`/`nimble.lock`. No JavaScript/TypeScript (npm/pnpm/yarn), Python, Ruby, Rust, Go, or other ecosystems. CVE data via [OSV.dev](https://osv.dev) has **very limited coverage** — most packages return no vulnerabilities even when known issues exist. Note: **OSV currently has no `nim` ecosystem at all**, so Nim deps report a failed query (shown as `osv.status: "failed"`) rather than false "clean" until OSV adds coverage. Use dedicated tools like `npm audit`, `cargo audit`, or `safety` for real supply chain auditing.
 
 What it does:
 
 - Parses `shard.yml` → Crystal Shards dependencies (with versions from GitHub)
 - Parses `gleam.toml` → Gleam Hex dependencies
+- Parses `*.nimble` / `nimble.lock` → Nim dependencies (locked versions win when both exist)
 - Queries OSV.dev for known CVEs (limited data coverage)
 - Checks GitHub repo activity for staleness (Crystal shards with `github:` fields)
 - Results cached in SQLite (24h TTL)

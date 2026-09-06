@@ -21,7 +21,7 @@ curl -L https://github.com/kritoke/catseye/releases/latest/download/catseye-linu
 
 ## Setup Grammars
 
-Tree-sitter grammars are needed for parsing JavaScript, TypeScript, Svelte, and Rust. Run:
+Tree-sitter grammars are needed for parsing JavaScript, TypeScript, Svelte, Rust, and Nim. Run:
 
 ```bash
 chmod +x install-grammars.sh
@@ -33,6 +33,10 @@ This downloads the required language parsers using `npx tree-sitter-cli`.
 ### F# Support (Optional)
 
 F# analysis requires the .NET SDK 10.0+. If using Nix, run `nix develop` to get it automatically. Otherwise, install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download).
+
+### Nim Support (Optional)
+
+Nim analysis uses tree-sitter-nim (included in `install-grammars.sh`). For enhanced analysis with nimalyzer, install [nimalyzer](https://github.com/thindil/nimalyzer) and place a `nimalyzer.cfg` in your project root. nimalyzer requires the [Nim compiler](https://nim-lang.org/install.html) on PATH.
 
 ---
 

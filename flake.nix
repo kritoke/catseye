@@ -49,6 +49,34 @@
         scope = on.buildOpamProject' { repos = [ opam-repository ]; } ./src/ocaml query;
 
         finalScope = scope.overrideScope (pkgs.lib.composeExtensions sqliteOverlay flattenOverlay);
+
+        # Map each tree-sitter grammar package to its language name.
+        # The nix packages ship a `parser` binary at the package root;
+        # tree-sitter CLI + Catseye's resolve_grammar look for {lang}.so in
+        # ~/.tree-sitter/. The shellHook below symlinks them so the fast
+        # first-lookup path hits, instead of falling back to a slow
+        # `find /nix/store`.
+        grammars = {
+          gleam        = pkgs.tree-sitter-grammars.tree-sitter-gleam;
+          javascript   = pkgs.tree-sitter-grammars.tree-sitter-javascript;
+          typescript   = pkgs.tree-sitter-grammars.tree-sitter-typescript;
+          svelte       = pkgs.tree-sitter-grammars.tree-sitter-svelte;
+          ocaml        = pkgs.tree-sitter-grammars.tree-sitter-ocaml;
+          rust         = pkgs.tree-sitter-grammars.tree-sitter-rust;
+          nim          = pkgs.tree-sitter-grammars.tree-sitter-nim;
+        };
+
+        # Build a shellHook snippet per grammar: symlink {pkg}/parser -> ~/.tree-sitter/{lang}.so
+        linkGrammars = pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList
+          (lang: drv: ''
+            if [ -f "${drv}/parser" ]; then
+              mkdir -p "$HOME/.tree-sitter"
+              ln -sf "${drv}/parser" "$HOME/.tree-sitter/${lang}.so"
+            fi
+          '')
+          grammars);
+
+        grammarPackages = pkgs.lib.attrValues grammars;
       in {
         packages.default = finalScope.catseye;
 
@@ -59,18 +87,18 @@
             sqlite
             pkg-config
             tree-sitter
-            tree-sitter-grammars.tree-sitter-gleam
-            tree-sitter-grammars.tree-sitter-javascript
-            tree-sitter-grammars.tree-sitter-typescript
-            tree-sitter-grammars.tree-sitter-svelte
-            tree-sitter-grammars.tree-sitter-ocaml
-            tree-sitter-grammars.tree-sitter-rust
+          ] ++ grammarPackages ++ [
             (if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 else pkgs.crystal)
             just
             go
             dotnetCorePackages.sdk_10_0
             openspec.packages.${system}.default
           ];
+          shellHook = ''
+            ${linkGrammars}
+            # Help tree-sitter CLI find grammars by parser-directories too
+            export TREE_SITTER_GRAMMAR_DIR="$HOME/.tree-sitter"
+          '';
         };
       }
     );

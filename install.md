@@ -19,6 +19,10 @@ This guide covers building Catseye without Nix. If you have Nix installed, see [
 
 - **.NET SDK** 10.0+ (for the F# extractor using FSharp.Compiler.Service; the nix dev shell provides this automatically via `dotnetCorePackages.sdk_10_0`)
 
+### Optional (for enhanced Nim analysis)
+
+- **nimalyzer** — Nim static analyzer for complexity, naming conventions, pragma enforcement, and documentation coverage. Requires the [Nim compiler](https://nim-lang.org/install.html) on PATH. Install with `nimble install nimalyzer`.
+
 ## Install Dependencies
 
 ### 1. Install OCaml and Dune
@@ -86,7 +90,7 @@ cp target/release/tree-sitter ~/.local/bin/
 
 ### 4. Install tree-sitter Grammars
 
-Catseye needs grammars for: JavaScript, TypeScript, Svelte, OCaml, Gleam, and Rust.
+Catseye needs grammars for: JavaScript, TypeScript, Svelte, OCaml, Gleam, Rust, and Nim.
 
 Create a grammars directory:
 
@@ -211,10 +215,12 @@ export LD_LIBRARY_PATH=$HOME/.tree-sitter/grammars:$LD_LIBRARY_PATH
 
 1. Check that grammars are compiled (`.c` files generated, not just `.js`)
 2. Verify environment variables are set:
+
    ```bash
    echo $TREE_SITTER_GRAMMAR_DIR
    ls -la $TREE_SITTER_GRAMMAR_DIR
    ```
+
 3. Check grammar compatibility — tree-sitter CLI and grammar must be compatible versions
 
 ### "Failed to load language"

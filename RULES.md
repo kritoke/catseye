@@ -12,6 +12,13 @@ Security rules use taint tracking to detect when user-controlled data reaches da
 
 ### Crystal Security Rules
 
+> **Known context false positive — `ScentLeakage`:** CLI extractors and tools
+> whose *designed output channel is stdout* (e.g. Catseye's own Crystal
+> extractors `puts`-ing their JSON wire format, where emitted node names include
+> identifiers like `file_path`) will trip this rule. That is intentional
+> printing, not sensitive-data leakage — triage such findings as context FPs
+> for stdout-contract tools (self-scan-hardening REQ-7).
+
 | Rule                 | Severity | Sinks                                                                                                             | Sources                                                |
 | -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | **SSRF**             | Critical | `HTTP::Client.{get,post,put,patch,delete,exec}`, `client.*`, `Crest::{Request.execute,get,post,put,delete,patch}` | `url`, `params.url`, `user_url`, `query`               |
@@ -58,9 +65,9 @@ Security rules use taint tracking to detect when user-controlled data reaches da
 
 ### Cross-Language Security Rules
 
-| Rule                        | Severity | Languages   | Sinks                                                 |
-| --------------------------- | -------- | ----------- | ----------------------------------------------------- |
-| **InsecureDeserialization** | High     | Crystal, JS | `JSON.parse`, `YAML.parse`, `Marshal.load`, `Oj.load` |
+| Rule                        | Severity | Languages       | Sinks                                                 |
+| --------------------------- | -------- | --------------- | ----------------------------------------------------- |
+| **InsecureDeserialization** | High     | Crystal, JS, Nim | `JSON.parse`, `YAML.parse`, `Marshal.load`, `Oj.load`, `marshal.load` |
 
 ---
 
@@ -110,6 +117,18 @@ All 16+ code smell detectors analyze AST structure across all supported language
 | Orphaned spawn | `OrphanedSpawn` | `spawn` without rescue         | Crystal   |
 | Muted pack     | `MutedPack`     | `Channel.send` without receive | Crystal   |
 | Dead letter    | `DeadLetter`    | `Channel.close` before receive | Crystal   |
+
+### Nim-Specific Security Rules
+
+| Rule                        | Severity | Sinks                                                            |
+| --------------------------- | -------- | ---------------------------------------------------------------- |
+| **NimCommandInjection**     | High     | `execCmd`, `execShellCmd`, `startProcess`, `execProcess`, `shell` |
+| **NimPathTraversal**        | High     | `open`, `readFile`, `writeFile`, `removeFile`, `copyFile`         |
+| **NimSSRF**                 | Medium   | `httpclient.getContent`, `postContent`, `get`, `post`            |
+| **NimSQLInjection**         | Critical | `db_sqlite.getValue`, `db_sqlite.exec`, `db_postgres.*`, `db_mysql.*` |
+| **NimDeserialization**      | Medium   | `marshal.load`, `marshal.store`                                  |
+| **NimUncheckedException**   | Low      | `os.getEnv` (raises on missing)                                  |
+| **NimMissingTimeout**       | Medium   | `net.recv`, `net.recvLine`, `httpclient.getContent`               |
 
 ### Inheritance Smells
 
@@ -273,6 +292,23 @@ Catches patterns common in AI-generated code.
 | `RustHallucination` | Python/Ruby/Go APIs in Rust (`len()`, `range()`, `dict.get()`) |
 | `UnsafePanic`       | `unwrap()`, `expect()`, `panic!()` without error handling      |
 | `RustInefficiency`  | Unnecessary clones, `String::from(&var)`                       |
+
+### Nim (12 detectors)
+
+| Rule                        | Severity | What it catches                                                                 |
+| --------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `nim-bare-except`           | Warning  | `except:` without an exception type                                             |
+| `nim-empty-rescue`          | Warning  | `except:` branch whose body is only `discard` (errors silently swallowed)       |
+| `nim-unsafe-conversion`     | Warning  | `parseInt`/`parseFloat`/`parseJson`/`parseEnum` outside try/except (they raise) |
+| `nim-unchecked-dangerous-call` | Warning | `execCmd`/`execShellCmd`/`startProcess` result not checked                       |
+| `nim-mass-assignment`       | Warning  | `parseJson` result converted wholesale via `.to(Object)` — unfiltered fields    |
+| `nim-deprecated-api`        | Warning  | `existsFile`→`fileExists`, `existsDir`→`dirExists`, `strutils.format`, `writeln` |
+| `nim-hallucinated-function` | Warning  | Python/JS/Ruby/Go lookalikes (62-entry DB: `startswith`, `dict.get`, `JSON.stringify`, `fetch`, `fmt.Sprintf`, …) |
+| `nim-long-method`           | Warning/Hint | Proc with >50 statements (Hint at >30)                                      |
+| `nim-unused-param`          | Hint     | Declared parameter never referenced (non-test files)                           |
+| `nim-shadowed-var`          | Hint     | Inner `let`/`var` rebinding an outer binding in the same proc                  |
+| `nim-debug-leftover`        | Hint     | `debugEcho` shipped outside `when defined(debug)` (non-test files)              |
+| `nim-eval-usage`            | Hint     | `parseExpr`/`parseStmt`/`eval` — runtime string metaprogramming                |
 
 ### Elixir (120+ detectors)
 
