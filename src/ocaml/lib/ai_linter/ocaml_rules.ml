@@ -24,6 +24,12 @@ type hallucination = {
 }
 
 let hallucinated_ocaml : (string * hallucination) list = [
+  (* NOTE: entries whose names collide with real Base/Stdlib functions that the
+     OCaml mapper collects as BARE names (module qualifier dropped — e.g. every
+     `String.strip x` arrives as app name "strip") must NOT live here verbatim:
+     they fire on every legitimate Base call. "strip", "length", "init" and
+     "error" were removed for this reason (Base: String.strip, String.length /
+     List.length, List.init / Array.init, Result.error / Logs.error). *)
   (* Haskell patterns used in OCaml *)
   ("foldl",          { name = "foldl";          correct = "OCaml uses List.fold_left (args are reversed vs Haskell)" });
   ("foldr",          { name = "foldr";          correct = "OCaml uses List.fold_right" });
@@ -46,15 +52,15 @@ let hallucinated_ocaml : (string * hallucination) list = [
   ("writeFile",      { name = "writeFile";      correct = "OCaml uses Out_channel.with_open_out" });
   ("head",           { name = "head";           correct = "OCaml uses List.hd (but prefer pattern matching)" });
   ("tail",           { name = "tail";           correct = "OCaml uses List.tl (but prefer pattern matching)" });
-  ("init",           { name = "init";           correct = "OCaml uses List.init or Array.init" });
-  ("length",         { name = "length";         correct = "OCaml uses List.length or Array.length or String.length" });
+  (* "init" removed — collides with Base List.init / Array.init / String.init *)
+  (* "length" removed — collides with Base String.length / List.length / Array.length *)
   ("reverse",        { name = "reverse";        correct = "OCaml uses List.rev" });
   ("take",           { name = "take";           correct = "Not in stdlib — use BatEnum.take or implement manually" });
   ("drop",           { name = "drop";           correct = "Not in stdlib — use List.filteri or implement manually" });
   ("zip",            { name = "zip";            correct = "OCaml uses List.combine" });
   ("unzip",          { name = "unzip";          correct = "OCaml uses List.split" });
   ("lookup",         { name = "lookup";         correct = "OCaml uses List.assoc or Hashtbl.find" });
-  ("error",          { name = "error";          correct = "OCaml uses failwith or raise (Failure ...)" });
+  (* "error" removed — collides with Base Result.error / Logs.error / Fmt *)
   ("throw",          { name = "throw";          correct = "OCaml uses raise (exception constructor)" });
   ("catch",          { name = "catch";          correct = "OCaml uses try ... with ... for exception handling" });
   ("let!",           { name = "let!";           correct = "OCaml uses let* or let+ for monadic binding (3.12+)" });
@@ -63,7 +69,7 @@ let hallucinated_ocaml : (string * hallucination) list = [
   ("range",          { name = "range";          correct = "OCaml: use Array.init or for loop" });
   ("len",            { name = "len";            correct = "OCaml uses List.length / Array.length / String.length" });
   ("enumerate",      { name = "enumerate";      correct = "OCaml: use List.mapi or List.iteri" });
-  ("strip",          { name = "strip";          correct = "OCaml uses String.trim" });
+  (* "strip" removed — collides with Base String.strip, collected bare *)
   (* Scala/Java patterns *)
   ("println",        { name = "println";        correct = "OCaml uses print_endline or Printf.printf" });
   ("asInstanceOf",   { name = "asInstanceOf";   correct = "OCaml doesn't have runtime type casts — use pattern matching" });
@@ -77,6 +83,52 @@ let hallucination_map : (string, hallucination) Hashtbl.t =
   let tbl = Hashtbl.create 64 in
   List.iter (fun (_, e) -> Hashtbl.add tbl e.name e) hallucinated_ocaml;
   tbl
+
+(* ── Base stdlib whitelist (REQ: self-scan-hardening) ───────────────────
+
+   Jane Street Base re-exports and EXTENDS the standard modules (e.g.
+   String.strip does not exist in Stdlib but does in Base). Qualified calls
+   into these modules must never be reported as hallucinations, and the
+   last-segment fallback must not fire for them either. *)
+
+let base_modules = [
+  "String"; "List"; "Array"; "Option"; "Result"; "Int"; "Float"; "Bool";
+  "Char"; "Buffer"; "Bytes"; "Seq"; "Map"; "Set"; "Hashtbl";
+]
+
+let base_whitelist = [
+  "String.strip"; "String.length"; "String.trim"; "String.capitalize";
+  "String.uncapitalize"; "String.sub"; "String.index"; "String.rindex";
+  "String.concat"; "String.contains"; "String.split_on_char"; "String.escaped";
+  "String.is_prefix"; "String.is_suffix"; "String.pad";
+  "List.length"; "List.filter"; "List.map"; "List.fold_left"; "List.fold_right";
+  "List.sort"; "List.init"; "List.rev"; "List.concat"; "List.concat_map";
+  "List.filter_map"; "List.iter"; "List.exists"; "List.for_all";
+  "Array.length"; "Array.init"; "Array.map"; "Array.filter"; "Array.sort";
+  "Option.value"; "Option.map"; "Option.bind"; "Option.iter"; "Option.join";
+  "Result.ok"; "Result.error"; "Result.map"; "Result.bind"; "Result.is_error";
+  "Result.is_ok";
+  "Int.to_string"; "Int.of_string"; "Int.min"; "Int.max"; "Int.abs";
+  "Float.of_string"; "Float.to_string"; "Float.min"; "Float.max";
+  "Bool.to_string"; "Bool.not";
+  "Buffer.contents"; "Buffer.add_string"; "Buffer.add_char"; "Buffer.clear";
+  "Buffer.length"; "Buffer.create";
+  "Bytes.length"; "Bytes.to_string"; "Bytes.of_string";
+  "Hashtbl.length"; "Hashtbl.create"; "Hashtbl.find"; "Hashtbl.mem";
+  "Hashtbl.set"; "Hashtbl.add"; "Hashtbl.remove"; "Hashtbl.fold";
+]
+
+(** Is [name] a call into a Base module (e.g. "String.foo")? Those modules'
+   APIs are Base-extended, so last-segment hallucination matching must not
+   fire for them. *)
+let is_base_module_call (name : string) : bool =
+  match String.rindex_opt name '.' with
+  | None -> false
+  | Some i ->
+    (try
+       let qual = String.sub name 0 i in
+       List.exists (fun m -> qual = m) base_modules
+     with Invalid_argument _ -> false)
 
 (* ── 2. Unsafe Patterns ────────────────────────────────────────────── *)
 
@@ -434,6 +486,11 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
 
   (* Hallucinated methods *)
   let hallucination_findings = List.filter_map (fun (name, line) ->
+    (* Base whitelist: qualified Base calls are never hallucinations, and
+       calls into Base modules must not hit the last-segment fallback
+       (Base extends those modules beyond Stdlib). *)
+    if List.mem name base_whitelist || is_base_module_call name then None
+    else begin
     let last = try let i = String.rindex name '.' in String.sub name (i+1) (String.length name - i - 1) with Stdlib.Not_found -> name in
     match (Hashtbl.find_opt hallucination_map name, Hashtbl.find_opt hallucination_map last) with
     | Some entry, _ | _, Some entry ->
@@ -442,6 +499,7 @@ let analyze_module (mod_ : Catseye_ast.Types.t) : T.finding list =
         message = Printf.sprintf "'%s' doesn't exist in OCaml — %s" name entry.correct;
         suggestion = Some entry.correct }
     | None, None -> None
+    end
   ) all_apps in
 
   hallucination_findings
