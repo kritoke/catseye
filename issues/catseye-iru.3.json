@@ -4,14 +4,15 @@
   "blocks": [
     "catseye-iru.9"
   ],
+  "closed_at": "2026-09-06T16:15:13Z",
   "created": "2026-09-04T11:14:06Z",
   "description": "gleam_rules.ml detect_result_in_map (~line 483): find_result_maps matches EApp(_, [fn_arg]) where fn_arg is an EFn whose body returns Result, but never checks that expr_name fn is list.map (or any map-like). Any single-arg callback-taking call (e.g. each(handler, fn(x){...})) whose lambda body happens to hit the returns_result heuristic gets reported as 'list.map with Result-returning lambda — consider list.try_map'. Also genuine list.map(list, fn) two-arg shapes fall through the [fn_arg] single-element match entirely. Fix: gate on the callee name (list.map / map) and accept both arg shapes; verify against mapper output (curried vs tupled).",
   "id": "catseye-iru.3",
   "labels": [],
   "parent": "catseye-iru",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "detect_result_in_map: callee name never checked, mislabels calls",
   "type": "bug",
-  "updated_at": "2026-09-06T16:14:07Z"
+  "updated_at": "2026-09-06T16:15:13Z"
 }
