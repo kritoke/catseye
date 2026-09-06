@@ -4,14 +4,15 @@
   "blocks": [
     "catseye-iru.9"
   ],
+  "closed_at": "2026-09-06T16:13:26Z",
   "created": "2026-09-04T11:14:06Z",
   "description": "In gleam_rules.ml (~line 220) the local is_test_file compares a 9-char substring against the 11-char string \"_test.gleam\" (always false) and its other disjunct requires the path to end in bare \"_test\" with no extension. Real Gleam files end in .gleam, so the function always returns false and let assert in *_test.gleam files is still flagged as an error — contradicting the documented intent ('let assert is fine in tests'). Fix: delete the local copy and use the shared Crystal_rules_helpers.is_test_file / is_test_or_spec_file (already included at the top of the file), which handle /test/ directories. Add a regression fixture test/test gleam pair.",
   "id": "catseye-iru.2",
   "labels": [],
   "parent": "catseye-iru",
   "priority": 2,
-  "status": "in_progress",
+  "status": "closed",
   "title": "detect_let_assert: is_test_file never matches real paths",
   "type": "bug",
-  "updated_at": "2026-09-06T16:11:50Z"
+  "updated_at": "2026-09-06T16:13:26Z"
 }
