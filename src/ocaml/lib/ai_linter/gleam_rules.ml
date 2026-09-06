@@ -218,12 +218,11 @@ let detect_todo (m : t) =
     Detects ELetAssert nodes which map to Gleam's `let assert` pattern.
     In non-test code, this crashes on mismatch — should use case expressions. *)
 let detect_let_assert (m : t) =
-  let is_test_file (path : string) =
-    String.length path >= 5 &&
-    let suffix = String.sub path (String.length path - 5) 5 in
-    suffix = "_test" ||
-    (String.length path >= 9 && String.sub path (String.length path - 9) 9 = "_test.gleam")
-  in
+  (* Test-file detection uses the shared Crystal_rules_helpers.is_test_file
+     (path markers /test/ /tests/ /spec/ ... + test_/spec_ name prefixes).
+     The previous local copy compared a 9-char substring against the 11-char
+     string "_test.gleam" and required a bare "_test" suffix, so it never
+     matched real Gleam paths and flagged let assert in test files too. *)
   let rec has_let_assert (expr : expr) : int option =
     match expr.expr_value with
     | ELetAssert _ -> Some expr.expr_location.start.line
