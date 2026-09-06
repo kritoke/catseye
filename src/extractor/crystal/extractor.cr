@@ -14,6 +14,11 @@ Signal::PIPE.trap { }
 require "compiler/crystal/syntax"
 require "json"
 
+# ── Bounded reads (self-scan-hardening REQ-5) ──────────────────────
+# Cap source files read into memory so an adversarially huge file cannot
+# exhaust it. Default 16 MiB, overridable via CATSEYE_MAX_SOURCE_BYTES.
+MAX_SOURCE_BYTES = ENV["CATSEYE_MAX_SOURCE_BYTES"]?.try(&.to_u64?) || 16_777_216_u64
+
 # ── Argument classification ────────────────────────────────────────────
 
 alias ArgNode = NamedTuple(arg_type: String, value: String, field: String)
@@ -483,19 +488,32 @@ class SecurityVisitor < Crystal::Visitor
 
   # ── Assignments ────────────────────────────────────────────────────
 
-  def visit(node : Crystal::Assign) : Bool
-    target_name = case target = node.target
-                  when Crystal::Var         then target.name
-                  when Crystal::InstanceVar then target.name
-                  else                           target.to_s[0..60]
-                  end
+  # Target-name extraction (Var / InstanceVar / truncated to_s).
+  private def assign_target_name(node : Crystal::Assign) : String
+    case target = node.target
+    when Crystal::Var         then target.name
+    when Crystal::InstanceVar then target.name
+    else                           target.to_s[0..60]
+    end
+  end
 
+  # Taint for an assignment: direct check, propagation from a tainted var,
+  # and sanitizer cleansing (which also drops the target from @tainted_vars).
+  private def assign_tainted?(node : Crystal::Assign, target_name : String) : Bool
     tainted = tainted?(node.value)
-
-    # Propagate taint: if RHS references a tainted variable
     if !tainted && (var_node = node.value.as?(Crystal::Var))
       tainted = @tainted_vars.includes?(var_node.name)
     end
+    if sanitizer_call?(node.value)
+      tainted = false
+      @tainted_vars.delete(target_name)
+    end
+    tainted
+  end
+
+  def visit(node : Crystal::Assign) : Bool
+    target_name = assign_target_name(node)
+    tainted = assign_tainted?(node, target_name)
 
     # Scent propagation: if RHS references a scented variable, mark target as scented
     scented = false
@@ -522,12 +540,7 @@ class SecurityVisitor < Crystal::Visitor
       end
     end
 
-    # Sanitizer calls cleanse taint: filename = Path.basename(input) → not tainted
-    # Also remove from @tainted_vars if reassigned through a sanitizer
-    if sanitizer_call?(node.value)
-      tainted = false
-      @tainted_vars.delete(target_name)
-    end
+    # Sanitizer cleansing already applied inside assign_tainted? above.
 
     # Track safe query variables: assigned from string interpolation
     # that only contains literals (e.g., "SELECT ... IN (#{placeholders})" where
@@ -567,12 +580,10 @@ class SecurityVisitor < Crystal::Visitor
 
   # ── Method calls ───────────────────────────────────────────────────
 
-  def visit(node : Crystal::Call) : Bool
-    call_name = format_call_name(node)
-    tainted = false
+  # ── Method calls ───────────────────────────────────────────────────
 
-    # In Crystal, `raise` is a keyword but gets parsed as a Call node.
-    # Detect it here and emit a terminator node.
+  # `raise` parses as a Call with no receiver — emit its terminator node.
+  private def emit_raise_terminator(node : Crystal::Call, call_name : String) : Nil
     if call_name == "raise" && node.obj.nil?
       @nodes << {
         type:     "terminator",
@@ -585,8 +596,11 @@ class SecurityVisitor < Crystal::Visitor
         metadata: nil,
       }
     end
+  end
 
-    # Check if any argument is tainted
+  # True when any call argument carries taint: a tracked tainted var, a
+  # tainted expression, or a string interpolation referencing a tainted var.
+  private def call_tainted?(node : Crystal::Call) : Bool
     node.args.each do |arg|
       # For variable args, use @tainted_vars tracking only — do NOT
       # re-check against TAINT_SOURCES. An assign like
@@ -594,57 +608,37 @@ class SecurityVisitor < Crystal::Visitor
       # correctly marks path as clean, but tainted?(var_node) would
       # re-flag it because "path" is in TAINT_SOURCES by name.
       if var_node = arg.as?(Crystal::Var)
-        if @tainted_vars.includes?(var_node.name)
-          tainted = true
-          break
-        end
+        return true if @tainted_vars.includes?(var_node.name)
       elsif tainted?(arg)
-        tainted = true
-        break
+        return true
       end
-      # Check if arg is a string interpolation with tainted vars
       if interp = arg.as?(Crystal::StringInterpolation)
         has_tainted = interp.expressions.any? do |expr|
           (var_node = expr.as?(Crystal::Var)) && @tainted_vars.includes?(var_node.name)
         end
-        if has_tainted
-          tainted = true
-          break
-        end
+        return true if has_tainted
       end
     end
+    false
+  end
 
-    # Detect guard patterns: validation that makes tainted values safe.
-    # Emit a Guard node so the OCaml engine can suppress downstream findings.
-    guard_var : String? = nil
-    guard_kind : String? = nil
-
-    # Pattern 1: path.starts_with?("/safe/") — prefix validation
-    # Pattern 2: value.matches?(/regex/) — regex validation
-    # Pattern 3: allowed.in?(list) — allowlist check
-    # Pattern 4: raise/return unless condition — handled via control flow
+  # Guard detection: starts_with?/matches?/in? on a Var validates that var —
+  # un-taints it and qualifies it as a safe query source.
+  private def detect_guard(node : Crystal::Call) : Tuple(String?, String?)
     if node.name == "starts_with?" || node.name == "matches?" || node.name == "in?"
       if obj = node.obj
         case obj
         when Crystal::Var
-          guard_var = obj.name
-          guard_kind = node.name
           @tainted_vars.delete(obj.name)
           @safe_query_vars << obj.name
+          return {obj.name, node.name}
         end
       end
     end
+    {nil, nil}
+  end
 
-    # Pattern 5: path = validate_path(path) — sanitizer reassignment
-    # Pattern 6: path = File.expand_path(path) — canonicalization
-    # (already handled by sanitizer detection in assign visitor)
-
-    # Pattern 7: raise ... unless path.starts_with?(...)  — guard in condition
-    # The unless block's condition is a Call to starts_with? on a Var.
-    # We detect this by checking if this call is inside an Unless/If condition.
-    # This is handled implicitly — the starts_with? detection above catches it.
-
-    # Emit the Guard node before the Call node
+  private def emit_guard_node(node : Crystal::Call, guard_var : String?, guard_kind : String?) : Nil
     if guard_var && guard_kind
       @nodes << {
         type:     "guard",
@@ -657,51 +651,56 @@ class SecurityVisitor < Crystal::Visitor
         metadata: nil,
       }
     end
+  end
 
-    # Detect parameterized SQL queries
-    metadata : Hash(String, String)? = nil
-
-    # Check if any arg is a scented variable
-    scented = false
+  # True when any call argument references a scented variable.
+  private def call_scented?(node : Crystal::Call) : Bool
     node.args.each do |arg|
       if var_node = arg.as?(Crystal::Var)
-        if @scented_vars.includes?(var_node.name)
-          scented = true
-          break
-        end
+        return true if @scented_vars.includes?(var_node.name)
       end
-      # Check interpolation for scented vars
       if interp = arg.as?(Crystal::StringInterpolation)
         has_scented = interp.expressions.any? do |expr|
           (var_node = expr.as?(Crystal::Var)) && @scented_vars.includes?(var_node.name)
         end
-        if has_scented
-          scented = true
-          break
-        end
+        return true if has_scented
       end
     end
+    false
+  end
 
-    if db_call?(node) && node.args.size > 0
-      if parameterized_query?(node.args.first)
-        metadata = {"parameterized_query" => "true"}
-      else
-        # Check if first arg is a safe query variable
-        case first_arg = node.args.first
-        when Crystal::Var
-          if @safe_query_vars.includes?(first_arg.name)
-            metadata = {"parameterized_query" => "true"}
-          end
-        end
-        # Check if call uses named args: parameter (args: values)
-        # Crystal's DB API uses named args for bound parameters
-        if node.named_args && node.named_args.try &.any?(&.name.in?("args", "params"))
-          metadata = {"parameterized_query" => "true"}
-        end
+  # Parameterized-SQL metadata: placeholder queries, safe query vars,
+  # and named-args bound parameters.
+  private def sql_metadata(node : Crystal::Call) : Hash(String, String)?
+    return nil unless db_call?(node) && node.args.size > 0
+    if parameterized_query?(node.args.first)
+      return {"parameterized_query" => "true"}
+    end
+    case first_arg = node.args.first
+    when Crystal::Var
+      if @safe_query_vars.includes?(first_arg.name)
+        return {"parameterized_query" => "true"}
       end
     end
+    # Crystal's DB API uses named args for bound parameters
+    if node.named_args && node.named_args.try &.any?(&.name.in?("args", "params"))
+      return {"parameterized_query" => "true"}
+    end
+    nil
+  end
 
-    # Merge scent into metadata if applicable
+  def visit(node : Crystal::Call) : Bool
+    call_name = format_call_name(node)
+
+    emit_raise_terminator(node, call_name)
+    tainted = call_tainted?(node)
+
+    guard_var, guard_kind = detect_guard(node)
+    emit_guard_node(node, guard_var, guard_kind)
+
+    scented = call_scented?(node)
+    metadata = sql_metadata(node)
+
     final_metadata = metadata
     if scented
       final_metadata = (metadata || {} of String => String).merge({"scent" => "true"})
@@ -729,19 +728,15 @@ class SecurityVisitor < Crystal::Visitor
     "connect_timeout",
   }
 
-  # Post-process: mark HTTP::Client.new calls as having timeout config
-  # if they're followed by timeout-setting calls within 5 lines on the same variable.
-  def self.annotate_timeouts(nodes : Array(SecNode)) : Array(SecNode)
-    # Build map: variable name → list of (line, is_http_client, is_timeout_setter, is_timeout_helper)
-    client_vars = Set(String).new
-    timeout_configured = Set(String).new
-    # Track (file, def_line) pairs where HTTP::Client.new appears
-    # for scope-based timeout detection (handles .tap blocks)
-    http_client_defs = Set(Tuple(String, Int32)).new
-    # Track (file, def_line) pairs where timeout setters appear
-    timeout_setter_defs = Set(Tuple(String, Int32)).new
+  # Phase-1 output: timeout state collected from the node stream.
+  private record TimeoutScan,
+    client_vars : Set(String),
+    timeout_configured : Set(String),
+    http_client_defs : Set(Tuple(String, Int32)),
+    timeout_setter_defs : Set(Tuple(String, Int32))
 
-    # Build def scope map: for each node, find its enclosing def line
+  # Map each node to its enclosing def line (same file).
+  private def self.build_def_scopes(nodes : Array(SecNode)) : Hash(Tuple(String, Int32), Int32)
     def_scopes = {} of Tuple(String, Int32) => Int32
     current_def = {} of String => Int32
     nodes.each do |n|
@@ -752,21 +747,29 @@ class SecurityVisitor < Crystal::Visitor
         def_scopes[{n[:file], n[:line]}] = current_def[n[:file]]
       end
     end
+    def_scopes
+  end
 
+  # Collect HTTP client vars, configured timeouts, and the def scopes where
+  # HTTP::Client.new / timeout setters appear (handles .tap blocks).
+  private def self.scan_timeout_state(nodes : Array(SecNode),
+                                      def_scopes : Hash(Tuple(String, Int32), Int32)) : TimeoutScan
+    st = TimeoutScan.new(Set(String).new, Set(String).new,
+                         Set(Tuple(String, Int32)).new, Set(Tuple(String, Int32)).new)
     nodes.each do |n|
       case n[:type]
       when "assign"
         # Track HTTP client variable assignments
         if n[:args].any? &.[:value].includes?("HTTP::Client.new")
-          client_vars << n[:name]
+          st.client_vars << n[:name]
           scope = def_scopes[{n[:file], n[:line]}]?
-          http_client_defs << {n[:file], scope} if scope
+          st.http_client_defs << {n[:file], scope} if scope
         end
       when "call"
         # Track HTTP::Client.new calls (even without assign, e.g. in .tap chain)
         if n[:name].includes?("HTTP::Client.new")
           scope = def_scopes[{n[:file], n[:line]}]?
-          http_client_defs << {n[:file], scope} if scope
+          st.http_client_defs << {n[:file], scope} if scope
         end
         # Detect timeout property setters: client.read_timeout=(value)
         if n[:name].includes?("=") && n[:name].includes?(".")
@@ -775,10 +778,10 @@ class SecurityVisitor < Crystal::Visitor
             var_name = parts[0]
             method = parts[1].rchop # remove trailing =
             if TIMEOUT_SETTERS.includes?(method)
-              timeout_configured << var_name if client_vars.includes?(var_name)
+              st.timeout_configured << var_name if st.client_vars.includes?(var_name)
               # Also track scope-based: any timeout setter in same def as HTTP::Client.new
               scope = def_scopes[{n[:file], n[:line]}]?
-              timeout_setter_defs << {n[:file], scope} if scope
+              st.timeout_setter_defs << {n[:file], scope} if scope
             end
           end
         end
@@ -786,42 +789,50 @@ class SecurityVisitor < Crystal::Visitor
         if n[:name].includes?("apply_default_timeouts") ||
            n[:name].includes?("configure_timeouts")
           n[:args].each do |arg|
-            if arg[:arg_type] == "var" && client_vars.includes?(arg[:value])
-              timeout_configured << arg[:value]
+            if arg[:arg_type] == "var" && st.client_vars.includes?(arg[:value])
+              st.timeout_configured << arg[:value]
             end
           end
         end
       end
     end
+    st
+  end
 
-    # Now annotate the HTTP::Client.new call nodes
-    nodes.map do |n|
-      if n[:type] == "call" && n[:name].includes?("HTTP::Client.new")
-        # Find which variable this was assigned to by checking subsequent assigns
-        var_name = find_assign_target(nodes, n[:line], n[:file])
-        has_var_timeout = var_name && timeout_configured.includes?(var_name)
-        # Also check scope-based: same def has timeout setters
-        scope = def_scopes[{n[:file], n[:line]}]?
-        has_scope_timeout = scope && timeout_setter_defs.includes?({n[:file], scope})
+  # Annotate one HTTP::Client.new node with has_timeout_config when its
+  # variable or its def scope has a timeout setter.
+  private def self.annotate_one(n : SecNode, nodes : Array(SecNode), st : TimeoutScan,
+                                def_scopes : Hash(Tuple(String, Int32), Int32)) : SecNode
+    return n unless n[:type] == "call" && n[:name].includes?("HTTP::Client.new")
+    # Find which variable this was assigned to by checking subsequent assigns
+    var_name = find_assign_target(nodes, n[:line], n[:file])
+    has_var_timeout = var_name && st.timeout_configured.includes?(var_name)
+    # Also check scope-based: same def has timeout setters
+    scope = def_scopes[{n[:file], n[:line]}]?
+    has_scope_timeout = scope && st.timeout_setter_defs.includes?({n[:file], scope})
 
-        if has_var_timeout || has_scope_timeout
-          {
-            type:     n[:type],
-            name:     n[:name],
-            args:     n[:args],
-            line:     n[:line],
-            taint:    n[:taint],
-            file:     n[:file],
-            language: n[:language],
-            metadata: {"has_timeout_config" => "true"},
-          }
-        else
-          n
-        end
-      else
-        n
-      end
+    if has_var_timeout || has_scope_timeout
+      {
+        type:     n[:type],
+        name:     n[:name],
+        args:     n[:args],
+        line:     n[:line],
+        taint:    n[:taint],
+        file:     n[:file],
+        language: n[:language],
+        metadata: {"has_timeout_config" => "true"},
+      }
+    else
+      n
     end
+  end
+
+  # Post-process: mark HTTP::Client.new calls as having timeout config
+  # if they're followed by timeout-setting calls within 5 lines on the same variable.
+  def self.annotate_timeouts(nodes : Array(SecNode)) : Array(SecNode)
+    def_scopes = build_def_scopes(nodes)
+    st = scan_timeout_state(nodes, def_scopes)
+    nodes.map { |n| annotate_one(n, nodes, st, def_scopes) }
   end
 
   private def self.find_assign_target(nodes : Array(SecNode), call_line : Int32, file : String) : String?
@@ -845,30 +856,65 @@ end
 
 # ── Main ───────────────────────────────────────────────────────────────
 
+# Shared extraction core — parses and annotates; raises on unreadable input.
+# Used by extract_file (CLI) and the worker loop.
+def parse_and_annotate(file_path : String) : Array(SecNode)
+  source = File.read(file_path)
+  parser = Crystal::Parser.new(source)
+  parser.filename = file_path
+  ast = parser.parse
+
+  visitor = SecurityVisitor.new(file_path)
+  ast.accept(visitor)
+  SecurityVisitor.annotate_timeouts(visitor.nodes)
+end
+
 # Shared extraction function — used by both CLI and worker modes.
 def extract_file(file_path : String) : String
-  unless File.file?(file_path)
-    return [{id: 0, status: "error", error: "File not found: #{file_path}"}].to_json
-  end
-
   begin
-    source = File.read(file_path)
-    parser = Crystal::Parser.new(source)
-    parser.filename = file_path
-    ast = parser.parse
-
-    visitor = SecurityVisitor.new(file_path)
-    ast.accept(visitor)
-    annotated = SecurityVisitor.annotate_timeouts(visitor.nodes)
-
-    annotated.to_json
+    # SECURITY (TOCTOU, REQ-4): no existence pre-check — File.read itself
+    # raises on missing/unreadable files, reported via the rescue below.
+    # A check-then-read sequence opened a race window.
+    if File.size(file_path) > MAX_SOURCE_BYTES
+      return [{id: 0, status: "error",
+               error: "file exceeds MAX_SOURCE_BYTES (#{MAX_SOURCE_BYTES}): #{file_path}"}].to_json
+    end
+    parse_and_annotate(file_path).to_json
   rescue ex : Crystal::SyntaxException
     STDERR.puts "Parse error in #{file_path}: #{ex.message}"
     "[]"
+  rescue ex : File::Error
+    # Missing/unreadable file — error node instead of a silent empty result
+    STDERR.puts "File error in #{file_path}: #{ex.message}"
+    [{id: 0, status: "error", error: ex.message.to_s}].to_json
   rescue ex : Exception
     STDERR.puts "Error processing #{file_path}: #{ex.message}"
     "[]"
   end
+end
+
+# Handle one worker request; returns false when the loop should stop
+# (shutdown), true otherwise. Emits the response to STDOUT.
+def handle_worker_request(request : JSON::Any) : Bool
+  id = request["id"].as_i
+  case request["method"].as_s
+  when "extract"
+    file = request["file"].as_s
+    nodes_json = extract_file(file)
+    # Parse nodes back to build the response
+    nodes = JSON.parse(nodes_json)
+    STDOUT.puts({id: id, status: "ok", nodes: nodes}.to_json)
+    STDOUT.flush
+  when "ping"
+    STDOUT.puts({id: id, status: "ok"}.to_json)
+    STDOUT.flush
+  when "shutdown"
+    return false
+  else
+    STDOUT.puts({id: id, status: "error", error: "Unknown method"}.to_json)
+    STDOUT.flush
+  end
+  true
 end
 
 # ── Mode selection ─────────────────────────────────────────────────────
@@ -890,26 +936,7 @@ if ARGV.includes?("--serve")
     break if line.nil? || line.strip.empty?
 
     begin
-      request = JSON.parse(line)
-      id = request["id"].as_i
-
-      case request["method"].as_s
-      when "extract"
-        file = request["file"].as_s
-        nodes_json = extract_file(file)
-        # Parse nodes back to build the response
-        nodes = JSON.parse(nodes_json)
-        STDOUT.puts({id: id, status: "ok", nodes: nodes}.to_json)
-        STDOUT.flush
-      when "ping"
-        STDOUT.puts({id: id, status: "ok"}.to_json)
-        STDOUT.flush
-      when "shutdown"
-        break
-      else
-        STDOUT.puts({id: id, status: "error", error: "Unknown method"}.to_json)
-        STDOUT.flush
-      end
+      break unless handle_worker_request(JSON.parse(line))
     rescue ex : JSON::ParseException
       STDERR.puts "Worker: invalid JSON request"
       # Can't determine id — skip

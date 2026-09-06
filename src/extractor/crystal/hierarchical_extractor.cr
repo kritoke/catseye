@@ -16,6 +16,11 @@
 require "compiler/crystal/syntax"
 require "json"
 
+# ── Bounded reads (self-scan-hardening REQ-5) ──────────────────────
+# Cap source files read into memory so an adversarially huge file cannot
+# exhaust it. Default 16 MiB, overridable via CATSEYE_MAX_SOURCE_BYTES.
+MAX_SOURCE_BYTES = ENV["CATSEYE_MAX_SOURCE_BYTES"]?.try(&.to_u64?) || 16_777_216_u64
+
 # ── Taint sources (same as extractor.cr) ──────────────────────────────
 
 TAINT_SOURCES = Set{
@@ -742,9 +747,19 @@ if ARGV.size < 1
 end
 
 source_file = ARGV[0]
-source_code = File.read(source_file)
 
 begin
+  # SECURITY (TOCTOU, REQ-4): no existence pre-check — File.read raises on
+  # missing/unreadable files and the rescue below reports it. REQ-5: cap the
+  # read so a huge file cannot exhaust memory.
+  if File.size(source_file) > MAX_SOURCE_BYTES
+    puts({"type" => "Error",
+          "message" => "file exceeds MAX_SOURCE_BYTES (#{MAX_SOURCE_BYTES}): #{source_file}"}.to_json)
+    STDOUT.flush
+    exit 1
+  end
+  source_code = File.read(source_file)
+
   parser = Crystal::Parser.new(source_code)
   top_node = parser.parse
 
